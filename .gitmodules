@@ -1,3 +1,6 @@
 [submodule "lvgl"]
 	path = lvgl
 	url = https://github.com/lvgl/lvgl
+[submodule "lvgl_theme_shadcn"]
+	path = lvgl_theme_shadcn
+	url = https://github.com/AlixANNERAUD/lvgl_theme_shadcn.git

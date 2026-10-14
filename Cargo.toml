@@ -9,6 +9,7 @@ drivers = []
 rust_timer = []
 use-vendored-config = []
 use-string-functions = []
+shadcn-theme = []
 
 color_depth_1 = []
 color_depth_8 = []
