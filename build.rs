@@ -171,6 +171,15 @@ fn main() {
     add_c_files(&mut cfg, &lvgl_src);
     add_c_files(&mut cfg, &lv_config_dir);
     add_c_files(&mut cfg, &shims_dir);
+    #[cfg(feature = "shadcn-theme")]
+    {
+        let theme = project_dir.join("lvgl_theme_shadcn");
+        println!("cargo:rerun-if-changed={}", theme.join("src").display());
+        println!("cargo:rerun-if-changed={}", theme.join("include").display());
+        add_c_files(&mut cfg, &theme.join("src"));
+        cfg.include(theme.join("include"))
+            .include(project_dir.join("lvgl"));
+    }
     #[cfg(feature = "drivers")]
     add_c_files(&mut cfg, &drivers);
 
@@ -262,6 +271,15 @@ fn main() {
     let bindings =
         bindgen::Builder::default().header(shims_dir.join("lvgl_sys.h").to_str().unwrap());
     let bindings = add_font_headers(bindings, &font_extra_src);
+    #[cfg(feature = "shadcn-theme")]
+    let bindings = bindings
+        .header(
+            project_dir
+                .join("lvgl_theme_shadcn/include/lv_theme_shadcn.h")
+                .to_str()
+                .unwrap(),
+        )
+        .clang_arg(format!("-I{}", project_dir.join("lvgl").display()));
     #[cfg(feature = "drivers")]
     let bindings = bindings
         .header(shims_dir.join("lvgl_drv.h").to_str().unwrap())
