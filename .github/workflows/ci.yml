@@ -79,6 +79,12 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: test-${{ matrix.name }}
+      # Integration tests run nested `cargo --offline` builds of packages that
+      # have their own lockfile: download their dependencies up front.
+      - name: Fetch nested package dependencies
+        run: |
+          cargo fetch --manifest-path examples/external-fonts/Cargo.toml
+          cargo fetch --manifest-path tests/fixtures/font_incremental/Cargo.toml
       - run: cargo test ${{ matrix.args }}
 
   docs:
