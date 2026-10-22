@@ -3,12 +3,11 @@ name = "lvgl_rust_sys"
 version = "0.1.0"
 edition = "2021"
 links = "lvgl_rust_sys"
+build = "build/main.rs"
 
 [features]
 default = ["build-lvgl", "use-string-functions"]
 build-lvgl = []
-drivers = []
-rust_timer = []
 use-vendored-config = []
 use-string-functions = []
 shadcn-theme = []
