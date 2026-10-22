@@ -209,7 +209,11 @@ fn main() {
         cfg.define("LV_COLOR_DEPTH", Some(depth));
     }
 
-    cfg.compile("lvgl");
+    // Bindgen is useful independently of the native library build (for
+    // example, when another crate provides or builds LVGL itself).
+    if env::var_os("CARGO_FEATURE_BUILD_LVGL").is_some() {
+        cfg.compile("lvgl");
+    }
 
     let mut cc_args = vec![
         "-DLV_CONF_INCLUDE_SIMPLE=1",
