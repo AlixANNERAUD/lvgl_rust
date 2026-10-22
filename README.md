@@ -37,8 +37,8 @@ this crate through Cargo's `links = "lvgl_rust_sys"` metadata:
 - `DEP_LVGL_RUST_SYS_INCLUDE_PATHS`: semicolon-separated include directories
 - `DEP_LVGL_RUST_SYS_DEFINES`: semicolon-separated `NAME` or `NAME=VALUE`
   preprocessor definitions
-- `DEP_LVGL_RUST_SYS_CFLAGS`: the configured `LVGL_CFLAGS` value (the existing
-  comma-separated define syntax)
+- `DEP_LVGL_RUST_SYS_CFLAGS`: configured `LVGL_CFLAGS` entries in their existing
+  comma-separated `NAME` or `NAME=VALUE` define syntax
 - `DEP_LVGL_RUST_SYS_TARGET`: Cargo target triple used for the native build
 
 These values are derived from the LVGL build configuration, including the
@@ -61,3 +61,33 @@ archive and its headers are included by bindgen. Updates in this mode rerun
 `fonts/` directory is no longer performed. Move existing assets into an
 external font crate for incremental build isolation; no runtime font loading
 or RAM copy is needed.
+
+### External font crate example
+
+`examples/external-fonts` is a separate Cargo package. Its build script consumes
+the `DEP_LVGL_RUST_SYS_*` metadata—including both standard and custom defines—
+and compiles all generated C files under its `fonts/` directory into a separate
+`font_assets` archive. Run it with the same
+LVGL configuration used by the application:
+
+```sh
+DEP_LV_CONFIG_PATH=/path/to/lvgl-config \
+  cargo run --manifest-path examples/external-fonts/Cargo.toml -- --cjk
+```
+
+Replace the small generated-font-shaped C fixtures there with outputs from
+`lv_font_conv --format lvgl`. Give each profile a unique `--lv-font-name` (for
+example, `font_montserrat_14_latin` and `font_montserrat_14_cjk`) so profiles
+can coexist in one firmware. The Rust crate exports each descriptor as an
+existing `*const lv_font_t`; application code can select and pass the pointer
+to LVGL when changing languages without rebuilding LVGL.
+
+Generated descriptors and glyph/map/kerning tables are compile-time `const`
+data and should remain in the target's read-only Flash/ROM sections. The
+host-side integration test checks the profile descriptors and tables in
+read-only sections; position-independent host executables may place
+pointer-bearing const descriptors in `.data.rel.ro` (read-only after relocation).
+For embedded firmware, inspect the target ELF/map with its linker script to
+confirm the final placement. The font crate neither loads files during redraw
+nor copies glyph data into persistent RAM. LVGL's temporary drawing buffers
+are separate runtime scratch space, not duplicate font assets.

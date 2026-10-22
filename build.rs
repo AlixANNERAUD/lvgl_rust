@@ -163,6 +163,20 @@ fn main() {
         native_includes.push(font_dir.clone());
     }
     let mut native_defines = vec![("LV_CONF_INCLUDE_SIMPLE".to_string(), Some("1".to_string()))];
+    let native_cflags = cflags_extra
+        .clone()
+        .map(|entries| {
+            entries
+                .map(|entry| {
+                    let mut parts = entry.splitn(2, '=');
+                    (
+                        parts.next().unwrap().to_string(),
+                        parts.next().map(str::to_string),
+                    )
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
 
     #[cfg(feature = "shadcn-theme")]
     {
@@ -176,16 +190,6 @@ fn main() {
     {
         native_includes.push(drivers.clone());
         native_includes.extend(incl_extra.split(',').map(PathBuf::from));
-    }
-
-    if let Some(ref cflags_extra) = cflags_extra {
-        cflags_extra.clone().for_each(|entry| {
-            let mut it = entry.splitn(2, '=');
-            native_defines.push((
-                it.next().unwrap().to_string(),
-                it.next().map(str::to_string),
-            ));
-        });
     }
 
     if let Some(depth) = get_color_depth() {
@@ -216,6 +220,10 @@ fn main() {
     for (name, value) in &native_defines {
         cfg.define(name, value.as_deref());
     }
+    for (name, value) in &native_cflags {
+        cfg.define(name, value.as_deref());
+    }
+
     // Bindgen is useful independently of the native library build (for
     // example, when another crate provides or builds LVGL itself).
     if env::var_os("CARGO_FEATURE_BUILD_LVGL").is_some() {
@@ -242,7 +250,17 @@ fn main() {
             .collect::<Vec<_>>()
             .join(";")
     );
-    println!("cargo:CFLAGS={}", cflags_extra_string);
+    println!(
+        "cargo:CFLAGS={}",
+        native_cflags
+            .iter()
+            .map(|(name, value)| match value {
+                Some(value) => format!("{name}={value}"),
+                None => name.clone(),
+            })
+            .collect::<Vec<_>>()
+            .join(",")
+    );
     println!(
         "cargo:TARGET={}",
         env::var("TARGET").expect("Cargo build scripts always have TARGET")

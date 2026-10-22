@@ -32,6 +32,7 @@ fn dependent_build_script_receives_lvgl_native_configuration() {
     let defines = std::env::var("DEP_LVGL_RUST_SYS_DEFINES").expect("defines metadata");
     assert!(defines.contains("LV_CONF_INCLUDE_SIMPLE=1"));
     assert!(defines.contains("LV_COLOR_DEPTH=16"));
+    assert!(!defines.contains("LVGL_TEST_ABI=7"));
     let flags = std::env::var("DEP_LVGL_RUST_SYS_CFLAGS").expect("C flags metadata");
     assert!(flags.contains("LVGL_TEST_ABI=7"));
     assert_eq!(std::env::var("DEP_LVGL_RUST_SYS_TARGET").unwrap(), std::env::var("TARGET").unwrap());
