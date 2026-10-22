@@ -28,3 +28,20 @@ lvgl_rust_sys = { version = "0.1", default-features = false }
 The `build-lvgl` feature is enabled by default and controls only compilation of
 the native LVGL library; bindgen still runs when it is disabled. Configure
 `DEP_LV_CONFIG_PATH` as usual so bindgen can use the intended `lv_conf.h`.
+
+## Native build metadata
+
+Downstream build scripts can use the same LVGL headers and configuration as
+this crate through Cargo's `links = "lvgl_rust_sys"` metadata:
+
+- `DEP_LVGL_RUST_SYS_INCLUDE_PATHS`: semicolon-separated include directories
+- `DEP_LVGL_RUST_SYS_DEFINES`: semicolon-separated `NAME` or `NAME=VALUE`
+  preprocessor definitions
+- `DEP_LVGL_RUST_SYS_CFLAGS`: the configured `LVGL_CFLAGS` value (the existing
+  comma-separated define syntax)
+- `DEP_LVGL_RUST_SYS_TARGET`: Cargo target triple used for the native build
+
+These values are derived from the LVGL build configuration, including the
+selected `lv_conf.h`, color-depth feature, and optional native include paths.
+Use the target-aware compiler supplied by `cc` in the dependent build script;
+do not substitute the host target or independently guess ABI-affecting defines.

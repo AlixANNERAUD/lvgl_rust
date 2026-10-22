@@ -164,6 +164,45 @@ fn main() {
         println!("cargo:rerun-if-env-changed=LVGL_LINK");
     }
 
+    let mut native_includes = vec![
+        lvgl_src.clone(),
+        vendor.clone(),
+        lv_config_dir.clone(),
+        shims_dir.clone(),
+    ];
+    if let Some(font_dir) = &font_extra_src {
+        native_includes.push(font_dir.clone());
+    }
+    let mut native_defines = vec![("LV_CONF_INCLUDE_SIMPLE".to_string(), Some("1".to_string()))];
+
+    #[cfg(feature = "shadcn-theme")]
+    {
+        let theme = project_dir.join("lvgl_theme_shadcn");
+        native_includes.push(theme.join("include"));
+        native_includes.push(project_dir.join("lvgl"));
+    }
+    #[cfg(feature = "rust_timer")]
+    native_includes.push(timer_shim.clone());
+    #[cfg(feature = "drivers")]
+    {
+        native_includes.push(drivers.clone());
+        native_includes.extend(incl_extra.split(',').map(PathBuf::from));
+    }
+
+    if let Some(ref cflags_extra) = cflags_extra {
+        cflags_extra.clone().for_each(|entry| {
+            let mut it = entry.splitn(2, '=');
+            native_defines.push((
+                it.next().unwrap().to_string(),
+                it.next().map(str::to_string),
+            ));
+        });
+    }
+
+    if let Some(depth) = get_color_depth() {
+        native_defines.push(("LV_COLOR_DEPTH".to_string(), Some(depth.to_string())));
+    }
+
     let mut cfg = Build::new();
     if let Some(p) = &font_extra_src {
         add_c_files(&mut cfg, p)
@@ -177,43 +216,48 @@ fn main() {
         println!("cargo:rerun-if-changed={}", theme.join("src").display());
         println!("cargo:rerun-if-changed={}", theme.join("include").display());
         add_c_files(&mut cfg, &theme.join("src"));
-        cfg.include(theme.join("include"))
-            .include(project_dir.join("lvgl"));
     }
     #[cfg(feature = "drivers")]
     add_c_files(&mut cfg, &drivers);
 
-    cfg.define("LV_CONF_INCLUDE_SIMPLE", Some("1"))
-        .include(&lvgl_src)
-        .include(&vendor)
-        .warnings(true)
-        .include(&lv_config_dir);
-    if let Some(p) = &font_extra_src {
-        cfg.include(p);
+    cfg.warnings(true);
+    for include in &native_includes {
+        cfg.include(include);
     }
-    #[cfg(feature = "rust_timer")]
-    cfg.include(&timer_shim);
-    #[cfg(feature = "drivers")]
-    cfg.include(&drivers);
-    #[cfg(feature = "drivers")]
-    cfg.includes(incl_extra.split(','));
-
-    if let Some(ref cflags_extra) = cflags_extra {
-        cflags_extra.clone().for_each(|e| {
-            let mut it = e.split('=');
-            cfg.define(it.next().unwrap(), it.next().unwrap_or_default());
-        });
+    for (name, value) in &native_defines {
+        cfg.define(name, value.as_deref());
     }
-
-    if let Some(depth) = get_color_depth() {
-        cfg.define("LV_COLOR_DEPTH", Some(depth));
-    }
-
     // Bindgen is useful independently of the native library build (for
     // example, when another crate provides or builds LVGL itself).
     if env::var_os("CARGO_FEATURE_BUILD_LVGL").is_some() {
         cfg.compile("lvgl");
     }
+
+    println!("cargo:rerun-if-env-changed=LVGL_CFLAGS");
+    println!(
+        "cargo:INCLUDE_PATHS={}",
+        native_includes
+            .iter()
+            .map(|p| p.display().to_string())
+            .collect::<Vec<_>>()
+            .join(";")
+    );
+    println!(
+        "cargo:DEFINES={}",
+        native_defines
+            .iter()
+            .map(|(name, value)| match value {
+                Some(value) => format!("{name}={value}"),
+                None => name.clone(),
+            })
+            .collect::<Vec<_>>()
+            .join(";")
+    );
+    println!("cargo:CFLAGS={}", cflags_extra_string);
+    println!(
+        "cargo:TARGET={}",
+        env::var("TARGET").expect("Cargo build scripts always have TARGET")
+    );
 
     let mut cc_args = vec![
         "-DLV_CONF_INCLUDE_SIMPLE=1",
