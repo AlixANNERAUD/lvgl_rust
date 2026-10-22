@@ -57,21 +57,10 @@ fn main() {
     #[cfg(feature = "rust_timer")]
     let timer_shim = vendor.join("include").join("timer");
 
-    let font_extra_src: Option<PathBuf>;
-    if let Ok(v) = env::var("PWD") {
-        let current_dir = canonicalize(PathBuf::from(v));
-        font_extra_src = {
-            if let Ok(p) = env::var("LVGL_FONTS_DIR") {
-                Some(canonicalize(PathBuf::from(p)))
-            } else if current_dir.join("fonts").exists() {
-                Some(current_dir.join("fonts"))
-            } else {
-                None
-            }
-        };
-    } else {
-        font_extra_src = None
-    }
+    println!("cargo:rerun-if-env-changed=LVGL_FONTS_DIR");
+    let font_extra_src = env::var("LVGL_FONTS_DIR")
+        .ok()
+        .map(|path| canonicalize(PathBuf::from(path)));
 
     // Some basic defaults; SDL2 is the only driver enabled in the provided
     // driver config by default

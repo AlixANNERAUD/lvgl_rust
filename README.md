@@ -45,3 +45,19 @@ These values are derived from the LVGL build configuration, including the
 selected `lv_conf.h`, color-depth feature, and optional native include paths.
 Use the target-aware compiler supplied by `cc` in the dependent build script;
 do not substitute the host target or independently guess ABI-affecting defines.
+
+## Font build modes
+
+The recommended mode is to build generated `lv_font_conv --format lvgl` C
+sources in a separate dependent crate/archive. Font changes then rebuild that
+archive and relink the firmware without rerunning the LVGL build script or
+bindgen. The native metadata above supplies the headers and definitions needed
+for an ABI-compatible compile.
+
+For compatibility, setting `LVGL_FONTS_DIR` explicitly keeps the legacy
+in-crate behavior: C sources from that directory are compiled into the LVGL
+archive and its headers are included by bindgen. Updates in this mode rerun
+`lvgl_rust_sys`'s build and bindgen. Implicit discovery of a working-directory
+`fonts/` directory is no longer performed. Move existing assets into an
+external font crate for incremental build isolation; no runtime font loading
+or RAM copy is needed.
