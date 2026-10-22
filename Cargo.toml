@@ -4,7 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-default = ["use-string-functions"]
+default = ["build-lvgl", "use-string-functions"]
+build-lvgl = []
 drivers = []
 rust_timer = []
 use-vendored-config = []

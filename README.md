@@ -14,3 +14,17 @@ The feature is disabled by default. Initialize it with
 and use its surface/variant helpers instead of local color overrides. Theme
 state is released when its display is deleted, or explicitly by
 `lv_theme_shadcn_deinit`. All calls follow LVGL's synchronization requirements.
+
+# Build features
+
+By default, this crate generates Rust bindings and compiles the vendored LVGL
+C sources into a native library. To generate bindings without compiling the
+LVGL library, disable default features (or otherwise omit `build-lvgl`):
+
+```toml
+lvgl_rust_sys = { version = "0.1", default-features = false }
+```
+
+The `build-lvgl` feature is enabled by default and controls only compilation of
+the native LVGL library; bindgen still runs when it is disabled. Configure
+`DEP_LV_CONFIG_PATH` as usual so bindgen can use the intended `lv_conf.h`.
