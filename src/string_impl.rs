@@ -22,20 +22,24 @@
 
 use core::{
     ffi::{c_char, c_int},
-    ptr, usize,
+    ptr,
 };
+#[allow(non_camel_case_types)]
 type size_t = usize;
 
 #[no_mangle]
 pub unsafe extern "C" fn strchr(mut s: *const c_char, c: c_int) -> *mut c_char {
+    // The terminating NUL is part of the string, so `strchr(s, 0)` finds it.
     let c = c as c_char;
-    while *s != 0 {
+    loop {
         if *s == c {
             return s as *mut c_char;
         }
-        s = s.offset(1);
+        if *s == 0 {
+            return ptr::null_mut();
+        }
+        s = s.add(1);
     }
-    ptr::null_mut()
 }
 
 #[no_mangle]
@@ -120,8 +124,10 @@ pub unsafe extern "C" fn strncat(s1: *mut c_char, s2: *const c_char, n: size_t) 
 pub unsafe extern "C" fn strncmp(s1: *const c_char, s2: *const c_char, n: size_t) -> c_int {
     let mut i = 0;
     while i < n {
-        let c1 = *s1.add(i);
-        let c2 = *s2.add(i);
+        // C compares characters as `unsigned char` (`c_char` is signed on
+        // some targets).
+        #[allow(clippy::unnecessary_cast)]
+        let (c1, c2) = (*s1.add(i) as u8, *s2.add(i) as u8);
         if c1 != c2 || c1 == 0 {
             return (c1 as c_int) - (c2 as c_int);
         }
@@ -134,7 +140,7 @@ pub unsafe extern "C" fn strncmp(s1: *const c_char, s2: *const c_char, n: size_t
 pub unsafe extern "C" fn strncpy(dst: *mut c_char, src: *const c_char, n: size_t) -> *mut c_char {
     let mut i = 0;
 
-    while *src.add(i) != 0 && i < n {
+    while i < n && *src.add(i) != 0 {
         *dst.add(i) = *src.add(i);
         i += 1;
     }
@@ -148,21 +154,32 @@ pub unsafe extern "C" fn strncpy(dst: *mut c_char, src: *const c_char, n: size_t
 
 #[no_mangle]
 pub unsafe extern "C" fn strrchr(s: *const c_char, c: c_int) -> *mut c_char {
-    let len = strlen(s) as isize;
+    // Searching includes the terminating NUL, like `strchr`.
     let c = c as c_char;
-    let mut i = len - 1;
-    while i >= 0 {
-        if *s.offset(i) == c {
-            return s.offset(i) as *mut c_char;
-        }
+    let mut i = strlen(s) + 1;
+    while i > 0 {
         i -= 1;
+        if *s.add(i) == c {
+            return s.add(i) as *mut c_char;
+        }
     }
     ptr::null_mut()
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::string_impl::{strcmp, strncmp};
+    use super::*;
+
+    /// NUL-terminated C string literal as a `*const c_char`.
+    macro_rules! c {
+        ($s:literal) => {
+            concat!($s, "\0").as_ptr() as *const c_char
+        };
+    }
+
+    unsafe fn offset_of(base: *const c_char, found: *mut c_char) -> Option<usize> {
+        (!found.is_null()).then(|| found.offset_from(base) as usize)
+    }
 
     #[test]
     fn strcmp_test() {
@@ -178,6 +195,73 @@ mod tests {
             assert!(strncmp(s2, s1, 4) > 0);
             assert!(strcmp(s1, s2) < 0);
             assert!(strcmp(s2, s1) > 0);
+            assert_eq!(strcmp(c!("lvgl"), c!("lvgl")), 0);
+            assert_eq!(strcoll(c!("a"), c!("b")), strcmp(c!("a"), c!("b")));
+        }
+    }
+
+    #[test]
+    fn strcmp_compares_bytes_as_unsigned() {
+        unsafe {
+            // "é" is 0xC3 0xA9 in UTF-8 and must sort after ASCII.
+            assert!(strcmp(c!("é"), c!("z")) > 0);
+            assert!(strncmp(c!("z"), c!("é"), 1) < 0);
+        }
+    }
+
+    #[test]
+    fn strlen_and_strnlen() {
+        unsafe {
+            assert_eq!(strlen(c!("")), 0);
+            assert_eq!(strlen(c!("hello")), 5);
+            assert_eq!(strnlen(c!("hello"), 3), 3);
+            assert_eq!(strnlen(c!("hello"), 10), 5);
+            assert_eq!(strnlen_s(ptr::null(), 10), 0);
+            assert_eq!(strnlen_s(c!("hi"), 10), 2);
+        }
+    }
+
+    #[test]
+    fn strchr_and_strrchr() {
+        unsafe {
+            let s = c!("a/b/c");
+            assert_eq!(offset_of(s, strchr(s, b'/' as c_int)), Some(1));
+            assert_eq!(offset_of(s, strrchr(s, b'/' as c_int)), Some(3));
+            assert_eq!(offset_of(s, strchr(s, b'x' as c_int)), None);
+            assert_eq!(offset_of(s, strrchr(s, b'x' as c_int)), None);
+            assert_eq!(offset_of(s, strchr(s, 0)), Some(5));
+            assert_eq!(offset_of(s, strrchr(s, 0)), Some(5));
+            assert_eq!(offset_of(c!(""), strrchr(c!(""), b'a' as c_int)), None);
+        }
+    }
+
+    #[test]
+    fn strcpy_and_strcat() {
+        unsafe {
+            let mut buffer = [0x55 as c_char; 16];
+            let dst = buffer.as_mut_ptr();
+            assert_eq!(strcpy(dst, c!("lv")), dst);
+            assert_eq!(strcmp(dst, c!("lv")), 0);
+            assert_eq!(strcat(dst, c!("gl")), dst);
+            assert_eq!(strcmp(dst, c!("lvgl")), 0);
+            strncat(dst, c!("_rust"), 3);
+            assert_eq!(strcmp(dst, c!("lvgl_ru")), 0);
+        }
+    }
+
+    #[test]
+    fn strncpy_pads_and_stops_at_limit() {
+        unsafe {
+            let mut buffer = [0x55 as c_char; 6];
+            strncpy(buffer.as_mut_ptr(), c!("ab"), 5);
+            assert_eq!(buffer, [b'a' as c_char, b'b' as c_char, 0, 0, 0, 0x55]);
+
+            // Not NUL-terminated within `n`: copies exactly `n` bytes and
+            // never reads past them.
+            let src = [b'x' as c_char, b'y' as c_char];
+            let mut buffer = [0x55 as c_char; 3];
+            strncpy(buffer.as_mut_ptr(), src.as_ptr(), 2);
+            assert_eq!(buffer, [b'x' as c_char, b'y' as c_char, 0x55]);
         }
     }
 }
