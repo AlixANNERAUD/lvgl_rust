@@ -4,6 +4,12 @@ version = "0.1.0"
 edition = "2021"
 links = "lvgl_rust_sys"
 build = "build/main.rs"
+description = "Low-level no_std Rust FFI bindings to LVGL 9, the embedded graphics library"
+license = "MIT"
+repository = "https://github.com/xila-project/lvgl_rust_sys"
+readme = "README.md"
+keywords = ["lvgl", "gui", "embedded", "no-std", "ffi"]
+categories = ["external-ffi-bindings", "embedded", "gui", "no-std"]
 
 [features]
 default = ["build-lvgl", "use-string-functions"]
