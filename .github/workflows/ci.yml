@@ -1,0 +1,98 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
+jobs:
+  fmt:
+    name: Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: cargo fmt --all --check
+      - run: cargo fmt --check --manifest-path examples/external-fonts/Cargo.toml
+      - run: cargo fmt --check --manifest-path tests/fixtures/font_incremental/Cargo.toml
+
+  clippy:
+    name: Clippy (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: default
+            features: ""
+          - name: all features
+            features: --all-features
+          - name: bindgen only
+            features: --no-default-features
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: clippy-${{ matrix.name }}
+      - run: cargo clippy --all-targets ${{ matrix.features }}
+
+  test:
+    name: Test (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Full suite, including the integration tests that build fixture crates.
+          - name: default
+            args: ""
+          # Feature variants: library and build-script unit tests only.
+          - name: shadcn theme
+            args: --lib --test build_config --features shadcn-theme
+          - name: color depth 32
+            args: --lib --test build_config --features color_depth_32
+          - name: color depth 8
+            args: --lib --test build_config --features color_depth_8
+          - name: no string functions
+            args: --lib --test build_config --no-default-features --features build-lvgl
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: test-${{ matrix.name }}
+      - run: cargo test ${{ matrix.args }}
+
+  docs:
+    name: Docs (docs.rs mode)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # docs.rs has no DEP_LV_CONFIG_PATH: the vendored configuration must be used.
+      - run: cargo doc --no-deps --no-default-features
+        env:
+          DOCS_RS: "1"
+          DEP_LV_CONFIG_PATH: ""
+          RUSTDOCFLAGS: -D warnings
