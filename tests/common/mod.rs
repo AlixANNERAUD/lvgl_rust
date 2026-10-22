@@ -37,6 +37,8 @@ pub fn cargo(subcommand: &str, manifest: &Path, target_dir: &Path) -> Command {
         .arg(manifest)
         .arg("--target-dir")
         .arg(target_dir)
+        // Tests match plain status lines such as "Fresh lvgl_rust_sys".
+        .env("CARGO_TERM_COLOR", "never")
         .env("DEP_LV_CONFIG_PATH", crate_root().join("conf"))
         .env_remove("LVGL_FONTS_DIR")
         .env_remove("LVGL_CFLAGS");

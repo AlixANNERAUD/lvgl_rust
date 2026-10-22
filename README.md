@@ -162,6 +162,8 @@ in the working directory is no longer picked up implicitly.
 
 ```sh
 git submodule update --init --recursive
+cargo fetch --manifest-path examples/external-fonts/Cargo.toml        # nested builds run offline
+cargo fetch --manifest-path tests/fixtures/font_incremental/Cargo.toml
 cargo test                                   # uses conf/ via .cargo/config.toml
 cargo test --features shadcn-theme,color_depth_32
 cargo clippy --all-targets --all-features
