@@ -28,6 +28,7 @@ fn main() {
 struct Paths {
     lvgl: PathBuf,
     lvgl_src: PathBuf,
+    lvgl_include: PathBuf,
     shims: PathBuf,
     vendored_config: PathBuf,
     shadcn_theme: PathBuf,
@@ -39,6 +40,7 @@ impl Paths {
         let lvgl = manifest.join("lvgl");
         Self {
             lvgl_src: lvgl.join("src"),
+            lvgl_include: lvgl.join("include"),
             lvgl,
             shims: manifest.join("shims"),
             vendored_config: manifest.join("conf"),
@@ -79,6 +81,11 @@ impl NativeConfig {
             headers: vec![paths.shims.join("lvgl_sys.h")],
             include_paths: vec![
                 paths.lvgl_src.clone(),
+                // LVGL 9.6 public headers: resolves `lvgl/...` includes such
+                // as the default `LV_PROFILER_INCLUDE`.
+                paths.lvgl_include.clone(),
+                // LVGL root: resolves `lvgl.h` and `include/lvgl/...`.
+                paths.lvgl.clone(),
                 config_dir.clone(),
                 paths.shims.clone(),
             ],
@@ -88,6 +95,7 @@ impl NativeConfig {
 
         rerun_if_changed(&config_dir.join("lv_conf.h"));
         rerun_if_changed(&paths.lvgl_src);
+        rerun_if_changed(&paths.lvgl_include);
         rerun_if_changed(&paths.lvgl.join("lvgl.h"));
         rerun_if_changed(&paths.shims);
 
@@ -117,8 +125,6 @@ impl NativeConfig {
             rerun_if_changed(&theme.join("include"));
             config.source_dirs.push(theme.join("src"));
             config.include_paths.push(theme.join("include"));
-            // The theme includes `lvgl.h` directly.
-            config.include_paths.push(paths.lvgl.clone());
             config.headers.push(theme.join("include/lv_theme_shadcn.h"));
         }
 
