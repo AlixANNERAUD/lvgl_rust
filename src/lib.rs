@@ -129,4 +129,19 @@ mod tests {
         assert!(_bindgen_raw_src().contains("pub fn lv_init()"));
         assert!(_bindgen_raw_c_header().contains("lvgl"));
     }
+
+    /// Pins the vendored LVGL release. `git submodule status` cannot be trusted
+    /// for this: upstream tags such as `v9.6.0` are lightweight, so it reports
+    /// the last annotated tag (`v9.3.0-<n>-g<sha>`) instead.
+    #[test]
+    fn vendored_lvgl_version_matches_readme() {
+        let version =
+            std::format!("{LVGL_VERSION_MAJOR}.{LVGL_VERSION_MINOR}.{LVGL_VERSION_PATCH}");
+        assert_eq!(version, "9.6.0", "update the README and AGENTS.md too");
+        let readme = include_str!("../README.md");
+        assert!(
+            readme.contains(&std::format!("LVGL-{version}-")),
+            "README badge does not mention LVGL {version}"
+        );
+    }
 }
