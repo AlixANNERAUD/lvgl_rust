@@ -285,7 +285,9 @@ cfgs mirror the `LV_USE_*` values for hand-written code.
   `shim:`), `indexed` how many levels below a part LVGL finds objects by
   index, and `parts = []` declares a widget whose children are all the
   application's. Inside a widget class with no entry, nothing can be
-  deleted, owned, moved or cleaned. Add an entry only after reading the
+  deleted, owned, moved, reordered or cleaned, and no child can be created
+  (widgets cast or count their children: a tileview reads every child as
+  a tile). Subclasses inherit their base's entry (`lv_obj_has_class`). Add an entry only after reading the
   widget's sources (constructor, cached pointers, `lv_obj_get_child` uses).
 - Pointer parameters stay raw, and index parameters (`idx`, `*_id`, `row`,
   `sel_opt`, ...) too, until an override gives their kind with a `why`

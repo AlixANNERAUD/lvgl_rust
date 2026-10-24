@@ -180,6 +180,7 @@ pub mod props {
 impl crate::widgets::Bar {
     /// `lv_bar_create`.
     pub fn create(parent: &crate::Obj) -> Result<&Self, crate::Error> {
+        crate::base::gen_support::check_create(parent.as_ptr())?;
         let p = unsafe { crate::sys::lv_bar_create(parent.as_ptr()) };
         if p.is_null() {
             return Err(crate::Error::OutOfMemory);
@@ -209,6 +210,7 @@ impl crate::widgets::Bar {
 impl crate::widgets::Label {
     /// `lv_label_create`.
     pub fn create(parent: &crate::Obj) -> Result<&Self, crate::Error> {
+        crate::base::gen_support::check_create(parent.as_ptr())?;
         let p = unsafe { crate::sys::lv_label_create(parent.as_ptr()) };
         if p.is_null() {
             return Err(crate::Error::OutOfMemory);
@@ -343,6 +345,7 @@ impl crate::Obj {
 impl crate::widgets::Slider {
     /// `lv_slider_create`.
     pub fn create(parent: &crate::Obj) -> Result<&Self, crate::Error> {
+        crate::base::gen_support::check_create(parent.as_ptr())?;
         let p = unsafe { crate::sys::lv_slider_create(parent.as_ptr()) };
         if p.is_null() {
             return Err(crate::Error::OutOfMemory);

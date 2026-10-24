@@ -42,6 +42,10 @@ pub(crate) unsafe fn obj_set_parent(obj: *mut lv_obj_t, parent: *mut lv_obj_t) {
     unsafe { sys::lv_obj_set_parent(obj, parent) }
 }
 
+pub(crate) unsafe fn obj_move_to_index(obj: *mut lv_obj_t, index: i32) {
+    unsafe { sys::lv_obj_move_to_index(obj, index) }
+}
+
 pub(crate) unsafe fn obj_parent(obj: *const lv_obj_t) -> *mut lv_obj_t {
     unsafe { sys::lv_obj_get_parent(obj) }
 }

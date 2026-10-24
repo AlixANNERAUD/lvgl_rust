@@ -164,6 +164,29 @@ pub(crate) unsafe fn obj_set_parent(o: *mut lv_obj_t, parent: *mut lv_obj_t) {
     }
 }
 
+pub(crate) unsafe fn obj_move_to_index(o: *mut lv_obj_t, index: i32) {
+    let o = obj(o);
+    unsafe {
+        let parent = (*o).parent;
+        if parent.is_null() {
+            return;
+        }
+        let children = &mut (*parent).children;
+        let len = children.len() as i64;
+        let index = if index < 0 {
+            index as i64 + len
+        } else {
+            index as i64
+        };
+        if !(0..len).contains(&index) {
+            return; // LVGL ignores out-of-range indexes.
+        }
+        let old = children.iter().position(|&c| c == o).unwrap();
+        let child = children.remove(old);
+        children.insert(index as usize, child);
+    }
+}
+
 pub(crate) unsafe fn obj_parent(o: *const lv_obj_t) -> *mut lv_obj_t {
     unsafe { (*obj(o)).parent.cast() }
 }

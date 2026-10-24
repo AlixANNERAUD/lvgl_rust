@@ -28,6 +28,7 @@ pub use view::{IsA, Obj, Widget};
 
 /// What the generated wrappers (`gen.rs`) use from the core.
 pub(crate) mod gen_support {
+    pub(crate) use super::structural::check_create;
     pub(crate) use super::view::{getter_view, ptr_of, view};
     pub(crate) use crate::style::font;
     pub(crate) use crate::text::{borrow_str, copy_str};

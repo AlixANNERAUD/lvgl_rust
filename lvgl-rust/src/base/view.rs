@@ -108,7 +108,12 @@ pub(crate) fn getter_view<'a>(p: *mut lv_obj_t) -> Option<&'a Obj> {
 
 impl Obj {
     /// Creates a base object (`lv_obj_create`).
+    /// Creates a base object. Refuses parents whose children a widget
+    /// indexes or casts ([`Error::Internal`]), like [`ObjMut::set_parent`].
+    ///
+    /// [`ObjMut::set_parent`]: crate::ObjMut
     pub fn create(parent: &Obj) -> Result<&Obj, Error> {
+        super::structural::check_create(parent.as_ptr())?;
         // SAFETY: shared access through the parent view; creation frees
         // nothing.
         let p = unsafe { ffi::obj_create(parent.as_ptr()) };

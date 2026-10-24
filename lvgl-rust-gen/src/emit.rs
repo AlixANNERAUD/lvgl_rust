@@ -59,6 +59,7 @@ pub fn emit(classifier: &Classifier, plans: &BTreeMap<String, Plan>) -> String {
         "as_raw",
         "delete",
         "clean",
+        "move_to_index",
         "set_parent",
         "set_parent_to",
         "load_screen",
@@ -314,6 +315,7 @@ fn emit_method(classifier: &Classifier, m: &Method) -> TokenStream {
         return quote! {
             #doc
             pub fn create(parent: &crate::Obj) -> Result<&Self, crate::Error> {
+                crate::base::gen_support::check_create(parent.as_ptr())?;
                 // SAFETY: shared access through the parent view; creation
                 // frees nothing.
                 let p = unsafe { crate::sys::#c_fn(parent.as_ptr()) };
