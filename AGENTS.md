@@ -310,9 +310,12 @@ cfgs mirror the `LV_USE_*` values for hand-written code.
 - After changing the generator, rerun `UPDATE_GOLDEN=1 cargo test -p
   lvgl-rust-gen` and review the diff of `tests/golden/`.
 - On an LVGL bump, add `tables/lvgl-<major>.<minor>/`: the generator refuses
-  bindings without matching tables. Regenerate `universe.txt` from the
-  bindings built with `lvgl-rust/conf` and recheck the hierarchy
-  (`.base_class` in the LVGL sources).
+  bindings without matching tables. Then run `mise run bump`: it rewrites
+  `universe.txt` from the bindings built with `lvgl-rust/conf` and lists
+  `[hierarchy]` lines that disagree with the `.base_class` of the LVGL
+  sources, and stale table entries (functions or parameters that no
+  longer exist). Fix those by hand, then run `mise run audit`.
+  `audit-check` runs `bump --check`.
 
 ## Access audit
 

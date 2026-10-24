@@ -181,14 +181,19 @@ description = "Rewrite access.toml from the call graph of LVGL (after changing a
 tools = { clang = "22.1.8" }
 run = "cargo run -q -p lvgl-rust-gen --features cli -- audit"
 
+[tasks.bump]
+description = "Regenerate universe.txt and report hierarchy and stale table entries (after bumping LVGL or changing lvgl-rust/conf)"
+run = "cargo run -q -p lvgl-rust-gen --features cli -- bump"
+
 [tasks.audit-check]
-description = "Lint and test the audit tool, and check that access.toml matches the call graph of LVGL"
+description = "Lint and test the audit tool, and check that access.toml, universe.txt and the hierarchy match LVGL"
 tools = { clang = "22.1.8" }
 env.RUSTFLAGS = "-D warnings"
 run = [
   "cargo clippy -p lvgl-rust-gen --all-targets --features cli",
   "cargo test -p lvgl-rust-gen --features cli",
   "cargo run -q -p lvgl-rust-gen --features cli -- audit --check",
+  "cargo run -q -p lvgl-rust-gen --features cli -- bump --check",
 ]
 
 [tasks.doc]

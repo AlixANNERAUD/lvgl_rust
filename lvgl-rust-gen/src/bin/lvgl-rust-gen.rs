@@ -6,12 +6,24 @@
 //! `tables/lvgl-<version>/access.toml` from it and `audit.toml`. `--check`
 //! compares instead (CI); `--verbose` lists the event handlers and class
 //! callbacks that reach a sink, for review.
+//!
+//! `lvgl-rust-gen bump [--check] [--bindings <bindings.rs>]` rewrites
+//! `universe.txt` from the bindings of `lvgl-rust/conf` (built in
+//! `target/bump` unless given), and reports differences between
+//! `[hierarchy]` and the classes of the LVGL sources and stale table
+//! entries. `--check` fails on any of them instead of writing.
 
 use lvgl_rust_gen::audit::{
     graph::{AuditConfig, Graph, Verdict},
     ir::{self, Module},
 };
-use std::{collections::BTreeSet, fmt::Write as _, fs, path::Path, process::ExitCode};
+use std::{
+    collections::BTreeSet,
+    fmt::Write as _,
+    fs,
+    path::{Path, PathBuf},
+    process::{Command, ExitCode},
+};
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -20,7 +32,16 @@ fn main() -> ExitCode {
             args.iter().any(|a| a == "--check"),
             args.iter().any(|a| a == "--verbose"),
         ),
-        _ => Err("usage: lvgl-rust-gen audit [--check] [--verbose]".to_owned()),
+        Some("bump") => bump(
+            args.iter().any(|a| a == "--check"),
+            args.iter()
+                .position(|a| a == "--bindings")
+                .and_then(|i| args.get(i + 1))
+                .map(PathBuf::from),
+        ),
+        _ => Err("usage: lvgl-rust-gen audit [--check] [--verbose]\n       \
+                  lvgl-rust-gen bump [--check] [--bindings <bindings.rs>]"
+            .to_owned()),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,
@@ -199,6 +220,95 @@ fn audit(check: bool, verbose: bool) -> Result<(), String> {
         eprintln!("wrote {}", path.display());
     }
     Ok(())
+}
+
+fn bump(check: bool, bindings: Option<PathBuf>) -> Result<(), String> {
+    use lvgl_rust_gen::{bump, parse::Bindings, tables::Tables};
+    let workspace = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+    let lvgl = workspace.join("lvgl-rust-sys/lvgl");
+    let (major, minor) = lvgl_version(&lvgl)?;
+    let tables_dir = lvgl_rust_gen::tables_root().join(format!("lvgl-{major}.{minor}"));
+    let bindings = match bindings {
+        Some(path) => path,
+        None => build_bindings(workspace)?,
+    };
+    let source =
+        fs::read_to_string(&bindings).map_err(|e| format!("{}: {e}", bindings.display()))?;
+    let bindings = Bindings::parse(&source).map_err(|e| e.to_string())?;
+    let mut problems = Vec::new();
+
+    let universe = bump::universe(&bindings, &format!("{major}.{minor}"));
+    let universe_path = tables_dir.join("universe.txt");
+    let current = fs::read_to_string(&universe_path).unwrap_or_default();
+    if current != universe {
+        if check {
+            problems.push(format!(
+                "{} is out of date: run `mise run bump`",
+                universe_path.display()
+            ));
+        } else {
+            fs::write(&universe_path, &universe).map_err(|e| e.to_string())?;
+            eprintln!("wrote {}", universe_path.display());
+        }
+    }
+
+    let sources: Vec<String> = ir::c_sources(&lvgl.join("src"))
+        .iter()
+        .filter_map(|p| fs::read_to_string(p).ok())
+        .collect();
+    let found = bump::class_bases(sources.iter().map(String::as_str));
+    let tables = Tables::load(&tables_dir).map_err(|e| e.to_string())?;
+    // Classes the bindings declare (private ones have no view type).
+    let declared = |class: &str| bindings.statics.contains(&format!("lv_{class}_class"));
+    for line in bump::hierarchy_diff(&found, &tables.classes.hierarchy, declared) {
+        problems.push(format!("classes.toml [hierarchy]: {line}"));
+    }
+    problems.extend(bump::stale_entries(&tables, &bindings));
+
+    if problems.is_empty() {
+        eprintln!("tables are up to date; review `mise run audit` for access.toml");
+        return Ok(());
+    }
+    let report = problems.join("\n");
+    if check {
+        Err(report)
+    } else {
+        eprintln!("{report}");
+        Ok(())
+    }
+}
+
+/// Builds `lvgl_rust_sys` with `lvgl-rust/conf` and returns its bindings.
+fn build_bindings(workspace: &Path) -> Result<PathBuf, String> {
+    let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_owned());
+    let output = Command::new(cargo)
+        .args([
+            "build",
+            "-q",
+            "-p",
+            "lvgl_rust_sys",
+            "--message-format=json",
+        ])
+        .env("DEP_LV_CONFIG_PATH", workspace.join("lvgl-rust/conf"))
+        .env("CARGO_TARGET_DIR", workspace.join("target/bump"))
+        .current_dir(workspace)
+        .output()
+        .map_err(|e| format!("cargo: {e}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "building lvgl_rust_sys failed:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+    String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .filter(|l| l.contains("\"build-script-executed\"") && l.contains("lvgl-rust-sys"))
+        .find_map(|l| {
+            let start = l.find("\"out_dir\":\"")? + "\"out_dir\":\"".len();
+            let end = start + l[start..].find('"')?;
+            Some(PathBuf::from(&l[start..end]).join("bindings.rs"))
+        })
+        .ok_or_else(|| "no build script output for lvgl_rust_sys".to_owned())
 }
 
 fn lvgl_version(lvgl: &Path) -> Result<(u32, u32), String> {
