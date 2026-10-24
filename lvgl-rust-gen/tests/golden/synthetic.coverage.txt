@@ -4,6 +4,9 @@ lv_bar_set_segment: raw (parameter `idx`: index parameter, not reviewed (overrid
 lv_bar_set_value: View set_value
 lv_color_make: Free color_make
 lv_color_screen_of: raw (returns an object without a token)
+lv_font_get_default: raw (returns a font without shared access)
+lv_font_get_line_height: LvglShared font_get_line_height
+lv_font_set_kerning: raw (parameter `font`: writes into a font)
 lv_label_create: Create create
 lv_label_set_recolor_text: raw (parameter `text`: string kept by LVGL (retained))
 lv_label_set_text: View set_text
@@ -13,11 +16,14 @@ lv_layer_count: LvglShared layer_count
 lv_msgbox_close: ObjMut { consumes: true } close
 lv_msgbox_set_parent_or_null: raw (exclusive call taking another object (not generated yet))
 lv_obj_add_state: View add_state
+lv_obj_add_style: ObjMut { consumes: false } add_style
 lv_obj_align_to: raw (stores another object (relations.toml))
 lv_obj_get_coords: View get_coords
 lv_obj_get_screen: View get_screen
 lv_obj_get_state: View get_state
+lv_obj_get_style_text_font: View get_style_text_font
 lv_obj_old: skip (deprecated)
+lv_obj_remove_style: ObjMut { consumes: false } remove_style
 lv_obj_set_ext_area: View set_ext_area
 lv_obj_set_id: skip (defined by the crate)
 lv_obj_set_opa: View set_opa
@@ -27,6 +33,12 @@ lv_obj_unlisted: skip (no access.toml entry)
 lv_screen_clean_all: LvglExclusive screen_clean_all
 lv_slider_create: Create create
 lv_slider_get_value: View get_value
+lv_style_copy: Style copy
+lv_style_is_empty: LvglShared style_is_empty
+lv_style_set_bg_color: Style set_bg_color
+lv_style_set_bg_image_src: raw (parameter `value`: pointer kept by LVGL (retained))
+lv_style_set_radius: Style set_radius
+lv_style_set_text_font: Style set_text_font
 lv_textarea_get_label: View get_label
 lv_textarea_set_placeholder_text: raw (kept by the textarea)
 lv_tick_inc: raw (crate-owned)

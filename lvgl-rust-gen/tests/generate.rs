@@ -16,6 +16,14 @@ pub type lv_obj_t = _lv_obj_t;
 #[repr(C)] pub struct lv_color_t { pub blue: u8, pub green: u8, pub red: u8 }
 #[repr(C)] pub struct lv_area_t { pub x1: i32, pub y1: i32, pub x2: i32, pub y2: i32 }
 pub type lv_opa_t = u8;
+#[repr(C)] pub struct lv_style_t { pub values_and_props: *mut core::ffi::c_void, pub has_group: u32, pub prop_cnt: u8 }
+#[repr(C)] pub struct lv_font_t { pub line_height: i32 }
+pub type lv_style_prop_t = u8;
+pub type lv_style_selector_t = u32;
+pub type _lv_style_id_t = core::ffi::c_uint;
+pub const _lv_style_id_t_LV_STYLE_BG_COLOR: _lv_style_id_t = 73;
+pub const _lv_style_id_t_LV_STYLE_RADIUS: _lv_style_id_t = 12;
+pub const _lv_style_id_t_LV_STYLE_TEXT_FONT: _lv_style_id_t = 90;
 pub type lv_anim_enable_t = bool;
 pub type lv_align_t = core::ffi::c_uint;
 pub const lv_align_t_LV_ALIGN_CENTER: lv_align_t = 9;
@@ -31,6 +39,20 @@ unsafe extern "C" {
     pub static lv_label_class: lv_obj_class_t;
     pub static lv_textarea_class: lv_obj_class_t;
     pub static lv_msgbox_class: lv_obj_class_t;
+    pub static lv_font_montserrat_14: lv_font_t;
+
+    pub fn lv_style_set_bg_color(style: *mut lv_style_t, value: lv_color_t);
+    pub fn lv_style_set_radius(style: *mut lv_style_t, value: i32);
+    pub fn lv_style_set_text_font(style: *mut lv_style_t, value: *const lv_font_t);
+    pub fn lv_style_set_bg_image_src(style: *mut lv_style_t, value: *const core::ffi::c_void);
+    pub fn lv_style_copy(dst: *mut lv_style_t, src: *const lv_style_t);
+    pub fn lv_style_is_empty(style: *const lv_style_t) -> bool;
+    pub fn lv_obj_add_style(obj: *mut lv_obj_t, style: *const lv_style_t, selector: lv_style_selector_t);
+    pub fn lv_obj_remove_style(obj: *mut lv_obj_t, style: *const lv_style_t, selector: lv_style_selector_t);
+    pub fn lv_obj_get_style_text_font(obj: *const lv_obj_t, part: u32) -> *const lv_font_t;
+    pub fn lv_font_get_line_height(font: *const lv_font_t) -> i32;
+    pub fn lv_font_get_default() -> *const lv_font_t;
+    pub fn lv_font_set_kerning(font: *mut lv_font_t, kerning: u32);
 
     pub fn lv_obj_set_size(obj: *mut lv_obj_t, w: i32, h: i32);
     pub fn lv_obj_set_opa(obj: *mut lv_obj_t, opa: lv_opa_t);
@@ -88,6 +110,12 @@ void lv_obj_old(lv_obj_t * obj);
  * @param parent    the new parent @nullable
  */
 void lv_msgbox_set_parent_or_null(lv_obj_t * mbox, lv_obj_t * parent);
+
+/**
+ * Remove a style from an object.
+ * @param style     the style, NULL for every style @nullable
+ */
+void lv_obj_remove_style(lv_obj_t * obj, const lv_style_t * style, lv_style_selector_t selector);
 "#;
 
 const ACCESS: &str = r#"
@@ -157,6 +185,30 @@ access = "shared"
 access = "shared"
 [fn.lv_tick_inc]
 access = "isr"
+[fn.lv_style_set_bg_color]
+access = "shared"
+[fn.lv_style_set_radius]
+access = "pure"
+[fn.lv_style_set_text_font]
+access = "shared"
+[fn.lv_style_set_bg_image_src]
+access = "shared"
+[fn.lv_style_copy]
+access = "shared"
+[fn.lv_style_is_empty]
+access = "shared"
+[fn.lv_obj_add_style]
+access = "exclusive"
+[fn.lv_obj_remove_style]
+access = "exclusive"
+[fn.lv_obj_get_style_text_font]
+access = "shared"
+[fn.lv_font_get_line_height]
+access = "shared"
+[fn.lv_font_get_default]
+access = "pure"
+[fn.lv_font_set_kerning]
+access = "shared"
 "#;
 
 const CLASSES: &str = r#"

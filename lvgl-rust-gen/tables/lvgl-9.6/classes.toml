@@ -14,6 +14,7 @@ manual = [
     "lv_screen_load",
     "lv_screen_load_anim",
     "lv_init",
+    "lv_style_init",
     "lv_deinit",
     "lv_timer_handler",
 ]

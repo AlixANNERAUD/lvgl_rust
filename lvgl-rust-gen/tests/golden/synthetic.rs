@@ -139,6 +139,44 @@ pub mod functions {
         unsafe { crate::sys::lv_color_make(r, g, b) }
     }
 }
+/// Properties of a [`ConstStyle`](crate::ConstStyle), for
+/// [`const_style!`](crate::const_style): one constructor per style
+/// property of these bindings.
+pub mod props {
+    /// `bg_color` (`lv_style_set_bg_color`).
+    #[inline]
+    #[allow(clippy::unnecessary_cast)]
+    pub const fn bg_color(value: crate::sys::lv_color_t) -> crate::ConstProp {
+        crate::ConstProp::new(
+            crate::sys::_lv_style_id_t_LV_STYLE_BG_COLOR as crate::sys::lv_style_prop_t,
+            crate::sys::lv_style_value_t {
+                color: value,
+            },
+        )
+    }
+    /// `radius` (`lv_style_set_radius`).
+    #[inline]
+    #[allow(clippy::unnecessary_cast)]
+    pub const fn radius(value: i32) -> crate::ConstProp {
+        crate::ConstProp::new(
+            crate::sys::_lv_style_id_t_LV_STYLE_RADIUS as crate::sys::lv_style_prop_t,
+            crate::sys::lv_style_value_t {
+                num: value as i32,
+            },
+        )
+    }
+    /// `text_font` (`lv_style_set_text_font`).
+    #[inline]
+    #[allow(clippy::unnecessary_cast)]
+    pub const fn text_font(value: &'static crate::Font) -> crate::ConstProp {
+        crate::ConstProp::new(
+            crate::sys::_lv_style_id_t_LV_STYLE_TEXT_FONT as crate::sys::lv_style_prop_t,
+            crate::sys::lv_style_value_t {
+                ptr: (value as *const crate::Font).cast(),
+            },
+        )
+    }
+}
 impl crate::widgets::Bar {
     /// `lv_bar_create`.
     pub fn create(parent: &crate::Obj) -> Result<&Self, crate::Error> {
@@ -250,6 +288,17 @@ impl crate::Obj {
             } as u32,
         )
     }
+    /// `lv_obj_get_style_text_font`.
+    #[inline]
+    #[allow(clippy::unnecessary_cast, clippy::too_many_arguments)]
+    pub fn get_style_text_font(&self, part: u32) -> Option<&crate::Font> {
+        crate::base::gen_support::font(unsafe {
+            crate::sys::lv_obj_get_style_text_font(
+                crate::base::gen_support::ptr_of(self),
+                part,
+            )
+        })
+    }
     /// `lv_obj_set_ext_area`.
     #[inline]
     #[allow(clippy::unnecessary_cast, clippy::too_many_arguments)]
@@ -331,7 +380,49 @@ impl crate::ObjMut<'_, crate::widgets::MsgBox> {
         unsafe { crate::sys::lv_msgbox_close(self.as_raw()) }
     }
 }
+impl<W: crate::Widget> crate::ObjMut<'_, W> {
+    /// `lv_obj_add_style`.
+    #[inline]
+    #[allow(clippy::unnecessary_cast, clippy::too_many_arguments)]
+    pub fn add_style(
+        &mut self,
+        style: impl Into<crate::StyleRef>,
+        selector: impl Into<crate::Selector>,
+    ) {
+        unsafe {
+            crate::sys::lv_obj_add_style(
+                self.as_raw(),
+                style.into().as_ptr(),
+                selector.into().bits(),
+            )
+        }
+    }
+    /// Remove a style from an object.
+    ///
+    /// `lv_obj_remove_style`.
+    #[inline]
+    #[allow(clippy::unnecessary_cast, clippy::too_many_arguments)]
+    pub fn remove_style(
+        &mut self,
+        style: Option<crate::StyleRef>,
+        selector: impl Into<crate::Selector>,
+    ) {
+        unsafe {
+            crate::sys::lv_obj_remove_style(
+                self.as_raw(),
+                style.map_or(core::ptr::null(), crate::StyleRef::as_ptr),
+                selector.into().bits(),
+            )
+        }
+    }
+}
 impl crate::Lvgl {
+    /// `lv_font_get_line_height`.
+    #[inline]
+    #[allow(clippy::unnecessary_cast, clippy::too_many_arguments)]
+    pub fn font_get_line_height(&self, font: &'static crate::Font) -> i32 {
+        unsafe { crate::sys::lv_font_get_line_height(font.as_ptr()) }
+    }
     /// `lv_layer_count`.
     #[inline]
     #[allow(clippy::unnecessary_cast, clippy::too_many_arguments)]
@@ -343,6 +434,47 @@ impl crate::Lvgl {
     #[allow(clippy::unnecessary_cast, clippy::too_many_arguments)]
     pub fn screen_clean_all(&mut self) {
         unsafe { crate::sys::lv_screen_clean_all() }
+    }
+    /// `lv_style_is_empty`.
+    #[inline]
+    #[allow(clippy::unnecessary_cast, clippy::too_many_arguments)]
+    pub fn style_is_empty(&self, style: impl Into<crate::StyleRef>) -> bool {
+        unsafe { crate::sys::lv_style_is_empty(style.into().as_ptr()) }
+    }
+}
+impl crate::StyleMut<'_> {
+    /// `lv_style_copy`.
+    #[inline]
+    #[allow(clippy::unnecessary_cast, clippy::too_many_arguments)]
+    pub fn copy(&mut self, src: impl Into<crate::StyleRef>) {
+        unsafe { crate::sys::lv_style_copy(self.as_raw(), src.into().as_ptr()) }
+    }
+    /// `lv_style_set_bg_color`.
+    #[inline]
+    #[allow(clippy::unnecessary_cast, clippy::too_many_arguments)]
+    pub fn set_bg_color(&mut self, value: crate::sys::lv_color_t) {
+        unsafe { crate::sys::lv_style_set_bg_color(self.as_raw(), value) }
+    }
+    /// `lv_style_set_radius`.
+    #[inline]
+    #[allow(clippy::unnecessary_cast, clippy::too_many_arguments)]
+    pub fn set_radius(&mut self, value: i32) {
+        unsafe { crate::sys::lv_style_set_radius(self.as_raw(), value) }
+    }
+    /// `lv_style_set_text_font`.
+    #[inline]
+    #[allow(clippy::unnecessary_cast, clippy::too_many_arguments)]
+    pub fn set_text_font(&mut self, value: &'static crate::Font) {
+        unsafe { crate::sys::lv_style_set_text_font(self.as_raw(), value.as_ptr()) }
+    }
+}
+impl crate::Font {
+    /// `lv_font_montserrat_14`.
+    #[inline]
+    pub const fn montserrat_14() -> &'static Self {
+        unsafe {
+            Self::from_raw(&*core::ptr::addr_of!(crate ::sys::lv_font_montserrat_14))
+        }
     }
 }
 /// Most parts of a composite widget.

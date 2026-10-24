@@ -250,7 +250,7 @@ set and the `lvgl-rust` clippy and tests.
 
 `lvgl-rust/build.rs` runs `lvgl-rust-gen` on the bindings of the current
 build (`DEP_LVGL_RUST_SYS_BINDINGS`) and writes `$OUT_DIR/gen.rs`, included
-as the `widgets`, `enums` and `functions` modules, plus `$OUT_DIR/coverage.txt`
+as the `widgets`, `enums`, `functions` and `props` modules, plus `$OUT_DIR/coverage.txt`
 listing what happened to every bound function. Disabled widgets are simply
 absent from the bindings, so nothing is generated for them; `lv_use_<x>`
 cfgs mirror the `LV_USE_*` values for hand-written code.
@@ -263,6 +263,15 @@ cfgs mirror the `LV_USE_*` values for hand-written code.
   (`copied_str`, `static_str`, `copied`, ...). `@nullable` in the header gives
   `Option`. Object returns are untyped (`&Obj`) unless an override certifies
   the class.
+- Styles and fonts are typed by the generator, without overrides:
+  `lv_style_<x>(lv_style_t *, ...)` becomes a `StyleMut` method (exclusive
+  whatever the audit says, since objects may be reading the style),
+  `const lv_style_t *` parameters take a `'static` `Style` or `ConstStyle`
+  (`StyleRef`), `const lv_font_t *` ones a `&'static Font`, and
+  `lv_style_selector_t` a `Selector`. `lv_font_t *` (writable) stays raw:
+  fonts may sit in flash. Each `lv_style_set_<p>` whose value fits a
+  constant also gets a `props::<p>` constructor for `const_style!`, and
+  each `lv_font_t` static of the bindings a `const` `Font` constructor.
 - `classes.toml` `crate_owned` functions can never be shared or exclusive;
   `manual` ones are wrapped by hand in `lvgl-rust/src/base/`.
 - `classes.toml` `[composite.<widget>]` tables drive the structural checks:

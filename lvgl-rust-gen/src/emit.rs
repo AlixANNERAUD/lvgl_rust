@@ -46,6 +46,7 @@ pub fn emit(classifier: &Classifier, plans: &BTreeMap<String, Plan>) -> String {
     let mut by_class: BTreeMap<String, Vec<TokenStream>> = BTreeMap::new();
     let mut by_objmut: BTreeMap<String, Vec<TokenStream>> = BTreeMap::new();
     let mut on_lvgl = Vec::new();
+    let mut on_style = Vec::new();
     let mut free = Vec::new();
     // `ObjMut` methods of a class are emitted for that class only (generic
     // impls of different classes would overlap); base object methods are
@@ -90,6 +91,7 @@ pub fn emit(classifier: &Classifier, plans: &BTreeMap<String, Plan>) -> String {
                 by_objmut.entry(class.clone()).or_default().push(tokens)
             }
             (Shape::LvglShared | Shape::LvglExclusive, _) => on_lvgl.push(tokens),
+            (Shape::Style, _) => on_style.push(tokens),
             (Shape::Free, _) => free.push(tokens),
             _ => unreachable!("class-less view method {}", m.c_name),
         }
@@ -107,6 +109,10 @@ pub fn emit(classifier: &Classifier, plans: &BTreeMap<String, Plan>) -> String {
         }
     });
     let lvgl_impl = (!on_lvgl.is_empty()).then(|| quote! { impl crate::Lvgl { #(#on_lvgl)* } });
+    let style_impl =
+        (!on_style.is_empty()).then(|| quote! { impl crate::StyleMut<'_> { #(#on_style)* } });
+    let props = methods.iter().filter_map(|m| emit_prop(classifier, m));
+    let fonts = emit_fonts(classifier);
     let composites = emit_composites(classifier);
 
     let file = quote! {
@@ -125,9 +131,18 @@ pub fn emit(classifier: &Classifier, plans: &BTreeMap<String, Plan>) -> String {
             #(#free)*
         }
 
+        /// Properties of a [`ConstStyle`](crate::ConstStyle), for
+        /// [`const_style!`](crate::const_style): one constructor per style
+        /// property of these bindings.
+        pub mod props {
+            #(#props)*
+        }
+
         #(#class_impls)*
         #(#objmut_impls)*
         #lvgl_impl
+        #style_impl
+        #fonts
         #composites
     };
     let file: syn::File = syn::parse2(file).expect("generated code parses");
@@ -305,7 +320,7 @@ fn emit_method(classifier: &Classifier, m: &Method) -> TokenStream {
     let mut call_args = Vec::new();
     match m.shape {
         Shape::View => call_args.push(quote!(crate::base::gen_support::ptr_of(self))),
-        Shape::ObjMut { .. } => call_args.push(quote!(self.as_raw())),
+        Shape::ObjMut { .. } | Shape::Style => call_args.push(quote!(self.as_raw())),
         _ => {}
     }
     let mut out = None;
@@ -324,7 +339,9 @@ fn emit_method(classifier: &Classifier, m: &Method) -> TokenStream {
     let receiver = match m.shape {
         Shape::View | Shape::LvglShared => quote!(&self,),
         Shape::ObjMut { consumes: true } => quote!(self,),
-        Shape::ObjMut { consumes: false } | Shape::LvglExclusive => quote!(&mut self,),
+        Shape::ObjMut { consumes: false } | Shape::LvglExclusive | Shape::Style => {
+            quote!(&mut self,)
+        }
         Shape::Free | Shape::Create => quote!(),
     };
     let call = quote!(crate::sys::#c_fn(#(#call_args),*));
@@ -345,6 +362,10 @@ fn emit_method(classifier: &Classifier, m: &Method) -> TokenStream {
                 quote!(crate::enums::#ty(unsafe { #call } as u32)),
             )
         }
+        RetPlan::Font => (
+            quote!(-> Option<&crate::Font>),
+            quote!(crate::base::gen_support::font(unsafe { #call })),
+        ),
         RetPlan::View(None) => (
             quote!(-> Option<&crate::Obj>),
             quote!(crate::base::gen_support::getter_view(unsafe { #call })),
@@ -464,7 +485,146 @@ fn emit_param(p: &ParamPlan) -> (TokenStream, TokenStream) {
                 (quote!(#n: #ty), quote!(#n.as_ptr()))
             }
         }
+        ParamPlan::Style {
+            name,
+            nullable: false,
+        } => {
+            let n = ident(name);
+            (
+                quote!(#n: impl Into<crate::StyleRef>),
+                quote!(#n.into().as_ptr()),
+            )
+        }
+        ParamPlan::Style {
+            name,
+            nullable: true,
+        } => {
+            let n = ident(name);
+            (
+                quote!(#n: Option<crate::StyleRef>),
+                quote!(#n.map_or(core::ptr::null(), crate::StyleRef::as_ptr)),
+            )
+        }
+        ParamPlan::Font {
+            name,
+            nullable: false,
+        } => {
+            let n = ident(name);
+            (quote!(#n: &'static crate::Font), quote!(#n.as_ptr()))
+        }
+        ParamPlan::Font {
+            name,
+            nullable: true,
+        } => {
+            let n = ident(name);
+            (
+                quote!(#n: Option<&'static crate::Font>),
+                quote!(#n.map_or(core::ptr::null(), crate::Font::as_ptr)),
+            )
+        }
+        ParamPlan::Selector { name } => {
+            let n = ident(name);
+            (
+                quote!(#n: impl Into<crate::Selector>),
+                quote!(#n.into().bits()),
+            )
+        }
         ParamPlan::Out { .. } => unreachable!("handled by emit_method"),
+    }
+}
+
+/// A `const` property constructor for a style setter
+/// (`lv_style_set_<p>(style, value)`), if its value fits a constant.
+fn emit_prop(classifier: &Classifier, m: &Method) -> Option<TokenStream> {
+    if m.shape != Shape::Style || m.ret != RetPlan::Unit {
+        return None;
+    }
+    let property = m.name.strip_prefix("set_")?;
+    let [param] = m.params.as_slice() else {
+        return None;
+    };
+    let id = format!("LV_STYLE_{}", property.to_ascii_uppercase());
+    let id = ["_lv_style_id_t_", ""]
+        .iter()
+        .map(|prefix| format!("{prefix}{id}"))
+        .find(|c| classifier.bindings.consts.contains_key(c))?;
+    let id = Ident::new(&id, Span::call_site());
+    // `lv_style_value_t` field, as the setters of `lv_style_gen.c` fill it.
+    let (arg, value) = match param {
+        ParamPlan::Scalar { ty, .. }
+            if !matches!(
+                ty.as_str(),
+                "f32" | "f64" | "core::ffi::c_float" | "core::ffi::c_double"
+            ) =>
+        {
+            let ty: syn::Type = syn::parse_str(ty).unwrap();
+            (quote!(value: #ty), quote!(num: value as i32))
+        }
+        ParamPlan::Enum { c_type, .. } => {
+            let ty = Ident::new(&type_name(c_type), Span::call_site());
+            (
+                quote!(value: crate::enums::#ty),
+                quote!(num: value.0 as i32),
+            )
+        }
+        ParamPlan::Struct { c_type, .. } if c_type == "lv_color_t" => {
+            (quote!(value: crate::sys::lv_color_t), quote!(color: value))
+        }
+        ParamPlan::Font {
+            nullable: false, ..
+        } => (
+            quote!(value: &'static crate::Font),
+            quote!(ptr: (value as *const crate::Font).cast()),
+        ),
+        _ => return None,
+    };
+    let name = Ident::new(&m.name["set_".len()..], Span::call_site());
+    let doc = format!(" `{}` (`{}`).", property, m.c_name);
+    Some(quote! {
+        #[doc = #doc]
+        #[inline]
+        #[allow(clippy::unnecessary_cast)]
+        pub const fn #name(#arg) -> crate::ConstProp {
+            crate::ConstProp::new(
+                crate::sys::#id as crate::sys::lv_style_prop_t,
+                crate::sys::lv_style_value_t { #value },
+            )
+        }
+    })
+}
+
+/// `Font` constructors for the fonts these bindings declare
+/// (`lv_font_montserrat_14`, ...).
+fn emit_fonts(classifier: &Classifier) -> TokenStream {
+    let fonts = classifier
+        .bindings
+        .static_types
+        .iter()
+        .filter(|(_, ty)| ty.named() == Some("lv_font_t"))
+        .map(|(c_name, _)| {
+            let c_ident = Ident::new(c_name, Span::call_site());
+            let name = Ident::new(
+                &rust_ident(c_name.strip_prefix("lv_font_").unwrap_or(c_name)),
+                Span::call_site(),
+            );
+            let doc = format!(" `{c_name}`.");
+            quote! {
+                #[doc = #doc]
+                #[inline]
+                pub const fn #name() -> &'static Self {
+                    // SAFETY: a constant font of the C library.
+                    unsafe { Self::from_raw(&*core::ptr::addr_of!(crate::sys::#c_ident)) }
+                }
+            }
+        })
+        .collect::<Vec<_>>();
+    if fonts.is_empty() {
+        return quote!();
+    }
+    quote! {
+        impl crate::Font {
+            #(#fonts)*
+        }
     }
 }
 

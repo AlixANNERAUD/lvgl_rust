@@ -45,6 +45,9 @@ pub enum Shape {
     LvglExclusive,
     /// Pure or ISR-safe: a free function, no token.
     Free,
+    /// A call on a mutable style (`lv_style_*(lv_style_t *, ...)`):
+    /// `&mut self` on `StyleMut`, which holds exclusive access.
+    Style,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -67,6 +70,13 @@ pub enum ParamPlan {
     },
     /// Filled by LVGL: returned instead of passed (`ty` is a Rust type).
     Out { name: String, ty: String },
+    /// A style LVGL only reads, and may keep: `Style` or `ConstStyle`,
+    /// always `'static`.
+    Style { name: String, nullable: bool },
+    /// A font, `&'static` (LVGL keeps it).
+    Font { name: String, nullable: bool },
+    /// A style selector (`lv_style_selector_t`): a part and states.
+    Selector { name: String },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -77,6 +87,8 @@ pub enum RetPlan {
     Struct(String),
     /// An object: `Option<&Obj>`, or a typed view when an override says so.
     View(Option<String>),
+    /// A font, borrowed like a view.
+    Font,
 }
 
 /// Receivers whose resources the crate manages by hand.
@@ -193,7 +205,8 @@ impl<'a> Classifier<'a> {
         let nullable = |param: &str| header.is_some_and(|h| h.nullable.iter().any(|n| n == param));
 
         let class = self.receiver_class(f);
-        let skip_receiver = class.is_some() as usize;
+        let style = class.is_none() && is_style_receiver(f);
+        let skip_receiver = (class.is_some() || style) as usize;
         let create = class
             .as_deref()
             .is_some_and(|c| name == format!("lv_{c}_create"))
@@ -223,6 +236,9 @@ impl<'a> Classifier<'a> {
         };
         let shape = match (entry.access, &class) {
             _ if create => Shape::Create,
+            // The style may be in use by objects: changes need exclusive
+            // access whatever the function reaches.
+            _ if style => Shape::Style,
             (Access::Shared, Some(_)) => Shape::View,
             (Access::Exclusive, Some(_)) => Shape::ObjMut {
                 consumes: entry.consumes,
@@ -246,7 +262,14 @@ impl<'a> Classifier<'a> {
         if shape == Shape::Free && matches!(ret, RetPlan::View(_)) {
             return Plan::Raw("returns an object without a token".into());
         }
-        let exclusive = matches!(shape, Shape::ObjMut { .. } | Shape::LvglExclusive);
+        if ret == RetPlan::Font && !matches!(shape, Shape::View | Shape::LvglShared) {
+            // The font is borrowed from shared access.
+            return Plan::Raw("returns a font without shared access".into());
+        }
+        let exclusive = matches!(
+            shape,
+            Shape::ObjMut { .. } | Shape::LvglExclusive | Shape::Style
+        );
         if exclusive && params.iter().any(|p| matches!(p, ParamPlan::Obj { .. })) {
             // A view of the other object cannot coexist with `&mut Lvgl`;
             // these take a `Handle` once generated.
@@ -256,6 +279,7 @@ impl<'a> Classifier<'a> {
             return Plan::Raw("exclusive call returning an object (not generated yet)".into());
         }
         let method_name = match &class {
+            None if style => rust_ident(name.strip_prefix("lv_style_").unwrap_or(name)),
             Some(_) if create => "create".to_owned(),
             Some(c) => rust_ident(name.strip_prefix(&format!("lv_{c}_")).unwrap_or(name)),
             None => rust_ident(name.strip_prefix("lv_").unwrap_or(name)),
@@ -299,6 +323,9 @@ impl<'a> Classifier<'a> {
     ) -> Result<ParamPlan, String> {
         let rust_name = rust_ident(name);
         match ty {
+            CType::Named(n) if n == "lv_style_selector_t" => {
+                Ok(ParamPlan::Selector { name: rust_name })
+            }
             CType::Named(_) => {
                 let plan = self.value(&rust_name, ty)?;
                 // An index may reach an array access that LVGL checks only
@@ -317,6 +344,24 @@ impl<'a> Classifier<'a> {
                 let pointee_name = pointee.named().unwrap_or("");
                 if pointee_name == "lv_obj_t" {
                     return Ok(ParamPlan::Obj {
+                        name: rust_name,
+                        nullable,
+                    });
+                }
+                // Only `StyleMut` reaches a mutable style; LVGL only reads
+                // the others, and safe code can only make `'static` ones.
+                if pointee_name == "lv_style_t" && !mutable {
+                    return Ok(ParamPlan::Style {
+                        name: rust_name,
+                        nullable,
+                    });
+                }
+                // Fonts may sit in flash: LVGL must not write to them.
+                if pointee_name == "lv_font_t" {
+                    if *mutable {
+                        return Err("writes into a font".into());
+                    }
+                    return Ok(ParamPlan::Font {
                         name: rust_name,
                         nullable,
                     });
@@ -401,6 +446,10 @@ impl<'a> Classifier<'a> {
                 ParamPlan::Struct { c_type, .. } => RetPlan::Struct(c_type),
                 _ => unreachable!(),
             }),
+            CType::Ptr {
+                mutable: false,
+                pointee,
+            } if pointee.named() == Some("lv_font_t") => Ok(RetPlan::Font),
             CType::Ptr { pointee, .. } if pointee.named() == Some("lv_obj_t") => match returns {
                 Some(Returns::View { view }) => {
                     if self.classes.iter().any(|c| c == view) {
@@ -467,6 +516,14 @@ impl<'a> Classifier<'a> {
         };
         self.bindings.structs.get(target).copied().unwrap_or(false)
     }
+}
+
+/// `lv_style_<x>(lv_style_t * style, ...)`.
+fn is_style_receiver(f: &Function) -> bool {
+    f.name.starts_with("lv_style_")
+        && f.params.first().is_some_and(|p| {
+            matches!(&p.ty, CType::Ptr { mutable: true, pointee } if pointee.named() == Some("lv_style_t"))
+        })
 }
 
 /// Parameter names that index an array or select an item.

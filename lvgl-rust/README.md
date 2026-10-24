@@ -14,6 +14,10 @@ else stays reachable through `lvgl_rust::sys`.
   exclusive access. `Handle`s (4 bytes) report deleted objects as
   `Error::Dead`, whatever deleted them. `Owned` deletes its object when
   dropped, from any thread.
+- **Styles without RAM.** `const_style![...]` builds a `ConstStyle` in
+  `.rodata`; a `Style` is a 12-byte static changed through
+  `lv.style(&STYLE)`, which refreshes the objects using it. Styles and fonts
+  are always `'static`, since LVGL keeps pointers to them.
 - **Small.** The handle registry is a static array of 8-byte slots on 32-bit
   targets (`LVGL_RUST_HANDLE_SLOTS`, default 32), plus a 24-byte header.
   `LVGL_RUST_HANDLE_SLOTS=0` keeps only views (8 bytes of state).
@@ -37,7 +41,16 @@ OBJ_ID is off, or where your application defines them.
 ## Example
 
 ```rust,ignore
-use lvgl_rust::{init, LvglAccess, Obj, ScreenAnim, WidgetExt};
+use lvgl_rust::{
+    color, const_style, init, ConstStyle, Font, LvglAccess, Obj, ScreenAnim, Selector,
+    WidgetExt,
+};
+
+static PANEL: ConstStyle = const_style![
+    radius(8),
+    bg_color(color::hex(0x202020)),
+    text_font(Font::montserrat_14()),
+];
 
 struct Guard(/* your mutex guard */);
 unsafe impl LvglAccess for Guard {}
@@ -47,6 +60,7 @@ let mut lv = init(&mut guard)?;
 let screen = lv.create_screen()?;              // Owned<Obj>
 let panel = Obj::create(screen.get(&lv)?)?;    // &Obj, borrows `lv`
 let panel = panel.handle()?;                   // Handle<Obj>, storable
+panel.get_mut(&mut lv)?.add_style(&PANEL, Selector::DEFAULT);
 lv.load_screen(screen.handle(), ScreenAnim::NONE)?;
 loop {
     let wait = lv.timer_handler();
