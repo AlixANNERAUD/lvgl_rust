@@ -87,6 +87,32 @@ jobs:
         run: mise run fetch
       - run: mise exec -- cargo test ${{ matrix.args }}
 
+  cross:
+    name: Cross (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: wasm32-unknown-unknown
+            task: cross-wasm32
+            packages: ""
+          - target: riscv32imc-unknown-none-elf
+            task: cross-riscv32
+            packages: gcc-riscv64-unknown-elf picolibc-riscv64-unknown-elf
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install the C toolchain
+        if: matrix.packages != ''
+        run: sudo apt-get update && sudo apt-get install -y ${{ matrix.packages }}
+      - uses: jdx/mise-action@v4
+      - uses: jdx/mr-boxington-action@v1
+        with:
+          cache-key-suffix: cross-${{ matrix.task }}
+      - run: mise run ${{ matrix.task }}
+
   docs:
     name: Docs (docs.rs mode)
     runs-on: ubuntu-latest

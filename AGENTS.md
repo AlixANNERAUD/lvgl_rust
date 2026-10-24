@@ -36,6 +36,7 @@ start at the repository root (`mise.toml`, `.github/`, `.cargo/`).
 | `lvgl-rust-sys/build/config.rs` | Pure, `std`-only logic (define parsing, color depth, config dir checks, file collection). |
 | `lvgl-rust-sys/src/lib.rs` | Includes the generated bindings in a `bindings` module and re-exports them; library tests. |
 | `lvgl-rust-sys/src/string_impl.rs` | C string functions (`strlen`, `strcmp`, ...) for libc-less targets. |
+| `lvgl-rust-sys/shims/freestanding/` | Headers for targets without a C library (`inttypes.h`). |
 | `lvgl-rust-sys/shims/` | Small C helpers bound alongside LVGL (`lvgl_sys.h` is bindgen's root header). `lvgl_sys.c` may include `lvgl_private.h` to reach private fields; keep private types out of `lvgl_sys.h`. |
 | `lvgl-rust-sys/conf/lv_conf.h` | Vendored LVGL configuration (tests, docs.rs, `use-vendored-config`). |
 | `lvgl-rust-sys/lvgl/` | LVGL submodule (do not edit; bump the pinned commit instead). |
@@ -228,10 +229,17 @@ set.
   exported metadata, so font edits never rebuild LVGL. Legacy `LVGL_FONTS_DIR`
   must keep working, but must stay opt-in: never scan the working directory
   for fonts implicitly.
-- **Cross-compilation.** bindgen gets `--target` only when `TARGET != HOST`;
-  the C compiler comes from `cc`, which honours `CC_<target>`/`CFLAGS_<target>`.
-  Host builds do not prove that a change works on embedded targets; say what
-  you actually checked.
+- **Cross-compilation.** The build script never passes `--target` to clang:
+  for non-host targets bindgen derives the clang triple from `TARGET` itself
+  (`riscv32imc-unknown-none-elf` becomes `riscv32-unknown-none-elf`, `espidf`
+  becomes `elf`, `aarch64-apple-*` becomes `arm64-apple-*`). The C compiler
+  comes from `cc`, which honours `CC_<target>`/`CFLAGS_<target>`; give bindgen
+  the same headers with `BINDGEN_EXTRA_CLANG_ARGS_<target>` (see the
+  `cross-riscv32` task). Targets without a C library (`wasm*-unknown-unknown`)
+  get `shims/freestanding/` on every include path, for `inttypes.h`. CI builds
+  `wasm32-unknown-unknown` and `riscv32imc-unknown-none-elf`; host builds do
+  not prove that a change works on other targets (xtensa included), so say
+  what you actually checked.
 - **Submodules.** Never edit files under `lvgl/` or `lvgl_theme_shadcn/`. Fix
   problems in `build/`, `shims/` or `conf/`, or bump the pinned commit.
 - **Generated files.** `bindings.rs` and `liblvgl.a` live in `target/`; never

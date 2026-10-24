@@ -91,6 +91,23 @@ or the shims change. The bundled `conf/lv_conf.h` is LVGL's template with
 content enabled, NULL/malloc asserts on and an overridable color format. It is a
 good starting point for your own configuration.
 
+### Cross-compiling
+
+The C compiler comes from [`cc`](https://docs.rs/cc) (`CC_<target>`,
+`CFLAGS_<target>`) and bindgen picks the clang triple from Cargo's target. If
+the C library headers are not found by clang on its own, pass them with
+`BINDGEN_EXTRA_CLANG_ARGS_<target>`, e.g. for `riscv32imc-unknown-none-elf`
+with Debian's picolibc:
+
+```sh
+export CC_riscv32imc_unknown_none_elf=riscv64-unknown-elf-gcc
+export CFLAGS_riscv32imc_unknown_none_elf="-isystem /usr/lib/picolibc/riscv64-unknown-elf/include"
+export BINDGEN_EXTRA_CLANG_ARGS_riscv32imc_unknown_none_elf="$CFLAGS_riscv32imc_unknown_none_elf"
+```
+
+`wasm32-unknown-unknown` has no C library: the crate provides the one header
+LVGL needs (`inttypes.h`), so only clang is required.
+
 ### Color depth
 
 The `color_depth_*` features set both `LV_COLOR_FORMAT_DEFAULT` and

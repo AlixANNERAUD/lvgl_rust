@@ -4,9 +4,10 @@
 min_version = "2026.9.2"
 
 [tools]
+# `targets` are the cross targets built in CI (`cross-*` tasks).
 # `mr_boxington` routes Cargo through mbx, a shared build cache: LVGL's C
 # objects and the build script output are restored instead of recompiled.
-rust = { version = "stable", components = "rustfmt,clippy", mr_boxington = true }
+rust = { version = "stable", components = "rustfmt,clippy", targets = "wasm32-unknown-unknown,riscv32imc-unknown-none-elf", mr_boxington = true }
 mr-boxington = "latest"
 
 [tasks.submodules]
@@ -47,6 +48,20 @@ env = { RUSTFLAGS = "-D warnings" }
 description = "Full test suite, including the slow integration tests"
 depends = ["fetch"]
 run = "cargo test --workspace"
+
+[tasks.cross-wasm32]
+env = { RUSTFLAGS = "-D warnings" }
+description = "Build lvgl_rust_sys for wasm32-unknown-unknown (no C library; needs clang)"
+run = "cargo build -p lvgl_rust_sys --target wasm32-unknown-unknown"
+
+[tasks.cross-riscv32]
+description = "Build lvgl_rust_sys for riscv32imc-unknown-none-elf (needs gcc-riscv64-unknown-elf and picolibc-riscv64-unknown-elf)"
+env.RUSTFLAGS = "-D warnings"
+env.CC_riscv32imc_unknown_none_elf = "riscv64-unknown-elf-gcc"
+env.AR_riscv32imc_unknown_none_elf = "riscv64-unknown-elf-ar"
+env.CFLAGS_riscv32imc_unknown_none_elf = "-isystem /usr/lib/picolibc/riscv64-unknown-elf/include"
+env.BINDGEN_EXTRA_CLANG_ARGS_riscv32imc_unknown_none_elf = "-isystem /usr/lib/picolibc/riscv64-unknown-elf/include"
+run = "cargo build -p lvgl_rust_sys --target riscv32imc-unknown-none-elf"
 
 [tasks.doc]
 description = "Build the documentation as docs.rs does"

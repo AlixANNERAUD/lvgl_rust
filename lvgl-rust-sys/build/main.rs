@@ -32,6 +32,7 @@ struct Paths {
     lvgl_src: PathBuf,
     lvgl_include: PathBuf,
     shims: PathBuf,
+    freestanding: PathBuf,
     vendored_config: PathBuf,
     shadcn_theme: PathBuf,
 }
@@ -45,6 +46,7 @@ impl Paths {
             lvgl_include: lvgl.join("include"),
             lvgl,
             shims: manifest.join("shims"),
+            freestanding: manifest.join("shims/freestanding"),
             vendored_config: manifest.join("conf"),
             shadcn_theme: manifest.join("lvgl_theme_shadcn"),
         }
@@ -54,7 +56,6 @@ impl Paths {
 /// Everything needed to compile LVGL-compatible C code.
 struct NativeConfig {
     target: String,
-    host: String,
     /// Directories whose `.c` files are compiled into the LVGL archive.
     source_dirs: Vec<PathBuf>,
     /// Headers handed to bindgen.
@@ -74,7 +75,6 @@ impl NativeConfig {
 
         let mut config = Self {
             target: cargo_env("TARGET"),
-            host: cargo_env("HOST"),
             source_dirs: vec![
                 paths.lvgl_src.clone(),
                 config_dir.clone(),
@@ -121,6 +121,12 @@ impl NativeConfig {
             config.include_paths.push(fonts_dir);
         }
 
+        // A quoted `LV_INTTYPES_INCLUDE` finds this directory before clang's
+        // builtin header, whose `#include_next` needs a C library.
+        if config::is_freestanding(&config.target) {
+            config.include_paths.push(paths.freestanding.clone());
+        }
+
         if cargo_feature("SHADCN_THEME") {
             let theme = &paths.shadcn_theme;
             rerun_if_changed(&theme.join("src"));
@@ -135,10 +141,6 @@ impl NativeConfig {
 
     fn all_defines(&self) -> impl Iterator<Item = &Define> {
         self.defines.iter().chain(&self.custom_defines)
-    }
-
-    fn is_cross_compiling(&self) -> bool {
-        self.target != self.host
     }
 
     /// Publishes the configuration as `DEP_LVGL_RUST_SYS_*` variables.
@@ -166,10 +168,9 @@ impl NativeConfig {
             .collect();
         args.extend(self.all_defines().map(Define::to_compiler_arg));
         args.push("-fvisibility=default".into());
-
-        if self.is_cross_compiling() {
-            args.push(format!("--target={}", self.target));
-        }
+        // No `--target`: for a cross build, bindgen passes the clang spelling
+        // of `TARGET` itself (Rust triples such as
+        // `riscv32imc-unknown-none-elf` are not valid clang targets).
         if self.target.ends_with("emscripten") {
             let emsdk = env_var("EMSDK").expect(
                 "The EMSDK environment variable is not set. Has emscripten been properly initialized?",
