@@ -46,6 +46,8 @@ unsafe extern "C" {
     pub fn lv_obj_unlisted(obj: *mut lv_obj_t);
     pub fn lv_bar_create(parent: *mut lv_obj_t) -> *mut lv_obj_t;
     pub fn lv_bar_set_value(obj: *mut lv_obj_t, value: i32, anim: lv_anim_enable_t);
+    pub fn lv_bar_set_segment(obj: *mut lv_obj_t, idx: u32, value: i32);
+    pub fn lv_bar_select(obj: *mut lv_obj_t, sel_opt: u32);
     pub fn lv_slider_create(parent: *mut lv_obj_t) -> *mut lv_obj_t;
     pub fn lv_slider_get_value(obj: *const lv_obj_t) -> i32;
     pub fn lv_label_create(parent: *mut lv_obj_t) -> *mut lv_obj_t;
@@ -113,6 +115,10 @@ access = "shared"
 access = "shared"
 [fn.lv_bar_set_value]
 access = "shared"
+[fn.lv_bar_set_segment]
+access = "shared"
+[fn.lv_bar_select]
+access = "exclusive"
 [fn.lv_slider_create]
 access = "shared"
 [fn.lv_slider_get_value]
@@ -182,6 +188,8 @@ params.text = { kind = "copied_str" }
 params.area = { kind = "copied" }
 [fn.lv_textarea_get_label]
 returns = { view = "label" }
+[fn.lv_bar_select]
+params.sel_opt = { kind = "checked" }
 "#;
 
 fn inputs() -> (Bindings, Headers) {

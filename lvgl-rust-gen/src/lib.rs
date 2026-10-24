@@ -9,6 +9,8 @@
 //! A function without an `access.toml` entry is never emitted: it stays
 //! reachable through `lvgl_rust_sys`.
 
+#[cfg(feature = "cli")]
+pub mod audit;
 pub mod classify;
 pub mod emit;
 pub mod headers;

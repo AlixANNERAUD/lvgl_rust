@@ -62,9 +62,13 @@ fn sliders_are_bars() {
     let mut guard = guard();
     let mut lv = session(&mut guard);
     let slider = Slider::create_owned(lv.screen_active().unwrap()).unwrap();
+    {
+        // Value setters may run animation callbacks: exclusive access.
+        let mut edit = slider.get_mut(&mut lv).unwrap();
+        edit.set_range(0, 100);
+        edit.set_value(42, false);
+    }
     let view = slider.get(&lv).unwrap();
-    view.set_range(0, 100);
-    view.set_value(42, false);
     assert_eq!(view.get_value(), 42);
     // Bar methods through `Deref`.
     let bar: &Bar = view;
@@ -96,10 +100,16 @@ fn sliders_are_bars() {
 fn slider_views_are_bar_views() {
     let mut guard = guard();
     let mut lv = session(&mut guard);
-    let slider = Slider::create(lv.screen_active().unwrap()).unwrap();
-    slider.set_range(0, 10);
-    slider.set_value(7, false);
-    let bar: &Bar = slider;
+    Slider::create(lv.screen_active().unwrap()).unwrap();
+    fn last_slider(lv: &Lvgl) -> Option<&Slider> {
+        lv.screen_active()?.child(-1)?.downcast()
+    }
+    {
+        let mut edit = lv.edit(last_slider).unwrap();
+        edit.set_range(0, 10);
+        edit.set_value(7, false);
+    }
+    let bar: &Bar = last_slider(&lv).unwrap();
     assert_eq!(bar.get_value(), 7);
     let object = lv.screen_active().unwrap().child(-1).unwrap();
     assert!(object.downcast::<Bar>().is_some() && object.downcast::<Button>().is_none());
@@ -109,31 +119,37 @@ fn slider_views_are_bar_views() {
         .unwrap();
 }
 
+/// Geometry, flags and states can reach LVGL code that shrinks children
+/// arrays (through events), so they need exclusive access.
 #[test]
 fn objects_expose_geometry_flags_and_states() {
     let mut guard = guard();
     let mut lv = session(&mut guard);
-    let screen = lv.screen_active().unwrap();
-    let object = Obj::create(screen).unwrap();
-    object.set_size(40, 20);
-    object.align(Align::CENTER, 0, 0);
-    object.update_layout();
+    Obj::create(lv.screen_active().unwrap()).unwrap();
+    fn last(lv: &Lvgl) -> Option<&Obj> {
+        lv.screen_active()?.child(-1)
+    }
+    {
+        let mut object = lv.edit(last).unwrap();
+        object.set_size(40, 20);
+        object.align(Align::CENTER, 0, 0);
+        object.update_layout();
+        object.set_hidden(true);
+        object.add_state(State::CHECKED | State::FOCUSED);
+        object.remove_state(State::CHECKED);
+    }
+    let object = last(&lv).unwrap();
     assert_eq!((object.get_width(), object.get_height()), (40, 20));
     assert_eq!(object.get_x(), (240 - 40) / 2);
-    object.set_hidden(true);
     assert!(object.is_hidden());
-    object.add_state(State::CHECKED | State::FOCUSED);
-    assert!(object.has_state(State::CHECKED));
-    object.remove_state(State::CHECKED);
+    assert!(object.has_state(State::FOCUSED) && !object.has_state(State::CHECKED));
     assert_eq!(object.get_state(), State::FOCUSED);
+    let screen = lv.screen_active().unwrap();
     assert_eq!(object.get_screen().unwrap().as_ptr(), screen.as_ptr());
     let switch = Switch::create(object).unwrap();
     assert_eq!(object.get_child_count(), 1);
     assert_eq!(switch.get_index(), 0);
-    lv.edit(|lv| lv.screen_active()?.child(-1))
-        .unwrap()
-        .delete()
-        .unwrap();
+    lv.edit(last).unwrap().delete().unwrap();
 }
 
 #[test]

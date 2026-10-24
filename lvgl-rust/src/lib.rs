@@ -30,6 +30,15 @@ mod screen;
 
 /// Wrappers generated from this build's bindings and the reviewed tables of
 /// `lvgl-rust-gen` (the list of what is wrapped is `$OUT_DIR/coverage.txt`).
+/// Their docs are LVGL's header comments, written for C tools.
+#[allow(
+    clippy::doc_lazy_continuation,
+    clippy::doc_overindented_list_items,
+    rustdoc::broken_intra_doc_links,
+    rustdoc::invalid_html_tags,
+    rustdoc::bare_urls,
+    rustdoc::invalid_rust_codeblocks
+)]
 mod generated {
     include!(concat!(env!("OUT_DIR"), "/gen.rs"));
 }

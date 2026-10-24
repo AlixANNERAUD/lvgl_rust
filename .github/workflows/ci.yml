@@ -87,6 +87,19 @@ jobs:
         run: mise run fetch
       - run: mise exec -- cargo test ${{ matrix.args }}
 
+  audit:
+    name: Access audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: jdx/mise-action@v4
+      - uses: jdx/mr-boxington-action@v1
+        with:
+          cache-key-suffix: audit
+      - run: mise run audit-check
+
   safe:
     name: lvgl-rust (${{ matrix.task }})
     runs-on: ubuntu-latest

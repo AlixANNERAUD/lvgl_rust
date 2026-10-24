@@ -148,7 +148,7 @@ pub mod widgets {
 pub mod functions {
     /// `lv_color_make`.
     #[inline]
-    #[allow(clippy::unnecessary_cast)]
+    #[allow(clippy::unnecessary_cast, clippy::too_many_arguments)]
     pub fn color_make(r: u8, g: u8, b: u8) -> crate::sys::lv_color_t {
         unsafe { crate::sys::lv_color_make(r, g, b) }
     }
@@ -171,7 +171,7 @@ impl crate::widgets::Bar {
     }
     /// `lv_bar_set_value`.
     #[inline]
-    #[allow(clippy::unnecessary_cast)]
+    #[allow(clippy::unnecessary_cast, clippy::too_many_arguments)]
     pub fn set_value(&self, value: i32, anim: bool) {
         unsafe {
             crate::sys::lv_bar_set_value(
@@ -200,7 +200,7 @@ impl crate::widgets::Label {
     }
     /// `lv_label_set_text`.
     #[inline]
-    #[allow(clippy::unnecessary_cast)]
+    #[allow(clippy::unnecessary_cast, clippy::too_many_arguments)]
     pub fn set_text(&self, text: &core::ffi::CStr) {
         unsafe {
             crate::sys::lv_label_set_text(
@@ -211,7 +211,7 @@ impl crate::widgets::Label {
     }
     /// `lv_label_set_text_static`.
     #[inline]
-    #[allow(clippy::unnecessary_cast)]
+    #[allow(clippy::unnecessary_cast, clippy::too_many_arguments)]
     pub fn set_text_static(&self, text: &'static core::ffi::CStr) {
         unsafe {
             crate::sys::lv_label_set_text_static(
@@ -224,7 +224,7 @@ impl crate::widgets::Label {
 impl crate::Obj {
     /// `lv_obj_add_state`.
     #[inline]
-    #[allow(clippy::unnecessary_cast)]
+    #[allow(clippy::unnecessary_cast, clippy::too_many_arguments)]
     pub fn add_state(&self, state: crate::enums::State) {
         unsafe {
             crate::sys::lv_obj_add_state(
@@ -235,7 +235,7 @@ impl crate::Obj {
     }
     /// `lv_obj_align_to`.
     #[inline]
-    #[allow(clippy::unnecessary_cast)]
+    #[allow(clippy::unnecessary_cast, clippy::too_many_arguments)]
     pub fn align_to(
         &self,
         base: &crate::Obj,
@@ -255,7 +255,7 @@ impl crate::Obj {
     }
     /// `lv_obj_get_screen`.
     #[inline]
-    #[allow(clippy::unnecessary_cast)]
+    #[allow(clippy::unnecessary_cast, clippy::too_many_arguments)]
     pub fn get_screen(&self) -> Option<&crate::Obj> {
         crate::base::gen_support::getter_view(unsafe {
             crate::sys::lv_obj_get_screen(crate::base::gen_support::ptr_of(self))
@@ -263,7 +263,7 @@ impl crate::Obj {
     }
     /// `lv_obj_get_state`.
     #[inline]
-    #[allow(clippy::unnecessary_cast)]
+    #[allow(clippy::unnecessary_cast, clippy::too_many_arguments)]
     pub fn get_state(&self) -> crate::enums::State {
         crate::enums::State(
             unsafe {
@@ -273,7 +273,7 @@ impl crate::Obj {
     }
     /// `lv_obj_set_ext_area`.
     #[inline]
-    #[allow(clippy::unnecessary_cast)]
+    #[allow(clippy::unnecessary_cast, clippy::too_many_arguments)]
     pub fn set_ext_area(&self, area: &crate::sys::lv_area_t) {
         unsafe {
             crate::sys::lv_obj_set_ext_area(crate::base::gen_support::ptr_of(self), area)
@@ -281,7 +281,7 @@ impl crate::Obj {
     }
     /// `lv_obj_set_opa`.
     #[inline]
-    #[allow(clippy::unnecessary_cast)]
+    #[allow(clippy::unnecessary_cast, clippy::too_many_arguments)]
     pub fn set_opa(&self, opa: u8) {
         unsafe {
             crate::sys::lv_obj_set_opa(crate::base::gen_support::ptr_of(self), opa)
@@ -291,7 +291,7 @@ impl crate::Obj {
     ///
     /// `lv_obj_set_size`.
     #[inline]
-    #[allow(clippy::unnecessary_cast)]
+    #[allow(clippy::unnecessary_cast, clippy::too_many_arguments)]
     pub fn set_size(&self, w: i32, h: i32) {
         unsafe {
             crate::sys::lv_obj_set_size(crate::base::gen_support::ptr_of(self), w, h)
@@ -316,7 +316,7 @@ impl crate::widgets::Slider {
     }
     /// `lv_slider_get_value`.
     #[inline]
-    #[allow(clippy::unnecessary_cast)]
+    #[allow(clippy::unnecessary_cast, clippy::too_many_arguments)]
     pub fn get_value(&self) -> i32 {
         unsafe {
             crate::sys::lv_slider_get_value(crate::base::gen_support::ptr_of(self))
@@ -326,7 +326,7 @@ impl crate::widgets::Slider {
 impl crate::widgets::Textarea {
     /// `lv_textarea_get_label`.
     #[inline]
-    #[allow(clippy::unnecessary_cast)]
+    #[allow(clippy::unnecessary_cast, clippy::too_many_arguments)]
     pub fn get_label(&self) -> Option<&crate::widgets::Label> {
         crate::base::gen_support::getter_view(unsafe {
                 crate::sys::lv_textarea_get_label(crate::base::gen_support::ptr_of(self))
@@ -336,37 +336,32 @@ impl crate::widgets::Textarea {
             })
     }
 }
-impl<W: crate::IsA<crate::widgets::MsgBox>> crate::ObjMut<'_, W> {
+impl crate::ObjMut<'_, crate::widgets::Bar> {
+    /// `lv_bar_select`.
+    #[inline]
+    #[allow(clippy::unnecessary_cast, clippy::too_many_arguments)]
+    pub fn select(&mut self, sel_opt: u32) {
+        unsafe { crate::sys::lv_bar_select(self.as_raw(), sel_opt) }
+    }
+}
+impl crate::ObjMut<'_, crate::widgets::MsgBox> {
     /// `lv_msgbox_close`.
     #[inline]
-    #[allow(clippy::unnecessary_cast)]
+    #[allow(clippy::unnecessary_cast, clippy::too_many_arguments)]
     pub fn close(self) {
         unsafe { crate::sys::lv_msgbox_close(self.as_raw()) }
-    }
-    /// Change the parent of a message box.
-    ///
-    /// `lv_msgbox_set_parent_or_null`.
-    #[inline]
-    #[allow(clippy::unnecessary_cast)]
-    pub fn set_parent_or_null(&mut self, parent: Option<&crate::Obj>) {
-        unsafe {
-            crate::sys::lv_msgbox_set_parent_or_null(
-                self.as_raw(),
-                parent.map(crate::Obj::as_ptr).unwrap_or(core::ptr::null_mut()),
-            )
-        }
     }
 }
 impl crate::Lvgl {
     /// `lv_layer_count`.
     #[inline]
-    #[allow(clippy::unnecessary_cast)]
+    #[allow(clippy::unnecessary_cast, clippy::too_many_arguments)]
     pub fn layer_count(&self) -> u32 {
         unsafe { crate::sys::lv_layer_count() }
     }
     /// `lv_screen_clean_all`.
     #[inline]
-    #[allow(clippy::unnecessary_cast)]
+    #[allow(clippy::unnecessary_cast, clippy::too_many_arguments)]
     pub fn screen_clean_all(&mut self) {
         unsafe { crate::sys::lv_screen_clean_all() }
     }

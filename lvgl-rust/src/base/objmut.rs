@@ -50,6 +50,17 @@ impl<W: Widget> ObjMut<'_, W> {
         self.p.as_ptr()
     }
 
+    /// The same object as a base class, for the exclusive methods of that
+    /// class (`ObjMut<'_, Slider>` to `ObjMut<'_, Bar>`).
+    pub fn as_base<B: Widget>(&mut self) -> ObjMut<'_, B>
+    where
+        W: crate::IsA<B>,
+    {
+        // SAFETY: same object, a `B` by `IsA`; the reborrow keeps
+        // exclusive access.
+        unsafe { ObjMut::new(self.p) }
+    }
+
     /// A view of the object, for the shared API.
     pub fn view(&self) -> &W {
         // SAFETY: live while `self` holds exclusive access.

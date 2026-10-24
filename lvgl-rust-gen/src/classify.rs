@@ -231,6 +231,15 @@ impl<'a> Classifier<'a> {
         if shape == Shape::Free && matches!(ret, RetPlan::View(_)) {
             return Plan::Raw("returns an object without a token".into());
         }
+        let exclusive = matches!(shape, Shape::ObjMut { .. } | Shape::LvglExclusive);
+        if exclusive && params.iter().any(|p| matches!(p, ParamPlan::Obj { .. })) {
+            // A view of the other object cannot coexist with `&mut Lvgl`;
+            // these take a `Handle` once generated.
+            return Plan::Raw("exclusive call taking another object (not generated yet)".into());
+        }
+        if exclusive && matches!(ret, RetPlan::View(_)) {
+            return Plan::Raw("exclusive call returning an object (not generated yet)".into());
+        }
         let method_name = match &class {
             Some(_) if create => "create".to_owned(),
             Some(c) => rust_ident(name.strip_prefix(&format!("lv_{c}_")).unwrap_or(name)),
@@ -273,13 +282,29 @@ impl<'a> Classifier<'a> {
         kind: Option<ParamKind>,
         nullable: bool,
     ) -> Result<ParamPlan, String> {
-        let name = rust_ident(name);
+        let rust_name = rust_ident(name);
         match ty {
-            CType::Named(_) => self.value(&name, ty),
+            CType::Named(_) => {
+                let plan = self.value(&rust_name, ty)?;
+                // An index may reach an array access that LVGL checks only
+                // with `LV_USE_CHECK_ARG`: wrapped once reviewed.
+                if matches!(plan, ParamPlan::Scalar { .. })
+                    && is_index(name)
+                    && kind != Some(ParamKind::Checked)
+                {
+                    return Err(
+                        "index parameter, not reviewed (overrides: kind = \"checked\")".into(),
+                    );
+                }
+                Ok(plan)
+            }
             CType::Ptr { mutable, pointee } => {
                 let pointee_name = pointee.named().unwrap_or("");
                 if pointee_name == "lv_obj_t" {
-                    return Ok(ParamPlan::Obj { name, nullable });
+                    return Ok(ParamPlan::Obj {
+                        name: rust_name,
+                        nullable,
+                    });
                 }
                 if pointee_name == "c_char" && !mutable {
                     let is_static = match kind {
@@ -289,7 +314,7 @@ impl<'a> Classifier<'a> {
                         _ => return Err("string kept by LVGL (retained)".into()),
                     };
                     return Ok(ParamPlan::Str {
-                        name,
+                        name: rust_name,
                         is_static,
                         nullable,
                     });
@@ -297,7 +322,7 @@ impl<'a> Classifier<'a> {
                 match kind {
                     Some(ParamKind::Copied) if !mutable && self.is_plain_struct(pointee_name) => {
                         Ok(ParamPlan::StructRef {
-                            name,
+                            name: rust_name,
                             c_type: pointee_name.to_owned(),
                         })
                     }
@@ -413,6 +438,19 @@ impl<'a> Classifier<'a> {
         };
         self.bindings.structs.get(target).copied().unwrap_or(false)
     }
+}
+
+/// Parameter names that index an array or select an item.
+fn is_index(name: &str) -> bool {
+    name.contains("idx")
+        || name.contains("index")
+        || name == "id"
+        || name.ends_with("_id")
+        || name == "row"
+        || name == "col"
+        || name.starts_with("sel")
+        || name == "i"
+        || name == "n"
 }
 
 /// The longest prefix shared by every name that ends with `_`.

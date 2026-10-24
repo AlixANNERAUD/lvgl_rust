@@ -47,7 +47,40 @@ pub fn emit(classifier: &Classifier, plans: &BTreeMap<String, Plan>) -> String {
     let mut by_objmut: BTreeMap<String, Vec<TokenStream>> = BTreeMap::new();
     let mut on_lvgl = Vec::new();
     let mut free = Vec::new();
+    // `ObjMut` methods of a class are emitted for that class only (generic
+    // impls of different classes would overlap); base object methods are
+    // generic over every widget. A class method named like a base object
+    // method gets the class as a prefix.
+    // The core's own `ObjMut` methods count as base object methods.
+    const CORE_OBJMUT: &[&str] = &[
+        "view",
+        "as_base",
+        "as_raw",
+        "delete",
+        "clean",
+        "set_parent",
+        "set_parent_to",
+        "load_screen",
+    ];
+    let obj_exclusive: BTreeSet<String> = methods
+        .iter()
+        .filter(|m| matches!(m.shape, Shape::ObjMut { .. }) && m.class.as_deref() == Some("obj"))
+        .map(|m| m.name.clone())
+        .chain(CORE_OBJMUT.iter().map(|n| (*n).to_owned()))
+        .collect();
     for m in &methods {
+        let renamed;
+        let m = if matches!(m.shape, Shape::ObjMut { .. })
+            && m.class.as_deref() != Some("obj")
+            && obj_exclusive.contains(&m.name)
+        {
+            let mut copy = (*m).clone();
+            copy.name = format!("{}_{}", m.class.as_deref().unwrap_or(""), m.name);
+            renamed = copy;
+            &renamed
+        } else {
+            *m
+        };
         let tokens = emit_method(classifier, m);
         match (&m.shape, &m.class) {
             (Shape::Create | Shape::View, Some(class)) => {
@@ -66,8 +99,12 @@ pub fn emit(classifier: &Classifier, plans: &BTreeMap<String, Plan>) -> String {
         quote! { impl #ty { #(#items)* } }
     });
     let objmut_impls = by_objmut.iter().map(|(class, items)| {
-        let ty = class_type(classifier, class);
-        quote! { impl<W: crate::IsA<#ty>> crate::ObjMut<'_, W> { #(#items)* } }
+        if class == "obj" {
+            quote! { impl<W: crate::Widget> crate::ObjMut<'_, W> { #(#items)* } }
+        } else {
+            let ty = class_type(classifier, class);
+            quote! { impl crate::ObjMut<'_, #ty> { #(#items)* } }
+        }
     });
     let lvgl_impl = (!on_lvgl.is_empty()).then(|| quote! { impl crate::Lvgl { #(#on_lvgl)* } });
 
@@ -320,7 +357,7 @@ fn emit_method(classifier: &Classifier, m: &Method) -> TokenStream {
     quote! {
         #doc
         #[inline]
-        #[allow(clippy::unnecessary_cast)]
+        #[allow(clippy::unnecessary_cast, clippy::too_many_arguments)]
         pub fn #name(#receiver #(#args),*) #ret_ty {
             #body
         }

@@ -1,4 +1,6 @@
 lv_bar_create: Create create
+lv_bar_select: ObjMut { consumes: false } select
+lv_bar_set_segment: raw (parameter `idx`: index parameter, not reviewed (overrides: kind = "checked"))
 lv_bar_set_value: View set_value
 lv_color_make: Free color_make
 lv_color_screen_of: raw (returns an object without a token)
@@ -9,7 +11,7 @@ lv_label_set_text_fmt: skip (variadic)
 lv_label_set_text_static: View set_text_static
 lv_layer_count: LvglShared layer_count
 lv_msgbox_close: ObjMut { consumes: true } close
-lv_msgbox_set_parent_or_null: ObjMut { consumes: false } set_parent_or_null
+lv_msgbox_set_parent_or_null: raw (exclusive call taking another object (not generated yet))
 lv_obj_add_state: View add_state
 lv_obj_align_to: View align_to
 lv_obj_get_coords: raw (parameter `coords`: pointer kept by LVGL (retained))

@@ -1,0 +1,102 @@
+# How `lvgl-rust-gen audit` reads LVGL 9.6. It writes access.toml from the
+# call graph and this file; rerun `mise run audit` after any change.
+
+# Operations that can leave a pointer held by a running callback dangling:
+# deleting objects, deleting displays, shrinking children arrays, freeing
+# group list nodes. A function that reaches one of them through direct
+# calls, indirect calls or event sends is exclusive. (Reordering children
+# keeps every pointer valid; user-requested reorders are hand-written for
+# the structural checks.)
+sinks = [
+    "core/lv_obj_tree::obj_delete_core",
+    "lv_display_delete",
+    "lv_obj_remove_child",
+    "lv_group_remove_obj",
+    "lv_group_remove_all_objs",
+    "lv_group_delete",
+]
+
+# The sinks that delete objects: an exclusive call that can reach one may
+# delete its own receiver, so its `ObjMut` method takes `self`.
+deleting_sinks = ["core/lv_obj_tree::obj_delete_core", "lv_display_delete"]
+
+# Run event handlers through `dsc->cb` (`lv_event_send`), or are the
+# senders' own steps (only the senders call them): handlers are connected at
+# the send sites instead, by event code.
+event_dispatch = [
+    "lv_event_send",
+    "core/lv_obj_event::event_send_core",
+    "lv_event_push_and_send",
+]
+
+# Deprecated widgets lvgl-rust does not wrap: their event handlers exist
+# only on objects created through `sys`, which takes the obligation, and are
+# left out of event sends.
+unwrapped_widgets = ["menu"]
+
+
+# Globals emitted with a literal struct type (bitfields): their struct.
+[literal_globals]
+"lv_*_class" = "_lv_obj_class_t"
+
+# Event senders: index of the event code argument.
+[send]
+lv_obj_send_event = 1
+lv_display_send_event = 1
+lv_indev_send_event = 1
+
+# Event handler registrations: [callback index, event code index].
+[register_event]
+lv_obj_add_event_cb = [1, 2]
+lv_display_add_event_cb = [1, 2]
+lv_indev_add_event_cb = [1, 2]
+lv_event_add = [1, 2]
+
+# Hand decisions, with the reason. They override the graph.
+[exceptions.lv_color_make]
+access = "pure"
+why = "computes a value"
+
+[exceptions.lv_color_hex]
+access = "pure"
+why = "computes a value"
+
+[exceptions.lv_color_mix]
+access = "pure"
+why = "computes a value"
+
+[exceptions.lv_pct]
+access = "pure"
+why = "computes a value"
+
+# Widget code sends events to objects of its own widget, of widgets it
+# creates, or of widgets that create it (it is their part); a send there
+# reaches only handlers registered by core code or by those widgets. These
+# widgets also send to objects of the listed widgets.
+[peers]
+keyboard = ["textarea", "spinbox"]
+
+# Animation callbacks run for the instance their caller filled: they are
+# attributed to whoever installs them, as calls (`lv_anim_start` applies
+# `exec_cb`, `custom_exec_cb`, `get_value_cb` and `path_cb` at once) or as
+# scheduled work (`start_cb`, `completed_cb`, run by the anim timer).
+# `deleted_cb` (field 5) stays an ordinary slot: deleting any animation, as
+# `lv_anim_start` does for a previous one on the same variable, runs it.
+# Field indices of `_lv_anim_t` with `LV_USE_EXT_DATA 0`.
+[caller_slots]
+"_lv_anim_t.1" = "immediate"
+"_lv_anim_t.2" = "immediate"
+"_lv_anim_t.6" = "immediate"
+"_lv_anim_t.8" = "immediate"
+"_lv_anim_t.3" = "later"
+"_lv_anim_t.4" = "later"
+
+# `lv_anim_delete(var, exec_cb)` runs the `deleted_cb` of the animations with
+# that `exec_cb`: with a constant `exec_cb`, only the deleted callbacks
+# installed together with it (by the same function) are reached.
+[anim_delete]
+function = "lv_anim_delete"
+exec_arg = 1
+carry = ["lv_anim_delete", "misc/lv_anim::remove_anim"]
+exec_slots = ["_lv_anim_t.1", "_lv_anim_t.2"]
+deleted_slot = "_lv_anim_t.5"

@@ -169,6 +169,23 @@ env.DEP_LV_CONFIG_PATH = "{{config_root}}/lvgl-rust/conf"
 env.CARGO_TARGET_DIR = "target/loom"
 run = "cargo test -p lvgl-rust --lib --release protocol"
 
+# The access audit: compiles LVGL to LLVM IR with a pinned clang and
+# derives lvgl-rust-gen/tables/<version>/access.toml from its call graph.
+[tasks.audit]
+description = "Rewrite access.toml from the call graph of LVGL (after changing audit.toml or bumping LVGL)"
+tools = { clang = "22.1.8" }
+run = "cargo run -q -p lvgl-rust-gen --features cli -- audit"
+
+[tasks.audit-check]
+description = "Lint and test the audit tool, and check that access.toml matches the call graph of LVGL"
+tools = { clang = "22.1.8" }
+env.RUSTFLAGS = "-D warnings"
+run = [
+  "cargo clippy -p lvgl-rust-gen --all-targets --features cli",
+  "cargo test -p lvgl-rust-gen --features cli",
+  "cargo run -q -p lvgl-rust-gen --features cli -- audit --check",
+]
+
 [tasks.doc]
 description = "Build the documentation as docs.rs does"
 env = { DOCS_RS = "1", DEP_LV_CONFIG_PATH = "", RUSTDOCFLAGS = "-D warnings" }

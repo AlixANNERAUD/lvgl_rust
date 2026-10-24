@@ -120,6 +120,9 @@ pub enum ParamKind {
     RetainedMut,
     /// A slice whose length comes from `len`.
     Slice,
+    /// An index or count LVGL checks against its own bounds (reviewed):
+    /// passed as is.
+    Checked,
 }
 
 #[derive(Debug, Deserialize)]
