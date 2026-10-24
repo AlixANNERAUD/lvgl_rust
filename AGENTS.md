@@ -33,6 +33,7 @@ these paths, and do not edit Xila from this repository.
 | `tests/` | Unit tests for `build/config.rs` and integration tests driving nested `cargo` builds. |
 | `tests/common/mod.rs` | Shared helpers for the integration tests. |
 | `tests/fixtures/font_incremental/` | Package used by the incremental rebuild test. |
+| `mise.toml` | Toolchain (Rust + mbx build cache) and tasks mirroring CI. |
 
 ## Build model
 
@@ -121,6 +122,13 @@ cargo test --lib --test build_config               # fast loop, seconds
 cargo test --lib --features shadcn-theme,color_depth_32
 ```
 
+With [mise](https://mise.jdx.dev) installed, `mise install` sets up the
+toolchain and `mise run fetch`, `mise run test`, `mise run test-fast`,
+`mise run clippy`, `mise run fmt` and `mise run doc` wrap the same commands.
+Cargo then goes through mbx ([mr boxington](https://github.com/jdx/mr-boxington)),
+which caches the LVGL C objects and build script output; `mbx explain --last`
+says why something was rebuilt. Keep `mise.toml` tasks and CI in sync.
+
 `DEP_LV_CONFIG_PATH` defaults to `conf/` through `.cargo/config.toml` (only for
 cargo commands run in this checkout; an explicit value wins).
 
@@ -146,14 +154,19 @@ Rules for integration tests:
   `LVGL_CFLAGS` inherited from the outer environment.
 - Use `common::scratch_dir()` for fixtures and separate target directories, and
   remove them at the end of the test.
-- A fixture with its own `Cargo.lock` needs a matching `cargo fetch` step in
-  `.github/workflows/ci.yml`, otherwise CI fails with "no matching package".
+- A fixture with its own `Cargo.lock` needs a matching `cargo fetch` in the
+  `fetch` task of `mise.toml` (which CI runs), otherwise CI fails with "no
+  matching package".
 - Restore any tracked file a test modifies, even on failure (see `RestoreFile`
   in `tests/incremental_font_build.rs`).
 
 ## CI
 
-`.github/workflows/ci.yml` runs with `RUSTFLAGS=-D warnings`:
+`.github/workflows/ci.yml` runs with `RUSTFLAGS=-D warnings`. Every job
+installs the toolchain from `mise.toml` (`jdx/mise-action`); jobs that compile
+use `jdx/mr-boxington-action` for caching and run `mbx clippy`/`mbx test`.
+Caches are saved only on pushes to `main`; pull requests restore them. It
+checks:
 
 - `cargo fmt --check` for the crate, the example and the fixture;
 - clippy with default features, `--all-features` and `--no-default-features`;
@@ -169,6 +182,9 @@ cargo fmt --all --check
 RUSTFLAGS="-D warnings" cargo clippy --all-targets --all-features
 RUSTFLAGS="-D warnings" cargo test --lib --test build_config
 ```
+
+or `mise run check`, which runs the same checks plus clippy for every feature
+set.
 
 ## Pitfalls
 
