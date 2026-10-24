@@ -306,7 +306,15 @@ fn emit_method(classifier: &Classifier, m: &Method) -> TokenStream {
         Shape::ObjMut { .. } => call_args.push(quote!(self.as_raw())),
         _ => {}
     }
+    let mut out = None;
     for p in &m.params {
+        if let ParamPlan::Out { name, ty } = p {
+            let n = Ident::new(name, Span::call_site());
+            let ty: syn::Type = syn::parse_str(ty).unwrap();
+            call_args.push(quote!(&mut #n));
+            out = Some((n, ty));
+            continue;
+        }
         let (arg, call) = emit_param(p);
         args.push(arg);
         call_args.push(call);
@@ -351,6 +359,27 @@ fn emit_method(classifier: &Classifier, m: &Method) -> TokenStream {
             )
         }
     };
+    // An out parameter is returned, after the C return value if any.
+    let (ret_ty, body) = match out {
+        None => (ret_ty, body),
+        Some((n, ty)) => {
+            let ret_ty = if ret_ty.is_empty() {
+                quote!(-> #ty)
+            } else {
+                let inner = strip_arrow(ret_ty);
+                quote!(-> (#inner, #ty))
+            };
+            let value = if matches!(m.ret, RetPlan::Unit) {
+                quote! { #body; #n }
+            } else {
+                quote! { let value = #body; (value, #n) }
+            };
+            (
+                ret_ty,
+                quote! { let mut #n: #ty = Default::default(); #value },
+            )
+        }
+    };
     // Safety of every call: the receiver (view, `ObjMut`, `Lvgl`) proves
     // the access the table assigns to the function, and each parameter is
     // mapped to a type that upholds what LVGL expects of it.
@@ -362,6 +391,11 @@ fn emit_method(classifier: &Classifier, m: &Method) -> TokenStream {
             #body
         }
     }
+}
+
+/// `T` from the tokens of `-> T`.
+fn strip_arrow(ret: TokenStream) -> TokenStream {
+    ret.into_iter().skip(2).collect()
 }
 
 fn emit_param(p: &ParamPlan) -> (TokenStream, TokenStream) {
@@ -428,6 +462,7 @@ fn emit_param(p: &ParamPlan) -> (TokenStream, TokenStream) {
                 (quote!(#n: #ty), quote!(#n.as_ptr()))
             }
         }
+        ParamPlan::Out { .. } => unreachable!("handled by emit_method"),
     }
 }
 

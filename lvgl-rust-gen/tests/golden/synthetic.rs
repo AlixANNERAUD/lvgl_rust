@@ -253,6 +253,19 @@ impl crate::Obj {
             )
         }
     }
+    /// `lv_obj_get_coords`.
+    #[inline]
+    #[allow(clippy::unnecessary_cast, clippy::too_many_arguments)]
+    pub fn get_coords(&self) -> crate::sys::lv_area_t {
+        let mut coords: crate::sys::lv_area_t = Default::default();
+        unsafe {
+            crate::sys::lv_obj_get_coords(
+                crate::base::gen_support::ptr_of(self),
+                &mut coords,
+            )
+        };
+        coords
+    }
     /// `lv_obj_get_screen`.
     #[inline]
     #[allow(clippy::unnecessary_cast, clippy::too_many_arguments)]

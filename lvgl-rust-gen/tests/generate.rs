@@ -190,6 +190,8 @@ params.area = { kind = "copied" }
 returns = { view = "label" }
 [fn.lv_bar_select]
 params.sel_opt = { kind = "checked" }
+[fn.lv_obj_get_coords]
+params.coords = { kind = "out" }
 "#;
 
 fn inputs() -> (Bindings, Headers) {
