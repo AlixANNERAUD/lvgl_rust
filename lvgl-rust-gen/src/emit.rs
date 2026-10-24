@@ -129,6 +129,24 @@ pub fn emit(classifier: &Classifier, plans: &BTreeMap<String, Plan>) -> String {
     let style_impl =
         (!on_style.is_empty()).then(|| quote! { impl crate::StyleMut<'_> { #(#on_style)* } });
     let props = methods.iter().filter_map(|m| emit_prop(classifier, m));
+    let prop_ids: Vec<TokenStream> = methods
+        .iter()
+        .filter(|m| m.shape == Shape::Style)
+        .filter_map(|m| {
+            let property = m.name.strip_prefix("set_")?;
+            let id = Ident::new(&style_prop_id(classifier, property)?, Span::call_site());
+            let name = Ident::new(&property.to_ascii_uppercase(), Span::call_site());
+            Some(quote! {
+                pub const #name: Self = Self(crate::sys::#id as crate::sys::lv_style_prop_t);
+            })
+        })
+        .collect();
+    let prop_ids = (!prop_ids.is_empty()).then(|| {
+        quote! {
+            #[allow(clippy::unnecessary_cast)]
+            impl crate::StyleProp { #(#prop_ids)* }
+        }
+    });
     let fonts = emit_fonts(classifier);
     let composites = emit_composites(classifier);
 
@@ -159,6 +177,7 @@ pub fn emit(classifier: &Classifier, plans: &BTreeMap<String, Plan>) -> String {
         #(#objmut_impls)*
         #lvgl_impl
         #style_impl
+        #prop_ids
         #fonts
         #composites
     };
@@ -555,6 +574,28 @@ fn emit_param(p: &ParamPlan) -> (TokenStream, TokenStream) {
                 quote!(#n.map_or(core::ptr::null(), crate::Font::as_ptr)),
             )
         }
+        ParamPlan::Retained {
+            name,
+            ty,
+            by_value,
+            nullable,
+        } => {
+            let n = ident(name);
+            let t = ident(ty);
+            let ty = if *by_value {
+                quote!(crate::#t)
+            } else {
+                quote!(&'static crate::#t)
+            };
+            if *nullable {
+                (
+                    quote!(#n: Option<#ty>),
+                    quote!(#n.map_or(core::ptr::null(), |v| v.as_ptr().cast())),
+                )
+            } else {
+                (quote!(#n: #ty), quote!(#n.as_ptr().cast()))
+            }
+        }
         ParamPlan::Selector { name } => {
             let n = ident(name);
             (
@@ -576,12 +617,7 @@ fn emit_prop(classifier: &Classifier, m: &Method) -> Option<TokenStream> {
     let [param] = m.params.as_slice() else {
         return None;
     };
-    let id = format!("LV_STYLE_{}", property.to_ascii_uppercase());
-    let id = ["_lv_style_id_t_", ""]
-        .iter()
-        .map(|prefix| format!("{prefix}{id}"))
-        .find(|c| classifier.bindings.consts.contains_key(c))?;
-    let id = Ident::new(&id, Span::call_site());
+    let id = Ident::new(&style_prop_id(classifier, property)?, Span::call_site());
     // `lv_style_value_t` field, as the setters of `lv_style_gen.c` fill it.
     let (arg, value) = match param {
         ParamPlan::Scalar { ty, .. }
@@ -609,6 +645,16 @@ fn emit_prop(classifier: &Classifier, m: &Method) -> Option<TokenStream> {
             quote!(value: &'static crate::Font),
             quote!(ptr: (value as *const crate::Font).cast()),
         ),
+        // A property set to NULL is unset: constants always point to data.
+        ParamPlan::Retained { ty, by_value, .. } => {
+            let t = Ident::new(ty, Span::call_site());
+            let ty = if *by_value {
+                quote!(crate::#t)
+            } else {
+                quote!(&'static crate::#t)
+            };
+            (quote!(value: #ty), quote!(ptr: value.as_ptr().cast()))
+        }
         _ => return None,
     };
     let name = Ident::new(&m.name["set_".len()..], Span::call_site());
@@ -624,6 +670,15 @@ fn emit_prop(classifier: &Classifier, m: &Method) -> Option<TokenStream> {
             )
         }
     })
+}
+
+/// The constant of a style property (`LV_STYLE_BG_COLOR`, ...).
+fn style_prop_id(classifier: &Classifier, property: &str) -> Option<String> {
+    let id = format!("LV_STYLE_{}", property.to_ascii_uppercase());
+    ["_lv_style_id_t_", ""]
+        .iter()
+        .map(|prefix| format!("{prefix}{id}"))
+        .find(|c| classifier.bindings.consts.contains_key(c))
 }
 
 /// `Font` constructors for the fonts these bindings declare

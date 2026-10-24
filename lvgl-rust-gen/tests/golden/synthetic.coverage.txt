@@ -7,6 +7,7 @@ lv_color_screen_of: raw (returns an object without a token)
 lv_font_get_default: raw (returns a font without shared access)
 lv_font_get_line_height: LvglShared font_get_line_height
 lv_font_set_kerning: raw (parameter `font`: writes into a font)
+lv_image_set_src: ObjMut { consumes: false } set_src
 lv_label_create: Create create
 lv_label_get_letter: raw (return: pointer return)
 lv_label_get_text: View get_text
@@ -38,7 +39,7 @@ lv_slider_get_value: View get_value
 lv_style_copy: Style copy
 lv_style_is_empty: LvglShared style_is_empty
 lv_style_set_bg_color: Style set_bg_color
-lv_style_set_bg_image_src: raw (parameter `value`: pointer kept by LVGL (retained))
+lv_style_set_bg_image_src: Style set_bg_image_src
 lv_style_set_radius: Style set_radius
 lv_style_set_text_font: Style set_text_font
 lv_textarea_get_label: View get_label

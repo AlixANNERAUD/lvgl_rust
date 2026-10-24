@@ -17,6 +17,8 @@ manual = [
     "lv_style_init",
     # Reorders children: checked like a move (structural.rs).
     "lv_obj_move_to_index",
+    # Copies one entry per button: length-checked (button_map.rs).
+    "lv_buttonmatrix_set_ctrl_map",
     # Shims the core uses; they assume the object's class.
     "lvgl_sys_menu_part",
     "lvgl_sys_obj_is_deleting",

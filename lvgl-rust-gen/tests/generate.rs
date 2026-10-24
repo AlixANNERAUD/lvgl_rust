@@ -37,6 +37,7 @@ unsafe extern "C" {
     pub static lv_bar_class: lv_obj_class_t;
     pub static lv_slider_class: lv_obj_class_t;
     pub static lv_label_class: lv_obj_class_t;
+    pub static lv_image_class: lv_obj_class_t;
     pub static lv_textarea_class: lv_obj_class_t;
     pub static lv_msgbox_class: lv_obj_class_t;
     pub static lv_font_montserrat_14: lv_font_t;
@@ -45,6 +46,7 @@ unsafe extern "C" {
     pub fn lv_style_set_radius(style: *mut lv_style_t, value: i32);
     pub fn lv_style_set_text_font(style: *mut lv_style_t, value: *const lv_font_t);
     pub fn lv_style_set_bg_image_src(style: *mut lv_style_t, value: *const core::ffi::c_void);
+    pub fn lv_image_set_src(obj: *mut lv_obj_t, src: *const core::ffi::c_void);
     pub fn lv_style_copy(dst: *mut lv_style_t, src: *const lv_style_t);
     pub fn lv_style_is_empty(style: *const lv_style_t) -> bool;
     pub fn lv_obj_add_style(obj: *mut lv_obj_t, style: *const lv_style_t, selector: lv_style_selector_t);
@@ -199,6 +201,8 @@ access = "pure"
 access = "shared"
 [fn.lv_style_set_bg_image_src]
 access = "shared"
+[fn.lv_image_set_src]
+access = "exclusive"
 [fn.lv_style_copy]
 access = "shared"
 [fn.lv_style_is_empty]
@@ -252,6 +256,10 @@ returns = "borrowed_internal"
 params.sel_opt = { kind = "checked" }
 [fn.lv_obj_get_coords]
 params.coords = { kind = "out" }
+[fn.lv_image_set_src]
+params.src = { kind = "retained", rust = "ImageSrc" }
+[fn.lv_style_set_bg_image_src]
+params.value = { kind = "retained", rust = "ImageSrc" }
 "#;
 
 fn inputs() -> (Bindings, Headers) {
@@ -373,6 +381,22 @@ fn table_errors_always_fail() {
             OVERRIDES.to_owned(),
             format!("{CLASSES}\n[composite.roller]\nparts = [\"child:0\"]\nmax_depth = 0\n"),
             "max_depth must be at least 1",
+        ),
+        (
+            ACCESS.to_owned(),
+            format!(
+                "{OVERRIDES}\n[fn.lv_obj_set_user_data]\nparams.user_data = {{ kind = \"retained\", rust = \"Anything\" }}\n"
+            ),
+            CLASSES.to_owned(),
+            "unknown rust type `Anything`",
+        ),
+        (
+            ACCESS.to_owned(),
+            format!(
+                "{OVERRIDES}\n[fn.lv_obj_set_user_data]\nparams.user_data = {{ kind = \"copied\", rust = \"ImageSrc\" }}\n"
+            ),
+            CLASSES.to_owned(),
+            "`rust` needs kind = \"retained\"",
         ),
     ];
     for (access, overrides, classes, expected) in cases {

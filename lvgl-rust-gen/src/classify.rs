@@ -5,7 +5,7 @@
 use crate::{
     headers::Headers,
     parse::{Bindings, CType, Function},
-    tables::{Access, CrateOwnedKind, ParamKind, ReturnKeyword, Returns, Tables},
+    tables::{Access, CrateOwnedKind, ParamKind, RETAINED_TYPES, ReturnKeyword, Returns, Tables},
 };
 use std::collections::BTreeMap;
 
@@ -77,6 +77,14 @@ pub enum ParamPlan {
     Font { name: String, nullable: bool },
     /// A style selector (`lv_style_selector_t`): a part and states.
     Selector { name: String },
+    /// Data LVGL keeps, as an `lvgl-rust` type that guarantees its layout
+    /// (`rust = "..."` in the overrides); `by_value` for `Copy` handles.
+    Retained {
+        name: String,
+        ty: String,
+        by_value: bool,
+        nullable: bool,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -220,9 +228,31 @@ impl<'a> Classifier<'a> {
         let mut params = Vec::new();
         if !create {
             for p in &f.params[skip_receiver..] {
-                let kind = overrides
-                    .and_then(|o| o.params.get(&p.name))
-                    .map(|o| o.kind);
+                let param_override = overrides.and_then(|o| o.params.get(&p.name));
+                let kind = param_override.map(|o| o.kind);
+                if let Some(rust) = param_override.and_then(|o| o.rust.as_ref()) {
+                    match &p.ty {
+                        CType::Ptr { mutable: false, .. } => {
+                            let by_value = RETAINED_TYPES
+                                .iter()
+                                .find(|(t, _)| t == rust)
+                                .is_some_and(|(_, v)| *v);
+                            params.push(ParamPlan::Retained {
+                                name: rust_ident(&p.name),
+                                ty: rust.clone(),
+                                by_value,
+                                nullable: nullable(&p.name),
+                            });
+                            continue;
+                        }
+                        _ => {
+                            return Plan::Raw(format!(
+                                "parameter `{}`: retained data LVGL may write",
+                                p.name
+                            ));
+                        }
+                    }
+                }
                 match self.param(name, &p.name, &p.ty, kind, nullable(&p.name)) {
                     Ok(plan) => params.push(plan),
                     Err(why) => return Plan::Raw(format!("parameter `{}`: {why}", p.name)),

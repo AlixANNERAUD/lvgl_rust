@@ -25,7 +25,9 @@ mod config {
 }
 
 mod base;
+mod button_map;
 mod error;
+mod image;
 mod screen;
 mod style;
 mod text;
@@ -51,7 +53,12 @@ pub use generated::{enums, functions, props, widgets};
 mod tests;
 
 pub use base::*;
+pub use button_map::{ButtonMap, MapEntry};
 pub use error::Error;
+pub use image::{ImageColorkey, ImageData, ImageDsc, ImageSrc, PixelFormat};
 pub use lvgl_rust_sys as sys;
 pub use screen::{ScreenAnim, ScreenLoadAnim};
-pub use style::{ConstProp, ConstStyle, Font, Selector, Style, StyleMut, StyleRef, color};
+pub use style::{
+    AnimPath, ColorFilter, ConstProp, ConstStyle, Font, GradDir, GradDsc, Selector, Style,
+    StyleMut, StyleProp, StyleRef, TransitionDsc, color,
+};

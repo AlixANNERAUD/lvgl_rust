@@ -1,0 +1,19 @@
+# Parameter kinds, each checked against the LVGL sources (file:line in `why`).
+
+[fn.lv_imagebutton_set_src]
+params.src_left = { kind = "retained", rust = "ImageSrc" }
+params.src_mid = { kind = "retained", rust = "ImageSrc" }
+params.src_right = { kind = "retained", rust = "ImageSrc" }
+why = "lv_imagebutton.c:74-90: update_src_info keeps each pointer (img_src) for drawing; NULL leaves that side undrawn (@nullable)."
+
+[fn.lv_imagebutton_set_src_left]
+params.src_left = { kind = "retained", rust = "ImageSrc" }
+why = "lv_imagebutton.c:92-98: kept by update_src_info, like lv_imagebutton_set_src."
+
+[fn.lv_imagebutton_set_src_right]
+params.src_right = { kind = "retained", rust = "ImageSrc" }
+why = "lv_imagebutton.c: kept by update_src_info, like lv_imagebutton_set_src."
+
+[fn.lv_imagebutton_set_src_mid]
+params.src_mid = { kind = "retained", rust = "ImageSrc" }
+why = "lv_imagebutton.c:110-116: kept by update_src_info, like lv_imagebutton_set_src."

@@ -324,3 +324,193 @@ pub mod color {
         lv_color_t { red, green, blue }
     }
 }
+
+/// A style property (`lv_style_prop_t`), for [`TransitionDsc`]: one
+/// constant per property of these bindings (`StyleProp::BG_COLOR`, ...).
+#[repr(transparent)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub struct StyleProp(pub(crate) sys::lv_style_prop_t);
+
+impl StyleProp {
+    /// The terminator (`LV_STYLE_PROP_INV`).
+    pub const END: Self = Self(sys::_lv_style_id_t_LV_STYLE_PROP_INV as sys::lv_style_prop_t);
+}
+
+/// The properties a [`TransitionDsc`] animates, terminated automatically:
+/// `style_props![BG_COLOR, BORDER_WIDTH]`.
+#[macro_export]
+macro_rules! style_props {
+    ($($prop:ident),* $(,)?) => {
+        &[$($crate::StyleProp::$prop,)* $crate::StyleProp::END]
+    };
+}
+
+/// A simple gradient (`lv_grad_dsc_t`, the `bg_grad` style property):
+/// horizontal or vertical, between up to `LV_GRADIENT_MAX_STOPS` stops.
+#[repr(transparent)]
+pub struct GradDsc(sys::lv_grad_dsc_t);
+
+// SAFETY: never written: LVGL writes `state` only for linear, radial and
+// conical gradients (`lv_draw_sw_grad.c:275, 462, 537`), which `new` does
+// not make.
+unsafe impl Sync for GradDsc {}
+
+/// The direction of a [`GradDsc`].
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum GradDir {
+    Horizontal,
+    Vertical,
+}
+
+impl GradDsc {
+    /// A gradient through `stops` (color, opacity and position from 0 to
+    /// 255 each).
+    ///
+    /// # Panics
+    ///
+    /// Without stops or with more than `LV_GRADIENT_MAX_STOPS` (a compile
+    /// error in a `static`): LVGL reads `stops[stops_count - 1]`.
+    pub const fn new(dir: GradDir, stops: &[sys::lv_grad_stop_t]) -> Self {
+        assert!(
+            !stops.is_empty() && stops.len() <= sys::LV_GRADIENT_MAX_STOPS as usize,
+            "a gradient needs 1 to LV_GRADIENT_MAX_STOPS stops"
+        );
+        // SAFETY: all zeroes is a valid `lv_grad_dsc_t` (integers, null
+        // pointers, an empty union).
+        let mut grad: sys::lv_grad_dsc_t = unsafe { core::mem::zeroed() };
+        let mut i = 0;
+        while i < stops.len() {
+            grad.stops[i] = stops[i];
+            i += 1;
+        }
+        grad.stops_count = stops.len() as u8;
+        let dir = match dir {
+            GradDir::Horizontal => sys::lv_grad_dir_t_LV_GRAD_DIR_HOR,
+            GradDir::Vertical => sys::lv_grad_dir_t_LV_GRAD_DIR_VER,
+        };
+        // `dir : 4` then `extend : 3` (`lv_grad.h`); extend: pad (0).
+        grad._bitfield_1 = sys::__BindgenBitfieldUnit::new([dir as u8]);
+        Self(grad)
+    }
+
+    /// The gradient.
+    pub const fn as_ptr(&self) -> *const sys::lv_grad_dsc_t {
+        &self.0
+    }
+}
+
+/// How an animated value moves from start to end (LVGL's built-in paths).
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum AnimPath {
+    Linear,
+    EaseIn,
+    EaseOut,
+    EaseInOut,
+    Overshoot,
+    Bounce,
+    Step,
+}
+
+impl AnimPath {
+    const fn callback(self) -> sys::lv_anim_path_cb_t {
+        Some(match self {
+            AnimPath::Linear => sys::lv_anim_path_linear,
+            AnimPath::EaseIn => sys::lv_anim_path_ease_in,
+            AnimPath::EaseOut => sys::lv_anim_path_ease_out,
+            AnimPath::EaseInOut => sys::lv_anim_path_ease_in_out,
+            AnimPath::Overshoot => sys::lv_anim_path_overshoot,
+            AnimPath::Bounce => sys::lv_anim_path_bounce,
+            AnimPath::Step => sys::lv_anim_path_step,
+        })
+    }
+}
+
+/// A style transition (`lv_style_transition_dsc_t`, the `transition` style
+/// property): which properties animate when an object's state changes.
+#[repr(transparent)]
+pub struct TransitionDsc(sys::lv_style_transition_dsc_t);
+
+// SAFETY: never written; its property list is `'static`.
+unsafe impl Sync for TransitionDsc {}
+
+impl TransitionDsc {
+    /// Animates `props` (from [`style_props!`](crate::style_props)) along
+    /// `path` for `time_ms`, after `delay_ms`.
+    ///
+    /// # Panics
+    ///
+    /// If `props` does not end with [`StyleProp::END`], or contains it
+    /// earlier (a compile error in a `static`).
+    pub const fn new(
+        props: &'static [StyleProp],
+        path: AnimPath,
+        time_ms: u32,
+        delay_ms: u32,
+    ) -> Self {
+        let Some((last, props_before)) = props.split_last() else {
+            panic!("transition properties must end with StyleProp::END");
+        };
+        assert!(
+            last.0 == StyleProp::END.0,
+            "transition properties must end with StyleProp::END"
+        );
+        let mut i = 0;
+        while i < props_before.len() {
+            assert!(
+                props_before[i].0 != StyleProp::END.0,
+                "StyleProp::END hides the properties after it"
+            );
+            i += 1;
+        }
+        Self(sys::lv_style_transition_dsc_t {
+            props: props.as_ptr().cast(),
+            user_data: core::ptr::null_mut(),
+            path_xcb: path.callback(),
+            time: time_ms,
+            delay: delay_ms,
+        })
+    }
+
+    /// The transition.
+    pub const fn as_ptr(&self) -> *const sys::lv_style_transition_dsc_t {
+        &self.0
+    }
+}
+
+/// A color filter (`lv_color_filter_dsc_t`, the `color_filter_dsc` style
+/// property), applied to colors while drawing.
+#[repr(transparent)]
+pub struct ColorFilter(sys::lv_color_filter_dsc_t);
+
+// SAFETY: never written; its callback is a plain function.
+unsafe impl Sync for ColorFilter {}
+
+impl ColorFilter {
+    /// A filter calling `filter(dsc, color, opa)` for each color. It may run
+    /// on a draw thread.
+    pub const fn new(
+        filter: extern "C" fn(
+            *const sys::lv_color_filter_dsc_t,
+            sys::lv_color_t,
+            sys::lv_opa_t,
+        ) -> sys::lv_color_t,
+    ) -> Self {
+        Self(sys::lv_color_filter_dsc_t {
+            filter_cb: Some(filter),
+            user_data: core::ptr::null_mut(),
+        })
+    }
+
+    /// LVGL's shading filter (`lv_color_filter_shade`): darkens or lightens
+    /// by the filter opacity.
+    pub const fn shade() -> &'static ColorFilter {
+        // SAFETY: a constant of the C library; `ColorFilter` is a
+        // transparent wrapper.
+        unsafe { &*core::ptr::addr_of!(sys::lv_color_filter_shade).cast::<ColorFilter>() }
+    }
+
+    /// The filter.
+    pub const fn as_ptr(&self) -> *const sys::lv_color_filter_dsc_t {
+        &self.0
+    }
+}

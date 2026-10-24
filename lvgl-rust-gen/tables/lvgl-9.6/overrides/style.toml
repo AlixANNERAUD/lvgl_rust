@@ -1,0 +1,58 @@
+# Style properties that point to data: LVGL keeps the pointer in the style
+# and reads it while drawing, so the data is a `'static` crate type.
+
+[fn.lv_style_set_bg_image_src]
+params.value = { kind = "retained", rust = "ImageSrc" }
+why = "lv_style_set_bg_image_src stores the pointer in the style (lv_style_gen.c, .ptr = value); LVGL reads it while drawing, so it must stay valid."
+
+[fn.lv_obj_set_style_bg_image_src]
+params.value = { kind = "retained", rust = "ImageSrc" }
+why = "lv_style_set_bg_image_src stores the pointer in the style (lv_style_gen.c, .ptr = value); LVGL reads it while drawing, so it must stay valid."
+
+[fn.lv_style_set_arc_image_src]
+params.value = { kind = "retained", rust = "ImageSrc" }
+why = "stored in the style as .ptr (lv_style_gen.c) and read while drawing arcs."
+
+[fn.lv_obj_set_style_arc_image_src]
+params.value = { kind = "retained", rust = "ImageSrc" }
+why = "stored in the style as .ptr (lv_style_gen.c) and read while drawing arcs."
+
+[fn.lv_style_set_bitmap_mask_src]
+params.value = { kind = "retained", rust = "ImageSrc" }
+why = "stored in the style as .ptr (lv_style_gen.c) and read while drawing the mask."
+
+[fn.lv_obj_set_style_bitmap_mask_src]
+params.value = { kind = "retained", rust = "ImageSrc" }
+why = "stored in the style as .ptr (lv_style_gen.c) and read while drawing the mask."
+
+[fn.lv_style_set_image_colorkey]
+params.value = { kind = "retained", rust = "ImageColorkey" }
+why = "stored in the style as .ptr (lv_style_gen.c) and read while drawing images."
+
+[fn.lv_obj_set_style_image_colorkey]
+params.value = { kind = "retained", rust = "ImageColorkey" }
+why = "stored in the style as .ptr (lv_style_gen.c) and read while drawing images."
+
+[fn.lv_style_set_bg_grad]
+params.value = { kind = "retained", rust = "GradDsc" }
+why = "stored in the style as .ptr (lv_style_gen.c) and read while drawing; GradDsc makes only horizontal and vertical gradients, whose state LVGL never writes."
+
+[fn.lv_obj_set_style_bg_grad]
+params.value = { kind = "retained", rust = "GradDsc" }
+why = "stored in the style as .ptr (lv_style_gen.c) and read while drawing; GradDsc makes only horizontal and vertical gradients, whose state LVGL never writes."
+
+[fn.lv_style_set_transition]
+params.value = { kind = "retained", rust = "TransitionDsc" }
+why = "stored in the style as .ptr (lv_style_gen.c); lv_obj_style.c reads props up to LV_STYLE_PROP_INV and the path callback when a state changes."
+
+[fn.lv_obj_set_style_transition]
+params.value = { kind = "retained", rust = "TransitionDsc" }
+why = "stored in the style as .ptr (lv_style_gen.c); lv_obj_style.c reads props up to LV_STYLE_PROP_INV and the path callback when a state changes."
+
+[fn.lv_style_set_color_filter_dsc]
+params.value = { kind = "retained", rust = "ColorFilter" }
+why = "stored in the style as .ptr (lv_style_gen.c); the callback runs while drawing."
+
+[fn.lv_obj_set_style_color_filter_dsc]
+params.value = { kind = "retained", rust = "ColorFilter" }
+why = "stored in the style as .ptr (lv_style_gen.c); the callback runs while drawing."

@@ -133,7 +133,23 @@ pub struct ParamOverride {
     pub kind: ParamKind,
     #[serde(default)]
     pub len: Option<String>,
+    /// With `kind = "retained"`: the `lvgl-rust` type that guarantees what
+    /// LVGL expects of the data (`ImageSrc`, `ButtonMap`, ...).
+    #[serde(default)]
+    pub rust: Option<String>,
 }
+
+/// Types of `lvgl-rust` for retained parameters (`rust = "..."`), and
+/// whether they are passed by value (`true`) or as `&'static` (`false`).
+/// Each has a `const fn as_ptr`.
+pub const RETAINED_TYPES: &[(&str, bool)] = &[
+    ("ImageSrc", true),
+    ("ImageColorkey", false),
+    ("ButtonMap", false),
+    ("GradDsc", false),
+    ("TransitionDsc", false),
+    ("ColorFilter", false),
+];
 
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
@@ -336,6 +352,21 @@ impl Tables {
                     if !f.params.iter().any(|p| &p.name == param) {
                         diags.stale(format!("overrides: [fn.{name}] has no parameter `{param}`"));
                     }
+                }
+            }
+            for (param, o) in &entry.params {
+                match (&o.rust, o.kind) {
+                    (Some(rust), ParamKind::Retained) => {
+                        if !RETAINED_TYPES.iter().any(|(t, _)| t == rust) {
+                            diags.error(format!(
+                                "overrides: [fn.{name}] `{param}`: unknown rust type `{rust}`"
+                            ));
+                        }
+                    }
+                    (Some(_), kind) => diags.error(format!(
+                        "overrides: [fn.{name}] `{param}`: `rust` needs kind = \"retained\", not {kind:?}"
+                    )),
+                    (None, _) => {}
                 }
             }
             if let (Some(access), Some(table)) = (entry.access, self.access.functions.get(name))

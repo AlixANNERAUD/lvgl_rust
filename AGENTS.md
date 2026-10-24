@@ -272,6 +272,14 @@ cfgs mirror the `LV_USE_*` values for hand-written code.
   fonts may sit in flash. Each `lv_style_set_<p>` whose value fits a
   constant also gets a `props::<p>` constructor for `const_style!`, and
   each `lv_font_t` static of the bindings a `const` `Font` constructor.
+- Data LVGL keeps and reads later (image sources, button maps, gradients,
+  transitions, color filters, color keys) is mapped with
+  `kind = "retained", rust = "<Type>"` to a type of `lvgl-rust` that makes
+  it `'static` and checks its layout (terminators, sizes, first bytes):
+  `RETAINED_TYPES` in `tables.rs` lists them, each with a `const fn
+  as_ptr`. Data LVGL writes stays raw. Grid templates and scale labels are
+  raw on purpose: LVGL reads past them for some cell positions or tick
+  counts (`lv_grid.c:321-325`, `lv_scale.c:1849, 1988`).
 - A string getter that points into the object stays raw until an override
   says `returns = "borrowed_internal"` (after checking that the pointer is
   the object's own text, a literal or static text it was given, never

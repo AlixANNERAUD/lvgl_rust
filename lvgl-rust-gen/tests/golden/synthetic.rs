@@ -52,6 +52,25 @@ pub mod widgets {
     }
     unsafe impl crate::IsA<Bar> for Bar {}
     unsafe impl crate::IsA<crate::Obj> for Bar {}
+    /// A `image` widget (`lv_image_t`).
+    #[repr(transparent)]
+    pub struct Image(crate::Obj);
+    impl core::ops::Deref for Image {
+        type Target = crate::Obj;
+        #[inline]
+        fn deref(&self) -> &crate::Obj {
+            &self.0
+        }
+    }
+    unsafe impl crate::Widget for Image {
+        type Base = crate::Obj;
+        #[inline]
+        fn class() -> *const crate::sys::lv_obj_class_t {
+            core::ptr::addr_of!(crate ::sys::lv_image_class)
+        }
+    }
+    unsafe impl crate::IsA<Image> for Image {}
+    unsafe impl crate::IsA<crate::Obj> for Image {}
     /// A `label` widget (`lv_label_t`).
     #[repr(transparent)]
     pub struct Label(crate::Obj);
@@ -389,6 +408,14 @@ impl crate::ObjMut<'_, crate::widgets::Bar> {
         unsafe { crate::sys::lv_bar_select(self.as_raw(), sel_opt) }
     }
 }
+impl crate::ObjMut<'_, crate::widgets::Image> {
+    /// `lv_image_set_src`.
+    #[inline]
+    #[allow(clippy::unnecessary_cast, clippy::too_many_arguments)]
+    pub fn set_src(&mut self, src: crate::ImageSrc) {
+        unsafe { crate::sys::lv_image_set_src(self.as_raw(), src.as_ptr().cast()) }
+    }
+}
 impl crate::ObjMut<'_, crate::widgets::Label> {
     /// `lv_label_get_text`.
     #[inline]
@@ -482,6 +509,14 @@ impl crate::StyleMut<'_> {
     pub fn set_bg_color(&mut self, value: crate::sys::lv_color_t) {
         unsafe { crate::sys::lv_style_set_bg_color(self.as_raw(), value) }
     }
+    /// `lv_style_set_bg_image_src`.
+    #[inline]
+    #[allow(clippy::unnecessary_cast, clippy::too_many_arguments)]
+    pub fn set_bg_image_src(&mut self, value: crate::ImageSrc) {
+        unsafe {
+            crate::sys::lv_style_set_bg_image_src(self.as_raw(), value.as_ptr().cast())
+        }
+    }
     /// `lv_style_set_radius`.
     #[inline]
     #[allow(clippy::unnecessary_cast, clippy::too_many_arguments)]
@@ -494,6 +529,18 @@ impl crate::StyleMut<'_> {
     pub fn set_text_font(&mut self, value: &'static crate::Font) {
         unsafe { crate::sys::lv_style_set_text_font(self.as_raw(), value.as_ptr()) }
     }
+}
+#[allow(clippy::unnecessary_cast)]
+impl crate::StyleProp {
+    pub const BG_COLOR: Self = Self(
+        crate::sys::_lv_style_id_t_LV_STYLE_BG_COLOR as crate::sys::lv_style_prop_t,
+    );
+    pub const RADIUS: Self = Self(
+        crate::sys::_lv_style_id_t_LV_STYLE_RADIUS as crate::sys::lv_style_prop_t,
+    );
+    pub const TEXT_FONT: Self = Self(
+        crate::sys::_lv_style_id_t_LV_STYLE_TEXT_FONT as crate::sys::lv_style_prop_t,
+    );
 }
 impl crate::Font {
     /// `lv_font_montserrat_14`.

@@ -1,0 +1,207 @@
+//! Data LVGL keeps pointers to: images, button maps, gradients, transitions.
+
+use lvgl_rust::{
+    AnimPath, ButtonMap, ColorFilter, ConstStyle, Error, GradDir, GradDsc, ImageColorkey,
+    ImageData, ImageDsc, ImageSrc, Lvgl, LvglAccess, MapEntry, Obj, PixelFormat, Selector, Session,
+    Style, TransitionDsc, button_map, color, const_style,
+    enums::{ButtonmatrixCtrl, Part},
+    style_props, sys,
+    widgets::{ButtonMatrix, Image, ImageButton},
+};
+use std::sync::{
+    Mutex, MutexGuard,
+    atomic::{AtomicU32, Ordering},
+};
+
+static LOCK: Mutex<bool> = Mutex::new(false);
+
+struct Guard(MutexGuard<'static, bool>);
+
+// SAFETY: a guard of the mutex serializing every test's LVGL calls.
+unsafe impl LvglAccess for Guard {}
+
+fn guard() -> Guard {
+    Guard(LOCK.lock().unwrap_or_else(|p| p.into_inner()))
+}
+
+fn session(guard: &mut Guard) -> Session<'_> {
+    if !*guard.0 {
+        *guard.0 = true;
+        let lv = lvgl_rust::init(guard).unwrap();
+        // SAFETY: session held; the buffer is static and only LVGL uses it.
+        unsafe {
+            let display = sys::lv_display_create(240, 160);
+            sys::lv_display_set_flush_cb(display, Some(flush));
+            sys::lv_display_set_buffers(
+                display,
+                core::ptr::addr_of_mut!(BUFFER).cast(),
+                core::ptr::null_mut(),
+                core::mem::size_of::<Buffer>() as u32,
+                sys::lv_display_render_mode_t_LV_DISPLAY_RENDER_MODE_PARTIAL,
+            );
+        }
+        lv
+    } else {
+        Lvgl::enter(guard).unwrap()
+    }
+}
+
+/// A partial draw buffer: 20 lines of 32-bit pixels.
+#[repr(C, align(64))]
+struct Buffer([u8; 240 * 20 * 4]);
+static mut BUFFER: Buffer = Buffer([0; 240 * 20 * 4]);
+static FLUSHES: AtomicU32 = AtomicU32::new(0);
+
+unsafe extern "C" fn flush(display: *mut sys::lv_display_t, _: *const sys::lv_area_t, _: *mut u8) {
+    FLUSHES.fetch_add(1, Ordering::Relaxed);
+    // SAFETY: called by LVGL for this display.
+    unsafe { sys::lv_display_flush_ready(display) };
+}
+
+fn last(lv: &Lvgl) -> Option<&Obj> {
+    lv.screen_active()?.child(-1)
+}
+
+/// 3 × 2 RGB565 pixels, rows padded to 8 bytes.
+static PIXELS: ImageData<16> = ImageData([0xff; 16]);
+static PICTURE: ImageDsc = ImageDsc::new(PixelFormat::Rgb565, 3, 2, 8, &PIXELS);
+/// A 2-color palette (8 bytes) and 2 × 2 one-bit indexes (1 byte a row).
+static INDEXED_DATA: ImageData<10> = ImageData([0; 10]);
+static INDEXED: ImageDsc = ImageDsc::new(PixelFormat::I1, 2, 2, 0, &INDEXED_DATA);
+
+#[test]
+fn images_draw_constant_descriptors_and_checked_sources() {
+    let mut guard = guard();
+    let mut lv = session(&mut guard);
+    fn last_image(lv: &Lvgl) -> Option<&Image> {
+        last(lv)?.downcast()
+    }
+    for (dsc, size) in [(&PICTURE, (3, 2)), (&INDEXED, (2, 2))] {
+        Image::create(lv.screen_active().unwrap()).unwrap();
+        {
+            let mut image = lv.edit(last_image).unwrap();
+            image.set_src(ImageSrc::image(dsc));
+            assert_eq!((image.get_src_width(), image.get_src_height()), size);
+        }
+        let before = FLUSHES.load(Ordering::Relaxed);
+        // SAFETY: session held; renders the active screen.
+        unsafe { sys::lv_refr_now(core::ptr::null_mut()) };
+        assert!(FLUSHES.load(Ordering::Relaxed) > before);
+        lv.edit(last).unwrap().delete().unwrap();
+    }
+    // LVGL reads a source starting with 0x19 (or 0x00) as a descriptor.
+    assert_eq!(ImageSrc::path(c"\x19fake"), None);
+    assert_eq!(ImageSrc::path(c""), None);
+    assert!(ImageSrc::path(c"A:icon.bin").is_some());
+    assert_eq!(ImageSrc::symbol(c"plain"), None);
+    let ok = ImageSrc::symbol(c"\u{F00C}").unwrap();
+    ImageButton::create(lv.screen_active().unwrap()).unwrap();
+    {
+        fn last_button(lv: &Lvgl) -> Option<&ImageButton> {
+            last(lv)?.downcast()
+        }
+        let mut button = lv.edit(last_button).unwrap();
+        let released = lvgl_rust::enums::ImagebuttonState::RELEASED;
+        button.set_src(released, None, Some(PICTURE_SRC), None);
+        button.set_src_left(released, Some(ok));
+        button.delete().unwrap();
+    }
+}
+
+static PICTURE_SRC: ImageSrc = ImageSrc::image(&PICTURE);
+
+#[test]
+fn image_descriptors_check_their_data() {
+    static SHORT: ImageData<11> = ImageData([0; 11]);
+    let short = std::panic::catch_unwind(|| ImageDsc::new(PixelFormat::Rgb565, 3, 2, 0, &SHORT));
+    assert!(short.is_err(), "12 bytes needed");
+    let narrow = std::panic::catch_unwind(|| ImageDsc::new(PixelFormat::Rgb565, 3, 2, 5, &PIXELS));
+    assert!(narrow.is_err(), "a row is 6 bytes");
+    static NO_PALETTE: ImageData<2> = ImageData([0; 2]);
+    let indexed = std::panic::catch_unwind(|| ImageDsc::new(PixelFormat::I1, 2, 2, 0, &NO_PALETTE));
+    assert!(indexed.is_err(), "the palette comes first");
+}
+
+static KEYPAD: ButtonMap = button_map![c"1", c"2", c"\n", c"3"];
+
+#[test]
+fn button_maps_are_terminated_and_control_maps_cover_them() {
+    let mut guard = guard();
+    let mut lv = session(&mut guard);
+    assert_eq!(KEYPAD.button_count(), 3);
+    let matrix = ButtonMatrix::create(lv.screen_active().unwrap()).unwrap();
+    matrix.set_map(&KEYPAD);
+    let mut buf = [0u8; 4];
+    assert_eq!(matrix.get_button_text_into(2, &mut buf), Ok(Some(c"3")));
+    assert_eq!(matrix.get_button_text_into(3, &mut buf), Ok(None));
+    let ctrl = [ButtonmatrixCtrl::CHECKABLE; 3];
+    assert_eq!(matrix.set_ctrl_map(&ctrl[..2]), Err(Error::InvalidArg));
+    matrix.set_ctrl_map(&ctrl).unwrap();
+    assert!(matrix.has_button_ctrl(1, ButtonmatrixCtrl::CHECKABLE));
+    // An empty text before the end would hide the buttons after it.
+    let hidden = std::panic::catch_unwind(|| {
+        static ENTRIES: [MapEntry; 3] = [MapEntry::new(c"a"), MapEntry::new(c""), MapEntry::END];
+        ButtonMap::new(&ENTRIES)
+    });
+    assert!(hidden.is_err());
+    lv.edit(last).unwrap().delete().unwrap();
+}
+
+static GRADIENT: GradDsc = GradDsc::new(
+    GradDir::Vertical,
+    &[
+        sys::lv_grad_stop_t {
+            color: color::hex(0xff0000),
+            opa: 255,
+            frac: 0,
+        },
+        sys::lv_grad_stop_t {
+            color: color::hex(0x0000ff),
+            opa: 255,
+            frac: 255,
+        },
+    ],
+);
+static PRESS: TransitionDsc = TransitionDsc::new(
+    style_props![BG_COLOR, BORDER_WIDTH],
+    AnimPath::EaseOut,
+    200,
+    0,
+);
+static KEY: ImageColorkey = ImageColorkey::new(color::hex(0x00ff00), color::hex(0x00ff00));
+static FANCY: ConstStyle = const_style![
+    bg_grad(&GRADIENT),
+    transition(&PRESS),
+    image_colorkey(&KEY),
+    color_filter_dsc(ColorFilter::shade()),
+    bg_image_src(PICTURE_SRC),
+];
+static DYNAMIC: Style = Style::new();
+
+#[test]
+fn styles_point_to_static_data() {
+    let mut guard = guard();
+    let mut lv = session(&mut guard);
+    {
+        let mut style = lv.style(&DYNAMIC);
+        style.set_bg_grad(Some(&GRADIENT));
+        style.set_transition(Some(&PRESS));
+        style.set_color_filter_dsc(Some(ColorFilter::shade()));
+        style.set_bg_image_src(Some(PICTURE_SRC));
+    }
+    Obj::create(lv.screen_active().unwrap()).unwrap();
+    {
+        let mut object = lv.edit(last).unwrap();
+        object.add_style(&FANCY, Selector::DEFAULT);
+        object.add_style(&DYNAMIC, Part::MAIN);
+        object.set_style_bg_grad(Some(&GRADIENT), Selector::DEFAULT);
+        object.update_layout();
+    }
+    // Drawing reads them all.
+    let before = FLUSHES.load(Ordering::Relaxed);
+    // SAFETY: session held; renders the active screen.
+    unsafe { sys::lv_refr_now(core::ptr::null_mut()) };
+    assert!(FLUSHES.load(Ordering::Relaxed) > before);
+    lv.edit(last).unwrap().delete().unwrap();
+    lv.style(&DYNAMIC).reset();
+}

@@ -18,6 +18,10 @@ else stays reachable through `lvgl_rust::sys`.
   `.rodata`; a `Style` is a 12-byte static changed through
   `lv.style(&STYLE)`, which refreshes the objects using it. Styles and fonts
   are always `'static`, since LVGL keeps pointers to them.
+- **Constant data stays in flash.** Images (`ImageDsc` over aligned
+  `ImageData`, checked against their format and size), button maps
+  (`button_map![...]`), gradients and transitions are `const` and
+  `'static`, as LVGL keeps pointers to them.
 - **Small.** The handle registry is a static array of 8-byte slots on 32-bit
   targets (`LVGL_RUST_HANDLE_SLOTS`, default 32), plus a 24-byte header.
   `LVGL_RUST_HANDLE_SLOTS=0` keeps only views (8 bytes of state).
