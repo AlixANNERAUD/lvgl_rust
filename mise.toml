@@ -139,16 +139,20 @@ run = ["cargo clippy -p lvgl-rust --all-targets", "cargo test -p lvgl-rust"]
 
 [tasks.test-asan]
 description = "Test lvgl-rust with LVGL under AddressSanitizer (C library malloc, so freed objects are visible)"
+# Rust's sanitizer support (nightly) links LLVM's runtime; clang builds LVGL
+# against it. An explicit --target keeps build scripts uninstrumented.
+tools = { rust = { version = "nightly", components = "rust-src" } }
 env.DEP_LV_CONFIG_PATH = "{{config_root}}/target/asan-conf"
 env.CARGO_TARGET_DIR = "target/asan"
+env.CC = "clang"
 env.CFLAGS = "-fsanitize=address -fno-omit-frame-pointer"
-env.RUSTFLAGS = "-D warnings -C link-arg=-fsanitize=address -C link-arg=-lasan"
-# LVGL keeps global allocations until exit; libasan is linked after libc.
-env.ASAN_OPTIONS = "detect_leaks=0:verify_asan_link_order=0"
+env.RUSTFLAGS = "-Zsanitizer=address"
+# LVGL keeps global allocations until exit.
+env.ASAN_OPTIONS = "detect_leaks=0"
 run = [
   "mkdir -p target/asan-conf",
   "sed 's/^#define LV_USE_STDLIB_MALLOC .*/#define LV_USE_STDLIB_MALLOC LV_STDLIB_CLIB/' lvgl-rust/conf/lv_conf.h > target/asan-conf/lv_conf.h",
-  "cargo test -p lvgl-rust",
+  "cargo test -p lvgl-rust --target \"$(rustc -vV | sed -n 's/^host: //p')\"",
 ]
 
 [tasks.miri]
