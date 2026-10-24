@@ -77,6 +77,89 @@ raw = [
     "lv_tick_inc",
 ]
 
+# Widgets whose constructor creates no child and that keep no pointer to
+# their children: children are the application's.
+[composite.button]
+parts = []
+max_depth = 1
+
+[composite.label]
+parts = []
+max_depth = 1
+
+[composite.image]
+parts = []
+max_depth = 1
+
+[composite.switch]
+parts = []
+max_depth = 1
+
+[composite.bar]
+parts = []
+max_depth = 1
+
+[composite.arc]
+parts = []
+max_depth = 1
+
+[composite.led]
+parts = []
+max_depth = 1
+
+[composite.line]
+parts = []
+max_depth = 1
+
+[composite.checkbox]
+parts = []
+max_depth = 1
+
+[composite.canvas]
+parts = []
+max_depth = 1
+
+[composite.imagebutton]
+parts = []
+max_depth = 1
+
+[composite.scale]
+parts = []
+max_depth = 1
+
+[composite.chart]
+parts = []
+max_depth = 1
+
+[composite.buttonmatrix]
+parts = []
+max_depth = 1
+
+[composite.table]
+parts = []
+max_depth = 1
+
+[composite.spangroup]
+parts = []
+max_depth = 1
+
+[composite.dropdown]
+# The list lives on the screen and LVGL resets its pointer when the list is
+# deleted (lv_dropdown.c:790, 830): not a part.
+parts = []
+max_depth = 1
+
+[composite.list]
+# Items added by lv_list_add_* are the application's: the list keeps no
+# pointer to them.
+parts = []
+max_depth = 1
+
+[composite.win]
+# Found by child index (lv_win_get_header/content).
+parts = ["lv_win_get_header", "lv_win_get_content"]
+max_depth = 1
+
 [composite.msgbox]
 parts = ["lv_msgbox_get_header", "lv_msgbox_get_title", "lv_msgbox_get_footer", "lv_msgbox_get_content"]
 max_depth = 2
@@ -101,7 +184,10 @@ parts = [
 ]
 max_depth = 3
 
+# LVGL finds the bar and content by child index, the pages by child count
+# and the buttons and their labels by typed index (lv_tabview.c:114, 126-130,
+# 142, 186, 292, 306, 312).
 [composite.tabview]
 parts = ["lv_tabview_get_tab_bar", "lv_tabview_get_content"]
 max_depth = 3
-indexed = true
+indexed = { lv_tabview_get_tab_bar = 2, lv_tabview_get_content = 1 }

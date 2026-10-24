@@ -2,3 +2,99 @@
 
 [type.lv_state_t]
 flags = true
+
+[fn.lv_obj_calculate_style_text_align]
+params.txt = { kind = "copied_str" }
+why = "Only forwarded during the call: core/lv_obj_style.c:697 -> core/lv_obj_style_internal.h:36 -> lv_bidi_calculate_align_internal (misc/lv_bidi_private.h:102-122), which with LV_USE_BIDI 0 (lv_conf.h:986) ignores txt. Never stored. NULL returns LV_TEXT_ALIGN_AUTO through LV_CHECK_ARG at lv_obj_style.c:696, which stays compiled in (LV_USE_CHECK_ARG 1, lv_conf.h:2418)."
+
+[fn.lv_obj_get_child_by_type]
+params.idx = { kind = "checked" }
+why = "core/lv_obj_tree.c:345-360: idx is only a match counter. The loops are bounded by child_cnt (i < cnt / i >= 0), and children[i] is indexed only by i, so any idx returns NULL or a valid child."
+
+[fn.lv_obj_get_click_area]
+params.area = { kind = "out" }
+why = "core/lv_obj_pos.c:1225 fully assigns *area = obj->coords before lv_area_increase modifies it (1227). No earlier read, not kept."
+
+[fn.lv_obj_get_content_coords]
+params.area = { kind = "out" }
+why = "core/lv_obj_pos.c:637 calls lv_obj_get_coords, which fully writes *area (lv_obj_pos.c:533). Lines 638-641 then adjust fields that are already initialized. Not kept."
+
+[fn.lv_obj_get_coords]
+params.coords = { kind = "out" }
+why = "core/lv_obj_pos.c:533 only does *coords = obj->coords. Not kept."
+
+[fn.lv_obj_get_event_dsc]
+params.index = { kind = "checked" }
+why = "core/lv_obj_event.c:129 -> lv_event_get_dsc (misc/lv_event.c:224) -> event_array_at -> lv_array_at, which has an unconditional bounds check: misc/lv_array.c:287 'if(index >= array->size) return NULL;'. The NULL result is handled at lv_event.c:225."
+
+[fn.lv_obj_get_scroll_end]
+params.end = { kind = "out" }
+why = "core/lv_obj_scroll.c:283 and 286 only write end->x and end->y. No read, not kept."
+
+[fn.lv_obj_get_scrollbar_area]
+params.hor_area = { kind = "out" }
+why = "core/lv_obj_scroll.c:526 fully initializes it with lv_area_set (misc/lv_area.c:43-46) before any read. Later read-modify-writes happen only after that init. Not kept."
+
+[fn.lv_obj_get_sibling]
+params.idx = { kind = "checked" }
+why = "core/lv_obj_tree.c:370-373: a negative sum returns NULL, then lv_obj_get_child bounds-checks (lv_obj_tree.c:323-331: negative idx is rebased and checked, then 'if(idu < child_cnt)'). Caveat: index+idx can overflow int32 (signed UB), but lv_obj_get_child range-checks any resulting value."
+
+[fn.lv_obj_get_sibling_by_type]
+params.idx = { kind = "checked" }
+why = "core/lv_obj_tree.c:383-387: the sum goes to lv_obj_get_child_by_type, which uses it only as a counter with loops bounded by child_cnt (lv_obj_tree.c:345-360). No direct indexing by idx."
+
+[fn.lv_obj_hit_test]
+params.point = { kind = "copied" }
+why = "Read during the call only: core/lv_obj_pos.c:1240 lv_area_is_point_on. At 1244 it is passed via the stack-local hit_info to a synchronous LV_EVENT_HIT_TEST (1246) and is not retained after return."
+
+[fn.lv_obj_invalidate_area]
+params.area = { kind = "copied" }
+why = "core/lv_obj_pos.c:1367 copies *area into a local area_tmp (obj_invalidate_area_internal) before use. The has_blur path ignores it. NULL rejected by LV_CHECK_ARG at 1106 (compiled in)."
+
+[fn.lv_obj_move_to_index]
+params.index = { kind = "checked" }
+why = "core/lv_obj_tree.c:208-219: a negative index is rebased by child count, then a plain if returns when index < 0 or index >= parent_child_count, before any children[] access at 221-234."
+
+[fn.lv_area_align]
+params.base = { kind = "copied" }
+why = "misc/lv_area.c:341-350: base is only read (lv_area_get_width/height(base)) during the call, never stored."
+
+[fn.lv_area_copy]
+params.dest = { kind = "out" }
+why = "misc/lv_area.c:629 only does *dest = *src."
+
+[fn.lv_area_get_height]
+params.area_p = { kind = "copied" }
+why = "misc/lv_area.c:552 only reads y1/y2."
+
+[fn.lv_area_get_size]
+params.area_p = { kind = "copied" }
+why = "misc/lv_area.c:77 only reads the coordinates."
+
+[fn.lv_area_get_width]
+params.area_p = { kind = "copied" }
+why = "misc/lv_area.c:546 only reads x1/x2."
+
+[fn.lv_area_set]
+params.area_p = { kind = "out" }
+why = "misc/lv_area.c:43-46 writes all four fields and reads nothing."
+
+[fn.lv_point_from_precise]
+params.p = { kind = "copied" }
+why = "misc/lv_area.c:559-561 reads p->x/p->y by value only."
+
+[fn.lv_point_precise_set]
+params.p = { kind = "out" }
+why = "misc/lv_area.c:589-590 only writes p->x and p->y."
+
+[fn.lv_point_set]
+params.p = { kind = "out" }
+why = "misc/lv_area.c:582-583 only writes p->x and p->y."
+
+[fn.lv_point_to_precise]
+params.p = { kind = "copied" }
+why = "misc/lv_area.c:571-573 reads p->x/p->y by value only."
+
+[fn.lv_dpx]
+params.n = { kind = "checked" }
+why = "display/lv_display.c:1518 LV_DPX(n) is pure arithmetic (include/lvgl/display/lv_display.h:815-816) and never indexes memory. Very large n only gives a meaningless value (possible signed overflow in the arithmetic)."

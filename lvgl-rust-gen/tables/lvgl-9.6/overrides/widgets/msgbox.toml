@@ -1,0 +1,12 @@
+# Parameter kinds, each checked against the LVGL sources (file:line in `why`).
+[fn.lv_msgbox_add_footer_button]
+params.text = { kind = "copied_str" }
+why = "widgets/msgbox/lv_msgbox.c:242-246: `text` goes only to lv_label_set_text, which copies (widgets/label/lv_label.c:1077-1080). NULL is accepted: no label is created (`if(text)` at :242)."
+
+[fn.lv_msgbox_add_text]
+params.text = { kind = "copied_str" }
+why = "widgets/msgbox/lv_msgbox.c:200 passes `text` to lv_label_set_text, which copies (widgets/label/lv_label.c:1077-1080). NULL is rejected by LV_CHECK_ARG at :195."
+
+[fn.lv_msgbox_add_title]
+params.title = { kind = "copied_str" }
+why = "widgets/msgbox/lv_msgbox.c:162 passes `title` to lv_label_set_text, which copies (widgets/label/lv_label.c:1077-1080). NULL is accepted (label NULL path at lv_label.c:1049-1052)."

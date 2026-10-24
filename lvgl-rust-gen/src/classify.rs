@@ -65,6 +65,8 @@ pub enum ParamPlan {
         is_static: bool,
         nullable: bool,
     },
+    /// Filled by LVGL: returned instead of passed (`ty` is a Rust type).
+    Out { name: String, ty: String },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -182,6 +184,11 @@ impl<'a> Classifier<'a> {
         if entry.access == Access::Raw {
             return Plan::Raw(entry.why.clone().unwrap_or_else(|| "access.toml".into()));
         }
+        if self.tables.relations.functions.contains_key(name) {
+            // The object stays referenced after the call: wrapped once
+            // relations clear it when that object is deleted.
+            return Plan::Raw("stores another object (relations.toml)".into());
+        }
         let overrides = self.tables.overrides.functions.get(name);
         let nullable = |param: &str| header.is_some_and(|h| h.nullable.iter().any(|n| n == param));
 
@@ -228,6 +235,14 @@ impl<'a> Classifier<'a> {
             }
             (Access::Raw, _) => unreachable!(),
         };
+        if params
+            .iter()
+            .filter(|p| matches!(p, ParamPlan::Out { .. }))
+            .count()
+            > 1
+        {
+            return Plan::Raw("several out parameters (not generated yet)".into());
+        }
         if shape == Shape::Free && matches!(ret, RetPlan::View(_)) {
             return Plan::Raw("returns an object without a token".into());
         }
@@ -320,6 +335,20 @@ impl<'a> Classifier<'a> {
                     });
                 }
                 match kind {
+                    Some(ParamKind::Out) if *mutable => {
+                        let ty = if self.is_plain_struct(pointee_name) {
+                            format!("crate::sys::{pointee_name}")
+                        } else {
+                            match self.value("_", pointee)? {
+                                ParamPlan::Scalar { ty, .. } => ty,
+                                _ => return Err("out parameter of an unsupported type".into()),
+                            }
+                        };
+                        Ok(ParamPlan::Out {
+                            name: rust_name,
+                            ty,
+                        })
+                    }
                     Some(ParamKind::Copied) if !mutable && self.is_plain_struct(pointee_name) => {
                         Ok(ParamPlan::StructRef {
                             name: rust_name,
@@ -448,7 +477,8 @@ fn is_index(name: &str) -> bool {
         || name.ends_with("_id")
         || name == "row"
         || name == "col"
-        || name.starts_with("sel")
+        || name == "sel_opt"
+        || name.starts_with("sel_")
         || name == "i"
         || name == "n"
 }

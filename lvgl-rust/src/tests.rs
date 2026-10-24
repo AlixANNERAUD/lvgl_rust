@@ -618,11 +618,8 @@ mod lvgl_only {
             lv.screen_active()?.child(-2)?.child(0)
         }
         let other = Obj::create(lv_screen(&lv)).unwrap().handle().unwrap();
-        // Neither into the textarea, nor its label anywhere else.
-        assert_eq!(
-            other.get_mut(&mut lv).unwrap().set_parent(handle.upcast()),
-            Err(Error::Internal)
-        );
+        // The label cannot move; the textarea, which keeps its label by
+        // pointer, can take other children.
         assert_eq!(
             lv.edit(in_textarea).unwrap().set_parent(other),
             Err(Error::Internal)
@@ -631,6 +628,114 @@ mod lvgl_only {
         // The widget itself can go, with its parts.
         handle.get_mut(&mut lv).unwrap().delete().unwrap();
         other.get_mut(&mut lv).unwrap().delete().unwrap();
+    }
+
+    fn from_raw(lv: &Lvgl, p: *mut sys::lv_obj_t) -> &Obj {
+        // SAFETY: test helper for objects just created through `sys`.
+        unsafe { Obj::from_raw(lv, core::ptr::NonNull::new(p).unwrap()) }
+    }
+
+    #[test]
+    fn user_children_of_known_widgets_are_the_applications() {
+        use crate::widgets::{Button, Label};
+        let mut guard = guard();
+        let mut lv = session(&mut guard);
+        let button = Button::create(lv.screen_active().unwrap()).unwrap();
+        let text = Label::create(button).unwrap().own().unwrap();
+        let button = button.handle().unwrap();
+        // A label put in a button by the application can be moved back
+        // and deleted; the button can be cleaned.
+        let screen = lv.screen_active().unwrap().handle().unwrap();
+        text.get_mut(&mut lv).unwrap().set_parent(screen).unwrap();
+        text.get_mut(&mut lv)
+            .unwrap()
+            .set_parent(button.upcast())
+            .unwrap();
+        button.get_mut(&mut lv).unwrap().clean().unwrap();
+        assert_eq!(text.get(&lv).err(), Some(Error::Dead));
+        drop(text);
+        button.get_mut(&mut lv).unwrap().delete().unwrap();
+    }
+
+    #[test]
+    fn message_box_parts_are_protected_and_content_is_free() {
+        let mut guard = guard();
+        let mut lv = session(&mut guard);
+        let screen = lv.screen_active().unwrap();
+        // SAFETY: session held, live parent; the message box creates its
+        // content and, lazily, its header and title.
+        let (msgbox, content, title) = unsafe {
+            let mbox = sys::lv_msgbox_create(screen.as_ptr());
+            let title = sys::lv_msgbox_add_title(mbox, c"Title".as_ptr());
+            (mbox, sys::lv_msgbox_get_content(mbox), title)
+        };
+        let content = from_raw(&lv, content);
+        let user = Obj::create(content).unwrap().own().unwrap();
+        assert_eq!(content.own().err(), Some(Error::Internal));
+        assert_eq!(from_raw(&lv, title).delete_later(), Err(Error::Internal));
+        assert_eq!(from_raw(&lv, msgbox).clean_later(), Err(Error::Internal));
+        // The content's children are the application's.
+        content.clean_later().unwrap();
+        lv.timer_handler();
+        assert_eq!(user.get(&lv).err(), Some(Error::Dead));
+        drop(user);
+        let msgbox = from_raw(&lv, msgbox).handle().unwrap();
+        msgbox.get_mut(&mut lv).unwrap().delete().unwrap();
+    }
+
+    #[test]
+    fn tab_view_indexes_are_protected() {
+        let mut guard = guard();
+        let mut lv = session(&mut guard);
+        let screen = lv.screen_active().unwrap();
+        // SAFETY: session held, live parent.
+        let (tabview, page, bar, content) = unsafe {
+            let tv = sys::lv_tabview_create(screen.as_ptr());
+            let page = sys::lv_tabview_add_tab(tv, c"One".as_ptr());
+            (
+                tv,
+                page,
+                sys::lv_tabview_get_tab_bar(tv),
+                sys::lv_tabview_get_content(tv),
+            )
+        };
+        let page = from_raw(&lv, page);
+        let user = Obj::create(page).unwrap().handle().unwrap();
+        let bar = from_raw(&lv, bar);
+        let button = bar.child(0).unwrap();
+        let button_label = button.child(0).unwrap();
+        for part in [bar, from_raw(&lv, content), page, button, button_label] {
+            assert_eq!(part.delete_later(), Err(Error::Internal));
+        }
+        assert_eq!(bar.clean_later(), Err(Error::Internal));
+        assert_eq!(button.clean_later(), Err(Error::Internal));
+        // Nothing moves into the tab view, its bar or its content.
+        let content = from_raw(&lv, content).handle().unwrap();
+        let tabview = from_raw(&lv, tabview).handle().unwrap();
+        for target in [tabview, content] {
+            assert_eq!(
+                user.get_mut(&mut lv).unwrap().set_parent(target),
+                Err(Error::Internal)
+            );
+        }
+        // Page content is the application's.
+        user.get_mut(&mut lv).unwrap().delete().unwrap();
+        tabview.get_mut(&mut lv).unwrap().delete().unwrap();
+    }
+
+    #[test]
+    fn widgets_without_a_part_table_keep_their_children() {
+        let mut guard = guard();
+        let mut lv = session(&mut guard);
+        let screen = lv.screen_active().unwrap();
+        // SAFETY: session held; the calendar is not in the part tables.
+        let calendar = unsafe { sys::lv_calendar_create(screen.as_ptr()) };
+        let calendar = from_raw(&lv, calendar);
+        let inside = calendar.child(0).unwrap();
+        assert_eq!(inside.delete_later(), Err(Error::Internal));
+        assert_eq!(calendar.clean_later(), Err(Error::Internal));
+        let calendar = calendar.handle().unwrap();
+        calendar.get_mut(&mut lv).unwrap().delete().unwrap();
     }
 
     fn lv_screen(lv: &Lvgl) -> &Obj {

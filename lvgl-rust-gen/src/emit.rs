@@ -107,6 +107,7 @@ pub fn emit(classifier: &Classifier, plans: &BTreeMap<String, Plan>) -> String {
         }
     });
     let lvgl_impl = (!on_lvgl.is_empty()).then(|| quote! { impl crate::Lvgl { #(#on_lvgl)* } });
+    let composites = emit_composites(classifier);
 
     let file = quote! {
         /// Enum and flags types, with the values of these bindings.
@@ -127,6 +128,7 @@ pub fn emit(classifier: &Classifier, plans: &BTreeMap<String, Plan>) -> String {
         #(#class_impls)*
         #(#objmut_impls)*
         #lvgl_impl
+        #composites
     };
     let file: syn::File = syn::parse2(file).expect("generated code parses");
     format!(
@@ -306,7 +308,15 @@ fn emit_method(classifier: &Classifier, m: &Method) -> TokenStream {
         Shape::ObjMut { .. } => call_args.push(quote!(self.as_raw())),
         _ => {}
     }
+    let mut out = None;
     for p in &m.params {
+        if let ParamPlan::Out { name, ty } = p {
+            let n = Ident::new(name, Span::call_site());
+            let ty: syn::Type = syn::parse_str(ty).unwrap();
+            call_args.push(quote!(&mut #n));
+            out = Some((n, ty));
+            continue;
+        }
         let (arg, call) = emit_param(p);
         args.push(arg);
         call_args.push(call);
@@ -351,6 +361,27 @@ fn emit_method(classifier: &Classifier, m: &Method) -> TokenStream {
             )
         }
     };
+    // An out parameter is returned, after the C return value if any.
+    let (ret_ty, body) = match out {
+        None => (ret_ty, body),
+        Some((n, ty)) => {
+            let ret_ty = if ret_ty.is_empty() {
+                quote!(-> #ty)
+            } else {
+                let inner = strip_arrow(ret_ty);
+                quote!(-> (#inner, #ty))
+            };
+            let value = if matches!(m.ret, RetPlan::Unit) {
+                quote! { #body; #n }
+            } else {
+                quote! { let value = #body; (value, #n) }
+            };
+            (
+                ret_ty,
+                quote! { let mut #n: #ty = Default::default(); #value },
+            )
+        }
+    };
     // Safety of every call: the receiver (view, `ObjMut`, `Lvgl`) proves
     // the access the table assigns to the function, and each parameter is
     // mapped to a type that upholds what LVGL expects of it.
@@ -362,6 +393,11 @@ fn emit_method(classifier: &Classifier, m: &Method) -> TokenStream {
             #body
         }
     }
+}
+
+/// `T` from the tokens of `-> T`.
+fn strip_arrow(ret: TokenStream) -> TokenStream {
+    ret.into_iter().skip(2).collect()
 }
 
 fn emit_param(p: &ParamPlan) -> (TokenStream, TokenStream) {
@@ -428,6 +464,7 @@ fn emit_param(p: &ParamPlan) -> (TokenStream, TokenStream) {
                 (quote!(#n: #ty), quote!(#n.as_ptr()))
             }
         }
+        ParamPlan::Out { .. } => unreachable!("handled by emit_method"),
     }
 }
 
@@ -457,4 +494,98 @@ fn doc_attrs(text: &str) -> TokenStream {
         quote!(#[doc = #line])
     });
     quote!(#(#lines)*)
+}
+
+/// The composite widgets of `classes.toml` present in these bindings: the
+/// structural checks find their parts at call time.
+fn emit_composites(classifier: &Classifier) -> TokenStream {
+    let bindings = classifier.bindings;
+    let mut entries = Vec::new();
+    let mut leaves = Vec::new();
+    let mut functions = Vec::new();
+    let mut max_parts = 1usize;
+    for (class, composite) in &classifier.tables.classes.composite {
+        if !bindings.statics.contains(&format!("lv_{class}_class")) {
+            continue;
+        }
+        let mut parts = Vec::new();
+        let mut complete = true;
+        for part in &composite.parts {
+            let expr = if let Some(index) = part.strip_prefix("child:") {
+                let index: i32 = index.parse().unwrap();
+                quote!(crate::sys::lv_obj_get_child(o, #index))
+            } else if let Some(shim) = part.strip_prefix("shim:") {
+                let field = shim.split_once('.').map_or(shim, |(_, f)| f);
+                let constant = format!(
+                    "lvgl_sys_{class}_part_t_LVGL_SYS_{}_PART_{}",
+                    class.to_ascii_uppercase(),
+                    field.to_ascii_uppercase().replace("BTN", "BUTTON")
+                );
+                if !bindings.consts.contains_key(&constant) {
+                    complete = false;
+                    break;
+                }
+                let shim_fn = format_ident!("lvgl_sys_{}_part", class);
+                let constant = Ident::new(&constant, Span::call_site());
+                quote!(crate::sys::#shim_fn(o, crate::sys::#constant))
+            } else {
+                if !bindings.functions.contains_key(part) {
+                    complete = false;
+                    break;
+                }
+                let getter = Ident::new(part, Span::call_site());
+                quote!(crate::sys::#getter(o))
+            };
+            parts.push(expr);
+        }
+        if !complete {
+            continue; // a part getter is compiled out: treat the class as unknown
+        }
+        max_parts = max_parts.max(parts.len());
+        let class_static = format_ident!("lv_{}_class", class);
+        let count = parts.len();
+        // Widgets without parts only need their class.
+        if count == 0 {
+            leaves.push(quote!(crate::base::structural::ClassRef(
+                core::ptr::addr_of!(crate::sys::#class_static)
+            )));
+            continue;
+        }
+        let parts_fn = format_ident!("{}_parts", class);
+        {
+            let indices = 0..count;
+            functions.push(quote! {
+                fn #parts_fn(o: *mut crate::sys::lv_obj_t, out: &mut [*mut crate::sys::lv_obj_t; MAX_PARTS]) -> usize {
+                    // SAFETY: `o` is a live object of this class (checked by
+                    // the caller with `lv_obj_has_class`), under the token.
+                    unsafe { #( out[#indices] = #parts; )* }
+                    #count
+                }
+            });
+        }
+        let max_depth = composite.max_depth;
+        let indexed: Vec<u8> = composite
+            .parts
+            .iter()
+            .map(|p| composite.indexed.get(p).copied().unwrap_or(0))
+            .collect();
+        entries.push(quote! {
+            crate::base::structural::Composite {
+                class: core::ptr::addr_of!(crate::sys::#class_static),
+                max_depth: #max_depth,
+                indexed: &[#(#indexed),*],
+                parts: #parts_fn,
+            }
+        });
+    }
+    quote! {
+        /// Most parts of a composite widget.
+        pub(crate) const MAX_PARTS: usize = #max_parts;
+        /// Composite widgets: their internal parts (`classes.toml`).
+        pub(crate) static COMPOSITES: &[crate::base::structural::Composite] = &[#(#entries),*];
+        /// Widgets that create no child and keep no pointer to their
+        /// children.
+        pub(crate) static LEAVES: &[crate::base::structural::ClassRef] = &[#(#leaves),*];
+        #(#functions)*
+    }
 }

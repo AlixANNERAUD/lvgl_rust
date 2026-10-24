@@ -1,0 +1,4 @@
+# Parameter kinds, each checked against the LVGL sources (file:line in `why`).
+[fn.lv_image_get_pivot]
+params.pivot = { kind = "out" }
+why = "widgets/image/lv_image.c:533-534 only writes pivot->x and pivot->y from img fields, never reads them, and does not store the pointer. NULL is rejected by LV_CHECK_ARG at :529."

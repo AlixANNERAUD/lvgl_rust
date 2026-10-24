@@ -1,0 +1,8 @@
+# Parameter kinds, each checked against the LVGL sources (file:line in `why`).
+[fn.lv_tileview_add_tile]
+params.col_id = { kind = "checked" }
+why = "widgets/tileview/lv_tileview.c (lv_tileview_add_tile, line ~74): col_id is used only as a position, `lv_obj_set_pos(obj, lv_pct(col_id * 100), ...)`, and in a `col_id == 0` comparison. It never indexes memory (u8, so col_id*100 <= 25500, no overflow)."
+
+[fn.lv_tileview_set_tile_by_index]
+params.col_id = { kind = "checked" }
+why = "widgets/tileview/lv_tileview.c:114-126: col_id only computes a target x coordinate that is compared with existing children's positions, in a loop bounded by lv_obj_get_child_count. If nothing matches it only logs a warning (:128). The arithmetic is unsigned, so there is no UB."

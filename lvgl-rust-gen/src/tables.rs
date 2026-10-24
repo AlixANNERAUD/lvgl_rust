@@ -60,8 +60,10 @@ pub struct Composite {
     /// `lv_<widget>_get_<part>`, `child:<index>` or `shim:<widget>.<part>`.
     pub parts: Vec<String>,
     pub max_depth: u8,
+    /// Parts below which LVGL finds objects by index, with how many levels
+    /// it reaches (a tab view's bar: buttons and their labels, 2).
     #[serde(default)]
-    pub indexed: bool,
+    pub indexed: BTreeMap<String, u8>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -405,6 +407,13 @@ impl Tables {
                 } else if part.starts_with("lv_") && !known(part) {
                     diags.stale(format!(
                         "classes.toml: [composite.{class}] part {part} is unknown"
+                    ));
+                }
+            }
+            for part in composite.indexed.keys() {
+                if !composite.parts.contains(part) {
+                    diags.error(format!(
+                        "classes.toml: [composite.{class}] indexed part `{part}` is not in `parts`"
                     ));
                 }
             }

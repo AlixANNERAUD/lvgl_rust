@@ -234,3 +234,12 @@ pub(crate) unsafe fn display_layers(_: *mut lv_display_t) -> [*mut lv_obj_t; 3] 
 pub(crate) unsafe fn display_loading_screens(_: *mut lv_display_t) -> [*mut lv_obj_t; 2] {
     with_display(|d| [d.loading.cast(), d.prev.cast()])
 }
+
+/// The model has no LVGL widget classes.
+pub(crate) fn composites() -> &'static [super::structural::Composite] {
+    &[]
+}
+
+pub(crate) fn leaves() -> &'static [super::structural::ClassRef] {
+    &[]
+}

@@ -14,7 +14,7 @@ mod hook;
 mod objmut;
 pub(crate) mod registry;
 mod session;
-mod structural;
+pub(crate) mod structural;
 mod sync;
 mod view;
 

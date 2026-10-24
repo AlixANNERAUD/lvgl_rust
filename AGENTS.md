@@ -265,6 +265,19 @@ cfgs mirror the `LV_USE_*` values for hand-written code.
   the class.
 - `classes.toml` `crate_owned` functions can never be shared or exclusive;
   `manual` ones are wrapped by hand in `lvgl-rust/src/base/`.
+- `classes.toml` `[composite.<widget>]` tables drive the structural checks:
+  `parts` are the objects LVGL holds pointers to (getters, `child:N`,
+  `shim:`), `indexed` how many levels below a part LVGL finds objects by
+  index, and `parts = []` declares a widget whose children are all the
+  application's. Inside a widget class with no entry, nothing can be
+  deleted, owned, moved or cleaned. Add an entry only after reading the
+  widget's sources (constructor, cached pointers, `lv_obj_get_child` uses).
+- Pointer parameters stay raw, and index parameters (`idx`, `*_id`, `row`,
+  `sel_opt`, ...) too, until an override gives their kind with a `why`
+  citing the lines that copy, write or bounds-check them (a check under
+  `LV_USE_CHECK_ARG` or `LV_ASSERT` does not count: configurations turn
+  them off). Functions in `relations.toml` stay raw until relations are
+  supported.
 - Table errors always fail the build. Entries for functions missing from a
   build's bindings warn (they may be disabled by that `lv_conf.h`) unless
   `universe.txt` lists them; `LVGL_RUST_GEN_STRICT=1`, set for every mise
