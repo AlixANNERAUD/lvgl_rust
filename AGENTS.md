@@ -49,6 +49,7 @@ start at the repository root (`mise.toml`, `.github/`, `.cargo/`).
 | `lvgl-rust/src/base/ffi.rs` | Every LVGL call the core makes; `ffi_stub.rs` is its Rust model for Miri and loom. |
 | `lvgl-rust/conf/lv_conf.h` | Second vendored configuration, with the OBJ_ID hooks the registry needs. |
 | `lvgl-rust/build.rs` | Checks the `-sys` build (linked, OBJ_ID config) and writes `config.rs` (`LVGL_RUST_HANDLE_SLOTS`, `LVGL_RUST_MAX_CALLBACK_DEPTH`). |
+| `lvgl-rust/size-gate/` | Firmware and script (`gate.sh`) checking lvgl-rust's footprint on thumbv6m and riscv32imc. |
 | `lvgl-rust-gen/` | Generator library for the safe bindings. |
 | `mise.toml` (root) | Toolchain (Rust + mbx build cache) and tasks mirroring CI. |
 
@@ -160,7 +161,9 @@ cargo commands run in this checkout; an explicit value wins).
 against `lvgl-rust-sys/conf` (a `compile_error!` that says what to add). Test
 it in a separate cargo invocation with its own configuration and target
 directory, as its mise tasks do: `mise run clippy-safe`, `test-safe`,
-`test-views-only` (no handles, `-sys` configuration), `miri` and `loom`. Do
+`test-views-only` (no handles, `-sys` configuration), `test-asan` (LVGL under
+AddressSanitizer, with C library malloc so freed objects are visible),
+`miri`, `loom` and `size-gate`. Do
 not use `--workspace` for cargo commands that build `lvgl-rust`.
 
 What the suites cover:
@@ -185,6 +188,11 @@ What the suites cover:
   racing the drain (`--cfg loom`).
 - `lvgl-rust/tests/lifecycle.rs`: `init`, ticks, `deinit` (terminal, so in
   its own process).
+- `lvgl-rust/size-gate/gate.sh`: links firmware for thumbv6m and riscv32imc
+  (16 slots and views-only) and checks the crate's symbols: registry size and
+  `.bss` placement, no `.data`, no `core::fmt` or panic code, the OBJ_ID
+  hooks, and a code budget per target (set in the `size-gate` task). Raise a
+  budget only in the change that needs it, and say why.
 
 Rules for integration tests:
 
@@ -213,7 +221,8 @@ checks:
 - `cargo fmt --check` for the workspace, the example and the fixture;
 - clippy on `lvgl_rust_sys` (default, `--all-features`,
   `--no-default-features`) and `lvgl-rust-gen`;
-- `lvgl-rust`: clippy, tests, views-only mode, Miri and loom;
+- `lvgl-rust`: clippy, tests, views-only mode, ASan, Miri and loom, plus a
+  `wasm32-unknown-unknown` build and the size gate;
 - the full test suite with default features, plus library and build-config
   tests for `shadcn-theme`, `color_depth_32`, `color_depth_8` and without string
   functions;
@@ -276,7 +285,9 @@ set and the `lvgl-rust` clippy and tests.
   comes from `cc`, which honours `CC_<target>`/`CFLAGS_<target>`; give bindgen
   the same headers with `BINDGEN_EXTRA_CLANG_ARGS_<target>` (see the
   `cross-riscv32` task). Targets without a C library (`wasm*-unknown-unknown`)
-  get `shims/freestanding/` on every include path, for `inttypes.h`. CI builds
+  get `shims/freestanding/` on every include path, for `inttypes.h`. The
+  root `[env]` of `mise.toml` points `cc` and bindgen at the Debian/Ubuntu
+  riscv32 and arm-none-eabi toolchains. CI builds
   `wasm32-unknown-unknown` and `riscv32imc-unknown-none-elf` (the riscv C
   toolchain is declared in `[bootstrap.packages]` of `mise.toml`, installed
   with `mise bootstrap packages apply`); host builds do

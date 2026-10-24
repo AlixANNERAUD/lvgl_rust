@@ -58,24 +58,27 @@ pub(crate) unsafe extern "C" fn lv_obj_stringify_id(
             core::slice::from_raw_parts_mut(buf.cast::<u8>(), len as usize),
         )
     };
+    // Iterators only: no bounds check, no panic path.
     let mut digits = [0u8; 20];
     let mut count = 0;
-    loop {
-        digits[count] = b'0' + (id % 10) as u8;
+    for digit in digits.iter_mut() {
+        *digit = b'0' + (id % 10) as u8;
         count += 1;
         id /= 10;
-        if id == 0 || count == digits.len() {
+        if id == 0 {
             break;
         }
     }
-    let text = core::iter::once(b'#').chain(digits[..count].iter().rev().copied());
+    let text = core::iter::once(b'#').chain(digits.iter().take(count).rev().copied());
     let mut written = 0;
     let room = out.len() - 1;
-    for (dst, byte) in out[..room].iter_mut().zip(text) {
+    for (dst, byte) in out.iter_mut().take(room).zip(text) {
         *dst = byte;
         written += 1;
     }
-    out[written] = 0;
+    if let Some(end) = out.get_mut(written) {
+        *end = 0;
+    }
     buf
 }
 

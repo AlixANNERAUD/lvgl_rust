@@ -162,6 +162,14 @@ name = "lvgl-rust-gen"
 version = "0.1.0"
 
 [[package]]
+name = "lvgl-rust-size-gate"
+version = "0.0.0"
+dependencies = [
+ "cc",
+ "lvgl-rust",
+]
+
+[[package]]
 name = "lvgl_rust_sys"
 version = "0.1.0"
 dependencies = [

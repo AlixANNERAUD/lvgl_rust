@@ -93,7 +93,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        task: [clippy-safe, test-safe, test-views-only, miri, loom]
+        task: [clippy-safe, test-safe, test-views-only, test-asan, miri, loom]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -115,6 +115,8 @@ jobs:
             task: cross-wasm32
           - target: riscv32imc-unknown-none-elf
             task: cross-riscv32
+          - target: thumbv6m and riscv32imc firmware
+            task: size-gate
     steps:
       - uses: actions/checkout@v4
         with:

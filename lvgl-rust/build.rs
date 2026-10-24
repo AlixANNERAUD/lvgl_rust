@@ -31,6 +31,8 @@ fn main() {
     if slots == 0 {
         println!("cargo::rustc-cfg=lvgl_rust_views_only");
     }
+    // For dependents' build scripts: `DEP_LVGL_RUST_HANDLE_SLOTS`.
+    println!("cargo::metadata=HANDLE_SLOTS={slots}");
 
     // docs.rs builds `lvgl_rust_sys` with its own configuration (OBJ_ID off)
     // and links nothing: document the API, skip the checks.

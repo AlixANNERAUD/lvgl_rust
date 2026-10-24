@@ -7,13 +7,27 @@ min_version = "2026.9.2"
 # `targets` are the cross targets built in CI (`cross-*` tasks).
 # `mr_boxington` routes Cargo through mbx, a shared build cache: LVGL's C
 # objects and the build script output are restored instead of recompiled.
-rust = { version = "stable", components = "rustfmt,clippy", targets = "wasm32-unknown-unknown,riscv32imc-unknown-none-elf", mr_boxington = true }
+rust = { version = "stable", components = "rustfmt,clippy", targets = "wasm32-unknown-unknown,riscv32imc-unknown-none-elf,thumbv6m-none-eabi", mr_boxington = true }
 mr-boxington = "latest"
 
-# C toolchain for the riscv32imc cross build (`mise bootstrap packages apply`).
+# C toolchains for the embedded cross builds (`mise bootstrap packages apply`).
 [bootstrap.packages]
 "apt:gcc-riscv64-unknown-elf" = { os = "linux" }
 "apt:picolibc-riscv64-unknown-elf" = { os = "linux" }
+"apt:gcc-arm-none-eabi" = { os = "linux" }
+"apt:libnewlib-arm-none-eabi" = { os = "linux" }
+
+# How `cc` and bindgen find those toolchains (Debian/Ubuntu paths). Only
+# builds for these targets read them.
+[env]
+CC_riscv32imc_unknown_none_elf = "riscv64-unknown-elf-gcc"
+AR_riscv32imc_unknown_none_elf = "riscv64-unknown-elf-ar"
+CFLAGS_riscv32imc_unknown_none_elf = "-isystem /usr/lib/picolibc/riscv64-unknown-elf/include"
+BINDGEN_EXTRA_CLANG_ARGS_riscv32imc_unknown_none_elf = "-isystem /usr/lib/picolibc/riscv64-unknown-elf/include"
+CC_thumbv6m_none_eabi = "arm-none-eabi-gcc"
+AR_thumbv6m_none_eabi = "arm-none-eabi-ar"
+CFLAGS_thumbv6m_none_eabi = "-isystem /usr/include/newlib"
+BINDGEN_EXTRA_CLANG_ARGS_thumbv6m_none_eabi = "-isystem /usr/include/newlib"
 
 [tasks.submodules]
 description = "Check out the LVGL and shadcn theme submodules"
@@ -56,17 +70,28 @@ run = "cargo test -p lvgl_rust_sys -p lvgl-rust-gen"
 
 [tasks.cross-wasm32]
 env = { RUSTFLAGS = "-D warnings" }
-description = "Build lvgl_rust_sys for wasm32-unknown-unknown (no C library; needs clang)"
-run = "cargo build -p lvgl_rust_sys --target wasm32-unknown-unknown"
+description = "Build lvgl_rust_sys and lvgl-rust for wasm32-unknown-unknown (no C library; needs clang)"
+run = [
+  "cargo build -p lvgl_rust_sys --target wasm32-unknown-unknown",
+  "DEP_LV_CONFIG_PATH={{config_root}}/lvgl-rust/conf CARGO_TARGET_DIR=target/safe-wasm32 cargo build -p lvgl-rust --target wasm32-unknown-unknown",
+]
 
 [tasks.cross-riscv32]
 description = "Build lvgl_rust_sys for riscv32imc-unknown-none-elf (C toolchain from `mise bootstrap packages apply`)"
 env.RUSTFLAGS = "-D warnings"
-env.CC_riscv32imc_unknown_none_elf = "riscv64-unknown-elf-gcc"
-env.AR_riscv32imc_unknown_none_elf = "riscv64-unknown-elf-ar"
-env.CFLAGS_riscv32imc_unknown_none_elf = "-isystem /usr/lib/picolibc/riscv64-unknown-elf/include"
-env.BINDGEN_EXTRA_CLANG_ARGS_riscv32imc_unknown_none_elf = "-isystem /usr/lib/picolibc/riscv64-unknown-elf/include"
 run = "cargo build -p lvgl_rust_sys --target riscv32imc-unknown-none-elf"
+
+[tasks.size-gate]
+description = "Check lvgl-rust's footprint in thumbv6m and riscv32imc firmware (see lvgl-rust/size-gate/gate.sh)"
+env.RUSTFLAGS = "-D warnings"
+# Budgets: the crate's code in bytes, with N = 16 slots and in views-only
+# mode. Raise them only with the feature that needs it.
+run = [
+  "lvgl-rust/size-gate/gate.sh thumbv6m-none-eabi 16 3072",
+  "lvgl-rust/size-gate/gate.sh thumbv6m-none-eabi 0 1024",
+  "lvgl-rust/size-gate/gate.sh riscv32imc-unknown-none-elf 16 4096",
+  "lvgl-rust/size-gate/gate.sh riscv32imc-unknown-none-elf 0 1280",
+]
 
 [tasks.msrv]
 description = "Check the workspace with the minimum Rust version, on the host and the cross targets"
@@ -77,10 +102,6 @@ env.RUSTFLAGS = "-D warnings"
 # regular build.
 env.CARGO_TARGET_DIR = "target/msrv"
 env.DEP_LV_CONFIG_PATH = "{{config_root}}/lvgl-rust/conf"
-env.CC_riscv32imc_unknown_none_elf = "riscv64-unknown-elf-gcc"
-env.AR_riscv32imc_unknown_none_elf = "riscv64-unknown-elf-ar"
-env.CFLAGS_riscv32imc_unknown_none_elf = "-isystem /usr/lib/picolibc/riscv64-unknown-elf/include"
-env.BINDGEN_EXTRA_CLANG_ARGS_riscv32imc_unknown_none_elf = "-isystem /usr/lib/picolibc/riscv64-unknown-elf/include"
 run = [
   "rustc --version",
   "cargo check --workspace --all-targets",
@@ -96,7 +117,7 @@ description = "Run clippy on lvgl-rust"
 env.RUSTFLAGS = "-D warnings"
 env.DEP_LV_CONFIG_PATH = "{{config_root}}/lvgl-rust/conf"
 env.CARGO_TARGET_DIR = "target/safe"
-run = "cargo clippy -p lvgl-rust --all-targets"
+run = "cargo clippy -p lvgl-rust -p lvgl-rust-size-gate --all-targets"
 
 [tasks.test-safe]
 description = "Test lvgl-rust against LVGL"
@@ -112,6 +133,20 @@ env.LVGL_RUST_HANDLE_SLOTS = "0"
 env.DEP_LV_CONFIG_PATH = "{{config_root}}/lvgl-rust-sys/conf"
 env.CARGO_TARGET_DIR = "target/views-only"
 run = ["cargo clippy -p lvgl-rust --all-targets", "cargo test -p lvgl-rust"]
+
+[tasks.test-asan]
+description = "Test lvgl-rust with LVGL under AddressSanitizer (C library malloc, so freed objects are visible)"
+env.DEP_LV_CONFIG_PATH = "{{config_root}}/target/asan-conf"
+env.CARGO_TARGET_DIR = "target/asan"
+env.CFLAGS = "-fsanitize=address -fno-omit-frame-pointer"
+env.RUSTFLAGS = "-D warnings -C link-arg=-fsanitize=address -C link-arg=-lasan"
+# LVGL keeps global allocations until exit; libasan is linked after libc.
+env.ASAN_OPTIONS = "detect_leaks=0:verify_asan_link_order=0"
+run = [
+  "mkdir -p target/asan-conf",
+  "sed 's/^#define LV_USE_STDLIB_MALLOC .*/#define LV_USE_STDLIB_MALLOC LV_STDLIB_CLIB/' lvgl-rust/conf/lv_conf.h > target/asan-conf/lv_conf.h",
+  "cargo test -p lvgl-rust",
+]
 
 [tasks.miri]
 description = "Run the lvgl-rust core tests under Miri, against the Rust model of LVGL"
