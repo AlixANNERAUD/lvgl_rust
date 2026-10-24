@@ -237,8 +237,8 @@ set.
 
 ## Conventions
 
-- Rust 2024 edition, MSRV 1.89 (`rust-version` in the root `Cargo.toml`). Format with `cargo fmt`; match the
-  surrounding style and comment density.
+- Rust 2024 edition, MSRV 1.89 (`rust-version` in the root `Cargo.toml`).
+  Format with `cargo fmt`; match the surrounding style and comment density.
 - Commit messages follow `type: summary` (`build:`, `conf:`, `fix:`, `test:`,
   `docs:`, `ci:`, `feat:`), with a body explaining the why for anything
   non-trivial.
