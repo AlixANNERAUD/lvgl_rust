@@ -2,8 +2,11 @@
 
 Safe, `no_std` Rust bindings to [LVGL](https://lvgl.io) 9, on top of
 [`lvgl_rust_sys`](../lvgl-rust-sys). Work in progress: the core (sessions,
-views, handles, ownership, deferred deletion) is in place; widget wrappers
-will be generated from the bindings.
+views, handles, ownership, deferred deletion) is in place, and wrappers are
+generated at build time from your configuration's bindings and the reviewed
+tables of [`lvgl-rust-gen`](../lvgl-rust-gen). They cover the base object and
+a first set of widgets (button, label, bar, slider, switch) so far; anything
+else stays reachable through `lvgl_rust::sys`.
 
 - **No locking, no allocator.** Prove exclusive access with your own lock by
   implementing `LvglAccess` for its guard, then work through a `Session`.

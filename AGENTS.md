@@ -50,7 +50,9 @@ start at the repository root (`mise.toml`, `.github/`, `.cargo/`).
 | `lvgl-rust/conf/lv_conf.h` | Second vendored configuration, with the OBJ_ID hooks the registry needs. |
 | `lvgl-rust/build.rs` | Checks the `-sys` build (linked, OBJ_ID config) and writes `config.rs` (`LVGL_RUST_HANDLE_SLOTS`, `LVGL_RUST_MAX_CALLBACK_DEPTH`). |
 | `lvgl-rust/size-gate/` | Firmware and script (`gate.sh`) checking lvgl-rust's footprint on thumbv6m and riscv32imc. |
-| `lvgl-rust-gen/` | Generator library for the safe bindings. |
+| `lvgl-rust-gen/src/` | Generator: parses `bindings.rs` (`parse.rs`) and the headers (`headers.rs`), loads the tables (`tables.rs`), classifies every function (`classify.rs`) and emits `gen.rs` (`emit.rs`). |
+| `lvgl-rust-gen/tables/lvgl-9.6/` | Reviewed tables: `access.toml` (what is wrapped, shared or exclusive), `classes.toml` (hierarchy, names, crate-owned and hand-written functions, composite parts), `relations.toml`, `overrides/**/*.toml`, `universe.txt`. |
+| `lvgl-rust-gen/tests/golden/` | Expected generator output for the synthetic input of `tests/generate.rs`. |
 | `mise.toml` (root) | Toolchain (Rust + mbx build cache) and tasks mirroring CI. |
 
 ## Build model
@@ -243,6 +245,39 @@ RUSTFLAGS="-D warnings" cargo test -p lvgl_rust_sys --lib --test build_config
 
 or `mise run check`, which runs the same checks plus clippy for every feature
 set and the `lvgl-rust` clippy and tests.
+
+## Generated wrappers
+
+`lvgl-rust/build.rs` runs `lvgl-rust-gen` on the bindings of the current
+build (`DEP_LVGL_RUST_SYS_BINDINGS`) and writes `$OUT_DIR/gen.rs`, included
+as the `widgets`, `enums` and `functions` modules, plus `$OUT_DIR/coverage.txt`
+listing what happened to every bound function. Disabled widgets are simply
+absent from the bindings, so nothing is generated for them; `lv_use_<x>`
+cfgs mirror the `LV_USE_*` values for hand-written code.
+
+- **A function is wrapped only if `access.toml` lists it**, as `shared`
+  (view method), `exclusive` (`ObjMut` method, or `&mut Lvgl`), `pure`/`isr`
+  (free function) or `raw` (stays in `sys`). Decide `shared` versus
+  `exclusive` by reading what LVGL can reach from the call: anything that can
+  free or start deleting an object, shrink a children array or free memory
+  objects point to is `exclusive`. Write a `why` with source lines for every
+  `exclusive` and `raw` entry.
+- Pointer parameters are retained (raw) until `overrides/` classifies them
+  (`copied_str`, `static_str`, `copied`, ...). `@nullable` in the header gives
+  `Option`. Object returns are untyped (`&Obj`) unless an override certifies
+  the class.
+- `classes.toml` `crate_owned` functions can never be shared or exclusive;
+  `manual` ones are wrapped by hand in `lvgl-rust/src/base/`.
+- Table errors always fail the build. Entries for functions missing from a
+  build's bindings warn (they may be disabled by that `lv_conf.h`) unless
+  `universe.txt` lists them; `LVGL_RUST_GEN_STRICT=1`, set for every mise
+  task, turns those warnings into errors.
+- After changing the generator, rerun `UPDATE_GOLDEN=1 cargo test -p
+  lvgl-rust-gen` and review the diff of `tests/golden/`.
+- On an LVGL bump, add `tables/lvgl-<major>.<minor>/`: the generator refuses
+  bindings without matching tables. Regenerate `universe.txt` from the
+  bindings built with `lvgl-rust/conf` and recheck the hierarchy
+  (`.base_class` in the LVGL sources).
 
 ## Pitfalls
 

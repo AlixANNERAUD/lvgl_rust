@@ -1,7 +1,14 @@
-//! Checks that the `lvgl_rust_sys` build can host the safe layer and writes
-//! the build-time configuration (`$OUT_DIR/config.rs`).
+//! Checks that the `lvgl_rust_sys` build can host the safe layer, writes the
+//! build-time configuration (`$OUT_DIR/config.rs`) and generates the
+//! wrappers (`$OUT_DIR/gen.rs`, `$OUT_DIR/coverage.txt`) from this build's
+//! bindings.
 
-use std::{env, fmt::Write as _, fs, path::PathBuf};
+use std::{
+    env,
+    fmt::Write as _,
+    fs,
+    path::{Path, PathBuf},
+};
 
 const SLOTS_VAR: &str = "LVGL_RUST_HANDLE_SLOTS";
 const DEPTH_VAR: &str = "LVGL_RUST_MAX_CALLBACK_DEPTH";
@@ -65,14 +72,50 @@ fn main() {
         }
     }
 
+    let out = PathBuf::from(env::var("OUT_DIR").unwrap());
+    generate(&out);
+
     let mut config = String::new();
     writeln!(config, "pub(crate) const HANDLE_SLOTS: usize = {slots};").unwrap();
     writeln!(config, "pub(crate) const MAX_CALLBACK_DEPTH: u8 = {depth};").unwrap();
     for error in errors {
         writeln!(config, "compile_error!({error:?});").unwrap();
     }
-    let out = PathBuf::from(env::var("OUT_DIR").unwrap());
     fs::write(out.join("config.rs"), config).unwrap();
+}
+
+/// Runs `lvgl-rust-gen` on this build's bindings and headers.
+fn generate(out: &Path) {
+    let bindings = env_var("DEP_LVGL_RUST_SYS_BINDINGS")
+        .expect("lvgl_rust_sys did not export DEP_LVGL_RUST_SYS_BINDINGS");
+    // LVGL's public headers (`lvgl/include`) and the shims carry the docs.
+    let header_dirs = env_var("DEP_LVGL_RUST_SYS_INCLUDE_PATHS")
+        .unwrap_or_default()
+        .split(';')
+        .map(PathBuf::from)
+        .filter(|p| p.ends_with("include") || p.ends_with("shims"))
+        .collect();
+    let config = lvgl_rust_gen::Config {
+        bindings: PathBuf::from(bindings),
+        header_dirs,
+        tables_root: lvgl_rust_gen::tables_root(),
+        strict: env_var("LVGL_RUST_GEN_STRICT").is_some(),
+    };
+    let output = lvgl_rust_gen::generate(&config).unwrap_or_else(|error| panic!("{error}"));
+    for input in &output.inputs {
+        println!("cargo::rerun-if-changed={}", input.display());
+    }
+    for warning in &output.warnings {
+        println!("cargo::warning=lvgl-rust-gen: {warning}");
+    }
+    for (cfg, enabled) in &output.cfgs {
+        println!("cargo::rustc-check-cfg=cfg({cfg})");
+        if *enabled {
+            println!("cargo::rustc-cfg={cfg}");
+        }
+    }
+    fs::write(out.join("gen.rs"), &output.code).unwrap();
+    fs::write(out.join("coverage.txt"), &output.coverage).unwrap();
 }
 
 /// `LVGL_RUST_HANDLE_SLOTS`: rounded up to a power of two; `0` selects the

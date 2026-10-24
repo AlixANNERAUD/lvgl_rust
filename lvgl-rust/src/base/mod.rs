@@ -25,3 +25,8 @@ pub use session::{DepthGuard, Lvgl, LvglAccess, Session, init, tick_inc};
 #[cfg(not(lvgl_rust_views_only))]
 pub use view::WidgetExt;
 pub use view::{IsA, Obj, Widget};
+
+/// What the generated wrappers (`gen.rs`) use from the core.
+pub(crate) mod gen_support {
+    pub(crate) use super::view::{getter_view, ptr_of, view};
+}

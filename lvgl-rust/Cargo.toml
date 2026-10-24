@@ -28,6 +28,9 @@ color_depth_32 = ["lvgl_rust_sys/color_depth_32"]
 # The safe layer calls into the linked C library: `build-lvgl` is required.
 lvgl_rust_sys = { path = "../lvgl-rust-sys", default-features = false, features = ["build-lvgl"] }
 
+[build-dependencies]
+lvgl-rust-gen = { path = "../lvgl-rust-gen" }
+
 # Model checking of the cross-thread request protocol (`RUSTFLAGS="--cfg loom"`).
 [target.'cfg(loom)'.dependencies]
 loom = "0.7"

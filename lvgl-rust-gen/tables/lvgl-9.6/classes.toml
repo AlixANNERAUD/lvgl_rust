@@ -1,0 +1,107 @@
+# Widget classes (from `.base_class` in the LVGL sources) and crate rules.
+
+# Wrapped by hand in the core (structural operations, views of the tree).
+manual = [
+    "lv_obj_create",
+    "lv_obj_delete",
+    "lv_obj_clean",
+    "lv_obj_set_parent",
+    "lv_obj_get_parent",
+    "lv_obj_get_child",
+    "lv_obj_has_class",
+    "lv_obj_get_class",
+    "lv_screen_active",
+    "lv_screen_load",
+    "lv_screen_load_anim",
+    "lv_init",
+    "lv_deinit",
+    "lv_timer_handler",
+]
+
+# Base class of each widget whose base is not `obj`.
+[hierarchy]
+animimg = "image"
+barcode = "canvas"
+canvas = "image"
+ffmpeg_player = "image"
+gif = "image"
+gstreamer = "image"
+keyboard = "buttonmatrix"
+list_button = "button"
+list_text = "label"
+lottie = "canvas"
+qrcode = "canvas"
+rlottie = "image"
+slider = "bar"
+spinbox = "textarea"
+spinner = "arc"
+
+# Rust names of classes made of several words.
+[names]
+buttonmatrix = "ButtonMatrix"
+imagebutton = "ImageButton"
+list_button = "ListButton"
+list_text = "ListText"
+msgbox = "MsgBox"
+spangroup = "SpanGroup"
+tabview = "TabView"
+textarea = "TextArea"
+tileview = "TileView"
+ffmpeg_player = "FfmpegPlayer"
+
+[crate_owned]
+# The crate defines LVGL's OBJ_ID hooks.
+skip = [
+    "lv_obj_assign_id",
+    "lv_obj_free_id",
+    "lv_obj_set_id",
+    "lv_obj_id_compare",
+    "lv_obj_stringify_id",
+]
+# Would remove or replace what the crate installs, or write LVGL's
+# non-atomic clock.
+raw = [
+    "lv_obj_remove_event*",
+    "lv_timer_set_user_data",
+    "lv_timer_set_cb",
+    "lv_timer_set_auto_delete",
+    "lv_display_set_driver_data",
+    "lv_display_set_flush_cb",
+    "lv_display_set_flush_wait_cb",
+    "lv_indev_set_driver_data",
+    "lv_indev_set_read_cb",
+    "lv_anim_set_*_cb",
+    "lv_anim_set_user_data",
+    "*_set_external_data",
+    "lv_tick_set_cb",
+    "lv_tick_inc",
+]
+
+[composite.msgbox]
+parts = ["lv_msgbox_get_header", "lv_msgbox_get_title", "lv_msgbox_get_footer", "lv_msgbox_get_content"]
+max_depth = 2
+
+# spinbox inherits it.
+[composite.textarea]
+parts = ["lv_textarea_get_label"]
+max_depth = 1
+
+[composite.roller]
+parts = ["child:0"]
+max_depth = 1
+
+# Deprecated in 9.6: protects menu objects reached through views. The
+# sidebar accessors return NULL unless a sidebar is shown.
+[composite.menu]
+parts = [
+    "shim:menu.storage", "shim:menu.main", "shim:menu.main_header",
+    "shim:menu.main_header_back_btn", "shim:menu.main_header_title",
+    "shim:menu.sidebar", "shim:menu.sidebar_header",
+    "shim:menu.sidebar_header_back_btn", "shim:menu.sidebar_header_title",
+]
+max_depth = 3
+
+[composite.tabview]
+parts = ["lv_tabview_get_tab_bar", "lv_tabview_get_content"]
+max_depth = 3
+indexed = true

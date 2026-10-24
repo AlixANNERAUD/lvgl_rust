@@ -1,0 +1,195 @@
+# Access of every function lvgl-rust wraps: "pure" (no LVGL state, no
+# token), "isr" (no token, interrupt-safe), "shared" (cannot free objects:
+# `&Lvgl` or a view), "exclusive" (may free objects: `&mut Lvgl` or an
+# `ObjMut`) or "raw" (stays in `sys`). A function with no entry is not
+# wrapped.
+#
+# This is a hand-reviewed seed for the base object and five widgets. The
+# audit tool will produce and check the full table.
+
+# Base object: geometry. Size and position changes send SIZE_CHANGED and
+# style/layout events; no LVGL class handler deletes objects in response.
+[fn.lv_obj_set_pos]
+access = "shared"
+[fn.lv_obj_set_x]
+access = "shared"
+[fn.lv_obj_set_y]
+access = "shared"
+[fn.lv_obj_set_size]
+access = "shared"
+[fn.lv_obj_set_width]
+access = "shared"
+[fn.lv_obj_set_height]
+access = "shared"
+[fn.lv_obj_set_align]
+access = "shared"
+[fn.lv_obj_align]
+access = "shared"
+[fn.lv_obj_align_to]
+access = "shared"
+[fn.lv_obj_center]
+access = "shared"
+[fn.lv_obj_update_layout]
+access = "shared"
+[fn.lv_obj_get_x]
+access = "shared"
+[fn.lv_obj_get_y]
+access = "shared"
+[fn.lv_obj_get_width]
+access = "shared"
+[fn.lv_obj_get_height]
+access = "shared"
+[fn.lv_obj_get_content_width]
+access = "shared"
+[fn.lv_obj_get_content_height]
+access = "shared"
+
+# Base object: flags (per-flag setters; the generic lv_obj_add_flag family
+# is deprecated in 9.6) and states. Style refresh and events only.
+[fn.lv_obj_set_hidden]
+access = "shared"
+[fn.lv_obj_is_hidden]
+access = "shared"
+[fn.lv_obj_set_clickable]
+access = "shared"
+[fn.lv_obj_is_clickable]
+access = "shared"
+[fn.lv_obj_set_scrollable]
+access = "shared"
+[fn.lv_obj_is_scrollable]
+access = "shared"
+[fn.lv_obj_set_checkable]
+access = "shared"
+[fn.lv_obj_is_checkable]
+access = "shared"
+[fn.lv_obj_set_floating]
+access = "shared"
+[fn.lv_obj_is_floating]
+access = "shared"
+[fn.lv_obj_set_ignore_layout]
+access = "shared"
+[fn.lv_obj_is_ignore_layout]
+access = "shared"
+[fn.lv_obj_add_state]
+access = "shared"
+[fn.lv_obj_remove_state]
+access = "shared"
+[fn.lv_obj_set_state]
+access = "shared"
+[fn.lv_obj_has_state]
+access = "shared"
+[fn.lv_obj_get_state]
+access = "shared"
+
+# Base object: tree queries, refresh, scrolling.
+[fn.lv_obj_invalidate]
+access = "shared"
+[fn.lv_obj_is_visible]
+access = "shared"
+[fn.lv_obj_get_child_count]
+access = "shared"
+[fn.lv_obj_get_index]
+access = "shared"
+[fn.lv_obj_get_screen]
+access = "shared"
+[fn.lv_obj_scroll_to]
+access = "shared"
+[fn.lv_obj_get_scroll_x]
+access = "shared"
+[fn.lv_obj_get_scroll_y]
+access = "shared"
+[fn.lv_obj_set_scrollbar_mode]
+access = "shared"
+[fn.lv_obj_get_scrollbar_mode]
+access = "shared"
+
+# Button.
+[fn.lv_button_create]
+access = "shared"
+
+# Label: the text is copied (`lv_label_set_text`) or kept
+# (`lv_label_set_text_static`, `&'static CStr`).
+[fn.lv_label_create]
+access = "shared"
+[fn.lv_label_set_text]
+access = "shared"
+[fn.lv_label_set_text_static]
+access = "shared"
+[fn.lv_label_set_long_mode]
+access = "shared"
+[fn.lv_label_get_long_mode]
+access = "shared"
+
+# Bar.
+[fn.lv_bar_create]
+access = "shared"
+[fn.lv_bar_set_value]
+access = "shared"
+[fn.lv_bar_set_start_value]
+access = "shared"
+[fn.lv_bar_set_range]
+access = "shared"
+[fn.lv_bar_set_mode]
+access = "shared"
+[fn.lv_bar_get_value]
+access = "shared"
+[fn.lv_bar_get_start_value]
+access = "shared"
+[fn.lv_bar_get_min_value]
+access = "shared"
+[fn.lv_bar_get_max_value]
+access = "shared"
+[fn.lv_bar_get_mode]
+access = "shared"
+[fn.lv_bar_is_symmetrical]
+access = "shared"
+
+# Slider (a bar).
+[fn.lv_slider_create]
+access = "shared"
+[fn.lv_slider_set_value]
+access = "shared"
+[fn.lv_slider_set_start_value]
+access = "shared"
+[fn.lv_slider_set_range]
+access = "shared"
+[fn.lv_slider_set_mode]
+access = "shared"
+[fn.lv_slider_get_value]
+access = "shared"
+[fn.lv_slider_get_left_value]
+access = "shared"
+[fn.lv_slider_get_min_value]
+access = "shared"
+[fn.lv_slider_get_max_value]
+access = "shared"
+[fn.lv_slider_get_mode]
+access = "shared"
+[fn.lv_slider_is_dragged]
+access = "shared"
+
+# Switch.
+[fn.lv_switch_create]
+access = "shared"
+[fn.lv_switch_set_orientation]
+access = "shared"
+[fn.lv_switch_get_orientation]
+access = "shared"
+
+# Pure computations.
+[fn.lv_color_make]
+access = "pure"
+[fn.lv_color_hex]
+access = "pure"
+[fn.lv_color_mix]
+access = "pure"
+[fn.lv_pct]
+access = "pure"
+
+# Schedule deletions that run later without the structural checks.
+[fn.lv_obj_delete_async]
+access = "raw"
+why = "deletes later from lv_timer_handler without the structural checks (lv_obj_tree.c:142-147)"
+[fn.lv_obj_delete_delayed]
+access = "raw"
+why = "deletes later from the animation timer without the structural checks"

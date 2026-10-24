@@ -1,0 +1,3 @@
+[fn.lv_label_set_text]
+params.text = { kind = "copied_str" }
+why = "copied by lv_label_set_text (lv_label.c:1071-1078)"

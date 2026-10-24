@@ -28,6 +28,14 @@ mod base;
 mod error;
 mod screen;
 
+/// Wrappers generated from this build's bindings and the reviewed tables of
+/// `lvgl-rust-gen` (the list of what is wrapped is `$OUT_DIR/coverage.txt`).
+mod generated {
+    include!(concat!(env!("OUT_DIR"), "/gen.rs"));
+}
+
+pub use generated::{enums, functions, widgets};
+
 #[cfg(test)]
 mod tests;
 

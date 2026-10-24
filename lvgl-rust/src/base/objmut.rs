@@ -45,25 +45,26 @@ impl<W: Widget> ObjMut<'_, W> {
         }
     }
 
-    fn ptr(&self) -> *mut lv_obj_t {
+    /// The object (also used by generated exclusive wrappers).
+    pub(crate) fn as_raw(&self) -> *mut lv_obj_t {
         self.p.as_ptr()
     }
 
     /// A view of the object, for the shared API.
     pub fn view(&self) -> &W {
         // SAFETY: live while `self` holds exclusive access.
-        unsafe { view(self.ptr()) }
+        unsafe { view(self.as_raw()) }
     }
 
     /// Deletes the object and its children. Refuses display layers
     /// ([`Error::Internal`]) and screens LVGL is loading ([`Error::Busy`]).
     pub fn delete(self) -> Result<(), Error> {
-        structural::delete(self.ptr())
+        structural::delete(self.as_raw())
     }
 
     /// Deletes the children of the object.
     pub fn clean(&mut self) -> Result<(), Error> {
-        structural::clean(self.ptr())
+        structural::clean(self.as_raw())
     }
 
     /// Moves the object under `parent`. Refuses a cycle
@@ -71,7 +72,7 @@ impl<W: Widget> ObjMut<'_, W> {
     #[cfg(not(lvgl_rust_views_only))]
     pub fn set_parent(&mut self, parent: Handle<Obj>) -> Result<(), Error> {
         let parent = reg().resolve(parent.raw(), Kind::Obj, class_check::<Obj>())?;
-        structural::set_parent(self.ptr(), parent.as_ptr().cast())
+        structural::set_parent(self.as_raw(), parent.as_ptr().cast())
     }
 
     /// Moves the object under the parent chosen by `select`
@@ -84,13 +85,13 @@ impl<W: Widget> ObjMut<'_, W> {
         // selector borrows a shared part that ends before the call below.
         let lv = unsafe { &*NonNull::<Lvgl>::dangling().as_ptr() };
         let parent = select(lv).ok_or(Error::Dead)?.as_ptr();
-        structural::set_parent(self.ptr(), parent)
+        structural::set_parent(self.as_raw(), parent)
     }
 
     /// Loads the object as the active screen. It must have no parent
     /// ([`Error::InvalidArg`]).
     pub fn load_screen(self, anim: ScreenAnim) -> Result<(), Error> {
-        structural::load_screen(self.ptr(), anim)
+        structural::load_screen(self.as_raw(), anim)
     }
 }
 

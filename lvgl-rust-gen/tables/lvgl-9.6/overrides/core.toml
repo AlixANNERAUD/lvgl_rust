@@ -1,0 +1,4 @@
+# Types of the base object.
+
+[type.lv_state_t]
+flags = true
