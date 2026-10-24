@@ -6,8 +6,12 @@ rust-version.workspace = true
 description = "Safe, generated no_std Rust bindings to LVGL 9"
 license.workspace = true
 repository.workspace = true
+readme = "README.md"
 keywords = ["lvgl", "gui", "embedded", "no-std"]
 categories = ["embedded", "gui", "no-std"]
+# Only one copy may define LVGL's OBJ_ID hook symbols.
+links = "lvgl_rust"
+build = "build.rs"
 
 [features]
 default = ["use-string-functions"]
@@ -23,3 +27,10 @@ color_depth_32 = ["lvgl_rust_sys/color_depth_32"]
 [dependencies]
 # The safe layer calls into the linked C library: `build-lvgl` is required.
 lvgl_rust_sys = { path = "../lvgl-rust-sys", default-features = false, features = ["build-lvgl"] }
+
+# Model checking of the cross-thread request protocol (`RUSTFLAGS="--cfg loom"`).
+[target.'cfg(loom)'.dependencies]
+loom = "0.7"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(loom)"] }

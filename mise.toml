@@ -36,9 +36,9 @@ run = [
 
 [tasks.clippy]
 env = { RUSTFLAGS = "-D warnings" }
-description = "Run clippy on the workspace, and on lvgl_rust_sys with all and no default features"
+description = "Run clippy on lvgl_rust_sys (default, all and no default features) and lvgl-rust-gen"
 run = [
-  "cargo clippy --workspace --all-targets",
+  "cargo clippy -p lvgl_rust_sys -p lvgl-rust-gen --all-targets",
   "cargo clippy -p lvgl_rust_sys --all-targets --all-features",
   "cargo clippy -p lvgl_rust_sys --all-targets --no-default-features",
 ]
@@ -52,7 +52,7 @@ run = "cargo test -p lvgl_rust_sys --lib --test build_config"
 env = { RUSTFLAGS = "-D warnings" }
 description = "Full test suite, including the slow integration tests"
 depends = ["fetch"]
-run = "cargo test --workspace"
+run = "cargo test -p lvgl_rust_sys -p lvgl-rust-gen"
 
 [tasks.cross-wasm32]
 env = { RUSTFLAGS = "-D warnings" }
@@ -76,6 +76,7 @@ env.RUSTFLAGS = "-D warnings"
 # A separate target directory: another compiler version invalidates the
 # regular build.
 env.CARGO_TARGET_DIR = "target/msrv"
+env.DEP_LV_CONFIG_PATH = "{{config_root}}/lvgl-rust/conf"
 env.CC_riscv32imc_unknown_none_elf = "riscv64-unknown-elf-gcc"
 env.AR_riscv32imc_unknown_none_elf = "riscv64-unknown-elf-ar"
 env.CFLAGS_riscv32imc_unknown_none_elf = "-isystem /usr/lib/picolibc/riscv64-unknown-elf/include"
@@ -87,12 +88,64 @@ run = [
   "cargo check -p lvgl_rust_sys -p lvgl-rust --target riscv32imc-unknown-none-elf",
 ]
 
+# lvgl-rust builds lvgl_rust_sys with its own configuration (OBJ_ID hooks
+# enabled), so its tasks set `DEP_LV_CONFIG_PATH` and use their own target
+# directory instead of invalidating the lvgl_rust_sys build.
+[tasks.clippy-safe]
+description = "Run clippy on lvgl-rust"
+env.RUSTFLAGS = "-D warnings"
+env.DEP_LV_CONFIG_PATH = "{{config_root}}/lvgl-rust/conf"
+env.CARGO_TARGET_DIR = "target/safe"
+run = "cargo clippy -p lvgl-rust --all-targets"
+
+[tasks.test-safe]
+description = "Test lvgl-rust against LVGL"
+env.RUSTFLAGS = "-D warnings"
+env.DEP_LV_CONFIG_PATH = "{{config_root}}/lvgl-rust/conf"
+env.CARGO_TARGET_DIR = "target/safe"
+run = "cargo test -p lvgl-rust"
+
+[tasks.test-views-only]
+description = "Lint and test lvgl-rust without handles, on a config that keeps LVGL's own OBJ_ID support"
+env.RUSTFLAGS = "-D warnings"
+env.LVGL_RUST_HANDLE_SLOTS = "0"
+env.DEP_LV_CONFIG_PATH = "{{config_root}}/lvgl-rust-sys/conf"
+env.CARGO_TARGET_DIR = "target/views-only"
+run = ["cargo clippy -p lvgl-rust --all-targets", "cargo test -p lvgl-rust"]
+
+[tasks.miri]
+description = "Run the lvgl-rust core tests under Miri, against the Rust model of LVGL"
+tools = { rust = { version = "nightly", components = "miri,rust-src" } }
+env.DEP_LV_CONFIG_PATH = "{{config_root}}/lvgl-rust/conf"
+env.CARGO_TARGET_DIR = "target/miri"
+# The model passes C pointers through exposed provenance, as C code does.
+env.MIRIFLAGS = "-Zmiri-permissive-provenance"
+# Miri provides its own `strlen` & co.
+run = "cargo miri test -p lvgl-rust --lib --no-default-features"
+
+[tasks.loom]
+description = "Model-check the cross-thread request protocol of lvgl-rust with loom"
+env.RUSTFLAGS = "--cfg loom"
+env.LVGL_RUST_HANDLE_SLOTS = "4"
+env.DEP_LV_CONFIG_PATH = "{{config_root}}/lvgl-rust/conf"
+env.CARGO_TARGET_DIR = "target/loom"
+run = "cargo test -p lvgl-rust --lib --release protocol"
+
 [tasks.doc]
 description = "Build the documentation as docs.rs does"
 env = { DOCS_RS = "1", DEP_LV_CONFIG_PATH = "", RUSTDOCFLAGS = "-D warnings" }
-run = "cargo doc --no-deps -p lvgl_rust_sys --no-default-features"
+run = [
+  "cargo doc --no-deps -p lvgl_rust_sys --no-default-features",
+  "cargo doc --no-deps -p lvgl-rust",
+]
 
 [tasks.check]
 description = "Checks to run before pushing"
 # Sequential: concurrent builds in the same target directory race under mbx.
-run = [{ task = "fmt" }, { task = "clippy" }, { task = "test-fast" }]
+run = [
+  { task = "fmt" },
+  { task = "clippy" },
+  { task = "test-fast" },
+  { task = "clippy-safe" },
+  { task = "test-safe" },
+]

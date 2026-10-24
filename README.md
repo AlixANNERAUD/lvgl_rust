@@ -10,7 +10,7 @@ Linux, WebAssembly and desktop hosts.
 | Crate | Description |
 | --- | --- |
 | [`lvgl_rust_sys`](lvgl-rust-sys) | Raw `no_std` FFI bindings. Compiles LVGL from source for your `lv_conf.h`. |
-| [`lvgl-rust`](lvgl-rust) | Safe, `no_std` bindings on top of `lvgl_rust_sys` (in progress). |
+| [`lvgl-rust`](lvgl-rust) | Safe, `no_std` bindings on top of `lvgl_rust_sys` (in progress, see its [README](lvgl-rust/README.md)). |
 | [`lvgl-rust-gen`](lvgl-rust-gen) | Build-time generator used by `lvgl-rust` (in progress). |
 
 See [`lvgl-rust-sys/README.md`](lvgl-rust-sys/README.md) for usage, features and

@@ -1,0 +1,580 @@
+//! Tests of the core against the real LVGL, or against the Rust model of it
+//! (`base/ffi_stub.rs`) under Miri and loom. Every test holds the LVGL lock.
+
+extern crate std;
+
+use crate::*;
+use std::sync::{Mutex, MutexGuard};
+
+#[cfg(not(lvgl_rust_views_only))]
+use crate::base::registry::reg;
+
+static LOCK: Mutex<()> = Mutex::new(());
+
+struct Guard(#[allow(dead_code)] MutexGuard<'static, ()>);
+
+// SAFETY: a guard of the mutex serializing every test's LVGL calls.
+unsafe impl LvglAccess for Guard {}
+
+fn guard() -> Guard {
+    Guard(LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner()))
+}
+
+/// The first test initializes LVGL (and a display); the others enter.
+fn session(guard: &mut Guard) -> Session<'_> {
+    if crate::base::registry::reg()
+        .hdr
+        .init
+        .load(core::sync::atomic::Ordering::SeqCst)
+        == 0
+    {
+        let session = init(guard).unwrap();
+        platform::create_display();
+        session
+    } else {
+        Lvgl::enter(guard).unwrap()
+    }
+}
+
+#[cfg(not(any(miri, loom)))]
+mod platform {
+    use crate::sys;
+    use core::ptr;
+
+    const WIDTH: i32 = 64;
+    const HEIGHT: i32 = 64;
+    const BUF_BYTES: usize = (WIDTH * HEIGHT * 4) as usize / 4;
+    static mut BUF: [u8; BUF_BYTES] = [0; BUF_BYTES];
+
+    unsafe extern "C" fn flush(disp: *mut sys::lv_display_t, _: *const sys::lv_area_t, _: *mut u8) {
+        unsafe { sys::lv_display_flush_ready(disp) }
+    }
+
+    pub(super) fn create_display() {
+        // SAFETY: called once, with the test lock held.
+        unsafe {
+            let display = sys::lv_display_create(WIDTH, HEIGHT);
+            sys::lv_display_set_buffers(
+                display,
+                (&raw mut BUF).cast(),
+                ptr::null_mut(),
+                BUF_BYTES as u32,
+                sys::lv_display_render_mode_t_LV_DISPLAY_RENDER_MODE_PARTIAL,
+            );
+            sys::lv_display_set_flush_cb(display, Some(flush));
+        }
+    }
+
+    pub(super) fn top_layer() -> *mut sys::lv_obj_t {
+        // SAFETY: test lock held.
+        unsafe { sys::lv_layer_top() }
+    }
+}
+
+#[cfg(any(miri, loom))]
+mod platform {
+    use crate::base::ffi;
+
+    pub(super) fn create_display() {}
+
+    pub(super) fn top_layer() -> *mut ffi::lv_obj_t {
+        // SAFETY: test lock held.
+        unsafe { ffi::display_layers(core::ptr::null_mut())[1] }
+    }
+}
+
+/// Slots in use, to check that tests give back what they take.
+#[cfg(not(lvgl_rust_views_only))]
+fn used_slots() -> usize {
+    let reg = reg();
+    (0..reg.high_water_mark())
+        .filter(|&i| reg.slot(i).state() != 0)
+        .count()
+}
+
+fn top_layer(lv: &Lvgl) -> &Obj {
+    // SAFETY: the top layer lives as long as the display.
+    unsafe { Obj::from_raw(lv, core::ptr::NonNull::new(platform::top_layer()).unwrap()) }
+}
+
+#[test]
+fn views_reach_children_and_parents() {
+    let mut guard = guard();
+    let mut lv = session(&mut guard);
+    let screen = lv.screen_active().unwrap();
+    let parent = Obj::create(screen).unwrap();
+    let child = Obj::create(parent).unwrap();
+    assert_eq!(parent.child(0).unwrap().as_ptr(), child.as_ptr());
+    assert_eq!(child.parent().unwrap().as_ptr(), parent.as_ptr());
+    assert!(parent.child(1).is_none());
+    let parent = parent.as_ptr();
+    lv.edit(|lv| lv.screen_active().and_then(|s| s.child(-1)))
+        .filter(|o| o.view().as_ptr() == parent)
+        .unwrap()
+        .delete()
+        .unwrap();
+}
+
+#[test]
+fn reentry_is_refused() {
+    struct Other;
+    // SAFETY: only used while the test lock is held.
+    unsafe impl LvglAccess for Other {}
+
+    let mut guard = guard();
+    let lv = session(&mut guard);
+    assert_eq!(init(&mut Other).err(), Some(Error::Reentrant));
+    assert_eq!(Lvgl::enter(&mut Other).err(), Some(Error::Reentrant));
+    drop(lv);
+}
+
+#[test]
+fn callback_depth_is_bounded_and_blocks_sessions() {
+    struct Other;
+    // SAFETY: only used while the test lock is held.
+    unsafe impl LvglAccess for Other {}
+
+    let mut guard = guard();
+    drop(session(&mut guard));
+    let mut levels = std::vec::Vec::new();
+    // SAFETY: test-only nesting, no LVGL call made through the guards.
+    while let Some(level) = unsafe { Lvgl::enter_callback() } {
+        levels.push(level);
+    }
+    assert_eq!(levels.len(), crate::config::MAX_CALLBACK_DEPTH as usize);
+    assert_eq!(Lvgl::enter(&mut Other).err(), Some(Error::Reentrant));
+    drop(levels);
+    drop(Lvgl::enter(&mut Other).unwrap());
+}
+
+#[test]
+fn layers_cannot_be_deleted() {
+    let mut guard = guard();
+    let mut lv = session(&mut guard);
+    let layer = top_layer(&lv).as_ptr();
+    let error = lv
+        .edit(|lv| Some(top_layer(lv)))
+        .unwrap()
+        .delete()
+        .unwrap_err();
+    assert_eq!(error, Error::Internal);
+    assert_eq!(top_layer(&lv).as_ptr(), layer);
+}
+
+#[test]
+fn reparenting_refuses_cycles() {
+    let mut guard = guard();
+    let mut lv = session(&mut guard);
+    let screen = lv.screen_active().unwrap();
+    let parent = Obj::create(screen).unwrap().as_ptr();
+    fn select_parent(lv: &Lvgl) -> Option<&Obj> {
+        lv.screen_active()?.child(-1)
+    }
+    {
+        let mut edit = lv.edit(select_parent).unwrap();
+        assert_eq!(edit.view().as_ptr(), parent);
+        // The object itself, then its child.
+        assert_eq!(edit.set_parent_to(select_parent), Err(Error::InvalidArg));
+    }
+    Obj::create(lv.screen_active().unwrap().child(-1).unwrap()).unwrap();
+    let mut edit = lv.edit(select_parent).unwrap();
+    assert_eq!(
+        edit.set_parent_to(|lv: &Lvgl| select_parent(lv)?.child(0)),
+        Err(Error::InvalidArg)
+    );
+    edit.delete().unwrap();
+}
+
+#[test]
+fn only_parentless_objects_load_as_screens() {
+    let mut guard = guard();
+    let mut lv = session(&mut guard);
+    Obj::create(lv.screen_active().unwrap()).unwrap();
+    let edit = lv.edit(|lv| lv.screen_active()?.child(-1)).unwrap();
+    assert_eq!(edit.load_screen(ScreenAnim::NONE), Err(Error::InvalidArg));
+    lv.edit(|lv| lv.screen_active()?.child(-1))
+        .unwrap()
+        .delete()
+        .unwrap();
+}
+
+#[cfg(not(lvgl_rust_views_only))]
+mod handles {
+    use super::*;
+
+    #[test]
+    fn handles_are_deduplicated_and_die_with_their_object() {
+        let mut guard = guard();
+        let mut lv = session(&mut guard);
+        let before = used_slots();
+        let object = Obj::create(lv.screen_active().unwrap()).unwrap();
+        let first = object.handle().unwrap();
+        assert_eq!(object.handle().unwrap(), first);
+        assert_eq!(used_slots(), before + 1);
+        first.get_mut(&mut lv).unwrap().delete().unwrap();
+        assert_eq!(first.get(&lv).err(), Some(Error::Dead));
+        assert_eq!(used_slots(), before);
+    }
+
+    #[test]
+    fn deleting_a_parent_kills_the_handles_of_its_children() {
+        let mut guard = guard();
+        let mut lv = session(&mut guard);
+        let before = used_slots();
+        let parent = Obj::create_owned(lv.screen_active().unwrap()).unwrap();
+        let child = Obj::create(parent.get(&lv).unwrap())
+            .unwrap()
+            .handle()
+            .unwrap();
+        let grandchild = Obj::create(child.get(&lv).unwrap()).unwrap().own().unwrap();
+        parent.delete(&mut lv).unwrap();
+        assert_eq!(child.get(&lv).err(), Some(Error::Dead));
+        assert_eq!(grandchild.get(&lv).err(), Some(Error::Dead));
+        // The owned grandchild's slot waits for its `Owned`.
+        assert_eq!(used_slots(), before + 1);
+        drop(grandchild);
+        drop(lv);
+        let lv = session(&mut guard);
+        assert_eq!(used_slots(), before);
+        drop(lv);
+    }
+
+    #[test]
+    fn dropped_owned_objects_are_deleted_at_the_next_drain() {
+        let mut guard = guard();
+        let mut lv = session(&mut guard);
+        let before = used_slots();
+        let owned = Obj::create_owned(lv.screen_active().unwrap()).unwrap();
+        let handle = owned.handle();
+        let object = owned.get(&lv).unwrap().as_ptr();
+        drop(owned);
+        // Already unreachable through handles, deleted by the drain.
+        assert_eq!(handle.get(&lv).err(), Some(Error::Dead));
+        assert_eq!(
+            lv.screen_active().unwrap().child(-1).unwrap().as_ptr(),
+            object
+        );
+        lv.timer_handler();
+        assert!(
+            lv.screen_active()
+                .unwrap()
+                .child(-1)
+                .is_none_or(|last| last.as_ptr() != object)
+        );
+        assert_eq!(used_slots(), before);
+    }
+
+    #[test]
+    fn owned_objects_can_be_dropped_on_another_thread() {
+        let mut guard = guard();
+        let lv = session(&mut guard);
+        let before = used_slots();
+        let owned = Obj::create_owned(lv.screen_active().unwrap()).unwrap();
+        let handle = owned.handle();
+        drop(lv);
+        std::thread::spawn(move || drop(owned)).join().unwrap();
+        let lv = session(&mut guard);
+        assert_eq!(handle.get(&lv).err(), Some(Error::Dead));
+        assert_eq!(used_slots(), before);
+        drop(lv);
+    }
+
+    #[test]
+    fn objects_have_at_most_one_owner() {
+        let mut guard = guard();
+        let mut lv = session(&mut guard);
+        let owned = Obj::create_owned(lv.screen_active().unwrap()).unwrap();
+        assert_eq!(
+            owned.get(&lv).unwrap().own().err(),
+            Some(Error::AlreadyOwned)
+        );
+        assert_eq!(top_layer(&lv).own().err(), Some(Error::Internal));
+        owned.delete(&mut lv).unwrap();
+    }
+
+    #[test]
+    fn delete_later_runs_at_the_drain_and_releases_its_slot() {
+        let mut guard = guard();
+        let mut lv = session(&mut guard);
+        let before = used_slots();
+        let object = Obj::create(lv.screen_active().unwrap()).unwrap();
+        let ptr = object.as_ptr();
+        object.delete_later().unwrap();
+        assert_eq!(used_slots(), before + 1);
+        assert_eq!(top_layer(&lv).delete_later(), Err(Error::Internal));
+        lv.timer_handler();
+        assert!(
+            lv.screen_active()
+                .unwrap()
+                .child(-1)
+                .is_none_or(|last| last.as_ptr() != ptr)
+        );
+        assert_eq!(used_slots(), before);
+    }
+
+    #[test]
+    fn clean_later_keeps_the_object_and_releases_its_slot() {
+        let mut guard = guard();
+        let mut lv = session(&mut guard);
+        let before = used_slots();
+        let owned = Obj::create_owned(lv.screen_active().unwrap()).unwrap();
+        let parent = owned.get(&lv).unwrap();
+        Obj::create(parent).unwrap();
+        let child = Obj::create(parent).unwrap().handle().unwrap();
+        parent.clean_later().unwrap();
+        lv.timer_handler();
+        let parent = owned.get(&lv).unwrap();
+        assert!(parent.child(0).is_none());
+        assert_eq!(child.get(&lv).err(), Some(Error::Dead));
+        assert_eq!(used_slots(), before + 1);
+        owned.delete(&mut lv).unwrap();
+        assert_eq!(used_slots(), before);
+    }
+
+    #[test]
+    fn delete_later_on_an_owned_object_pins_the_slot_until_the_drop() {
+        let mut guard = guard();
+        let mut lv = session(&mut guard);
+        let before = used_slots();
+        let owned = Obj::create_owned(lv.screen_active().unwrap()).unwrap();
+        owned.get(&lv).unwrap().delete_later().unwrap();
+        lv.timer_handler();
+        assert_eq!(owned.get(&lv).err(), Some(Error::Dead));
+        // Other slots come and go meanwhile.
+        let other = Obj::create(lv.screen_active().unwrap())
+            .unwrap()
+            .handle()
+            .unwrap();
+        other.get_mut(&mut lv).unwrap().delete().unwrap();
+        assert_eq!(used_slots(), before + 1);
+        drop(owned);
+        lv.timer_handler();
+        assert_eq!(used_slots(), before);
+    }
+
+    #[test]
+    fn stale_handles_stay_dead_when_their_slot_is_reused() {
+        let mut guard = guard();
+        let mut lv = session(&mut guard);
+        let screen = lv.screen_active().unwrap();
+        let stale = Obj::create(screen).unwrap().handle().unwrap();
+        stale.get_mut(&mut lv).unwrap().delete().unwrap();
+        // Take every free slot, so the stale handle's slot is reused.
+        let mut handles = std::vec::Vec::new();
+        while let Ok(handle) = Obj::create(lv.screen_active().unwrap()).unwrap().handle() {
+            handles.push(handle);
+        }
+        assert_eq!(stale.get(&lv).err(), Some(Error::Dead));
+        assert!(handles.iter().all(|h| h.get(&lv).is_ok()));
+        // The object created by the failed iteration has no handle.
+        lv.edit(|lv| lv.screen_active()?.child(-1))
+            .unwrap()
+            .delete()
+            .unwrap();
+        for handle in handles {
+            handle.get_mut(&mut lv).unwrap().delete().unwrap();
+        }
+    }
+
+    #[test]
+    fn handles_downcast_and_upcast_through_the_same_slot() {
+        let mut guard = guard();
+        let mut lv = session(&mut guard);
+        let handle = Obj::create(lv.screen_active().unwrap())
+            .unwrap()
+            .handle()
+            .unwrap();
+        let same: Handle<Obj> = handle.downcast::<Obj>(&lv).unwrap().upcast();
+        assert_eq!(same, handle);
+        handle.get_mut(&mut lv).unwrap().delete().unwrap();
+        assert!(handle.downcast::<Obj>(&lv).is_none());
+    }
+
+    #[test]
+    fn handle_cells_store_optional_handles() {
+        static CELL: HandleCell<Obj> = HandleCell::new();
+        let mut guard = guard();
+        let mut lv = session(&mut guard);
+        assert_eq!(CELL.get(), None);
+        let handle = Obj::create(lv.screen_active().unwrap())
+            .unwrap()
+            .handle()
+            .unwrap();
+        CELL.set(Some(handle));
+        assert_eq!(CELL.get(), Some(handle));
+        CELL.get()
+            .unwrap()
+            .get_mut(&mut lv)
+            .unwrap()
+            .delete()
+            .unwrap();
+        CELL.set(None);
+        assert_eq!(CELL.get(), None);
+    }
+
+    #[test]
+    fn untracking_an_object_through_set_id_kills_its_handles() {
+        let mut guard = guard();
+        let mut lv = session(&mut guard);
+        let before = used_slots();
+        let object = Obj::create(lv.screen_active().unwrap()).unwrap();
+        let handle = object.handle().unwrap();
+        // SAFETY: live object; NULL is the only id the hook accepts.
+        unsafe { crate::sys::lv_obj_set_id(object.as_ptr(), core::ptr::null_mut()) };
+        assert_eq!(handle.get(&lv).err(), Some(Error::Dead));
+        assert_eq!(used_slots(), before);
+        lv.edit(|lv| lv.screen_active()?.child(-1))
+            .unwrap()
+            .delete()
+            .unwrap();
+    }
+
+    #[test]
+    fn load_screen_later_keeps_the_last_request_and_skips_dead_screens() {
+        let mut guard = guard();
+        let mut lv = session(&mut guard);
+        let original = lv.screen_active().unwrap().handle().unwrap();
+        let first = lv.create_screen().unwrap();
+        let second = lv.create_screen().unwrap();
+        lv.load_screen_later(first.handle(), ScreenAnim::NONE)
+            .unwrap();
+        lv.load_screen_later(second.handle(), ScreenAnim::NONE)
+            .unwrap();
+        lv.timer_handler();
+        assert_eq!(
+            lv.screen_active().unwrap().as_ptr(),
+            second.get(&lv).unwrap().as_ptr()
+        );
+        lv.load_screen_later(first.handle(), ScreenAnim::NONE)
+            .unwrap();
+        first.delete(&mut lv).unwrap();
+        lv.timer_handler();
+        assert_eq!(
+            lv.screen_active().unwrap().as_ptr(),
+            second.get(&lv).unwrap().as_ptr()
+        );
+        lv.load_screen(original, ScreenAnim::NONE).unwrap();
+        second.delete(&mut lv).unwrap();
+    }
+}
+
+/// Cases the real LVGL cannot set up deterministically: a screen held by an
+/// animated load, objects of an unrelated class.
+#[cfg(all(any(miri, loom), not(lvgl_rust_views_only)))]
+mod model {
+    use super::*;
+    use crate::base::ffi;
+
+    #[test]
+    fn loading_screens_are_deleted_once_released() {
+        let mut guard = guard();
+        let mut lv = session(&mut guard);
+        let before = used_slots();
+        let screen = lv.create_screen().unwrap();
+        let handle = screen.handle();
+        let p = screen.get(&lv).unwrap().as_ptr();
+        ffi::set_loading_screens(p, core::ptr::null_mut());
+        assert_eq!(handle.get_mut(&mut lv).unwrap().delete(), Err(Error::Busy));
+        // `Owned::delete` keeps the request pending across drains.
+        assert_eq!(screen.delete(&mut lv), Err(Error::Busy));
+        lv.timer_handler();
+        assert_eq!(used_slots(), before + 1);
+        ffi::set_loading_screens(core::ptr::null_mut(), core::ptr::null_mut());
+        lv.timer_handler();
+        assert_eq!(used_slots(), before);
+    }
+
+    #[test]
+    fn handles_check_the_class_of_their_object() {
+        struct Other(Obj);
+        // SAFETY: test widget over the stub's second class.
+        unsafe impl Widget for Other {
+            type Base = Obj;
+            fn class() -> *const ffi::lv_obj_class_t {
+                ffi::other_class()
+            }
+        }
+        // SAFETY: as above.
+        unsafe impl IsA<Obj> for Other {}
+
+        let mut guard = guard();
+        let mut lv = session(&mut guard);
+        let plain = Obj::create(lv.screen_active().unwrap()).unwrap();
+        assert!(plain.downcast::<Other>().is_none());
+        let plain = plain.handle().unwrap();
+        assert!(plain.downcast::<Other>(&lv).is_none());
+        // SAFETY: test lock held, live parent.
+        let other = unsafe { ffi::obj_create_other(lv.screen_active().unwrap().as_ptr()) };
+        let other = unsafe { Obj::from_raw(&lv, core::ptr::NonNull::new(other).unwrap()) };
+        let typed = other.downcast::<Other>().unwrap().handle().unwrap();
+        assert_eq!(typed.upcast::<Obj>().downcast::<Other>(&lv), Some(typed));
+        typed.get_mut(&mut lv).unwrap().delete().unwrap();
+        plain.get_mut(&mut lv).unwrap().delete().unwrap();
+    }
+}
+
+/// `Owned::drop` on another thread against the drain: no lost request, no
+/// slot freed twice, never the wrong object deleted.
+#[cfg(all(loom, not(lvgl_rust_views_only)))]
+mod protocol {
+    use super::*;
+    use crate::base::drain::drain;
+
+    /// Every slot handed out by the free list is distinct.
+    fn assert_free_list_consistent() {
+        let mut guard = guard();
+        let lv = session(&mut guard);
+        let mut handles = std::vec::Vec::new();
+        while let Ok(handle) = Obj::create(lv.screen_active().unwrap()).unwrap().handle() {
+            assert!(!handles.contains(&handle));
+            handles.push(handle);
+        }
+        drop(lv);
+    }
+
+    #[test]
+    fn dropped_owned_objects_are_deleted_exactly_once() {
+        loom::model(|| {
+            let mut guard = guard();
+            let lv = session(&mut guard);
+            let owned = Obj::create_owned(lv.screen_active().unwrap()).unwrap();
+            let bystander = Obj::create(lv.screen_active().unwrap())
+                .unwrap()
+                .handle()
+                .unwrap();
+            let thread = loom::thread::spawn(move || drop(owned));
+            drain();
+            thread.join().unwrap();
+            drain();
+            assert_eq!(used_slots(), 1);
+            assert!(bystander.get(&lv).is_ok());
+            drop(lv);
+            drop(guard);
+            assert_free_list_consistent();
+        });
+    }
+
+    #[test]
+    fn a_drop_racing_a_pending_delete_frees_the_slot_once() {
+        loom::model(|| {
+            let mut guard = guard();
+            let lv = session(&mut guard);
+            let owned = Obj::create_owned(lv.screen_active().unwrap()).unwrap();
+            owned.get(&lv).unwrap().delete_later().unwrap();
+            let reused = Obj::create(lv.screen_active().unwrap())
+                .unwrap()
+                .handle()
+                .unwrap();
+            let thread = loom::thread::spawn(move || drop(owned));
+            drain();
+            reused.get(&lv).unwrap();
+            thread.join().unwrap();
+            drain();
+            assert_eq!(used_slots(), 1);
+            assert!(reused.get(&lv).is_ok());
+            drop(lv);
+            drop(guard);
+            assert_free_list_consistent();
+        });
+    }
+}

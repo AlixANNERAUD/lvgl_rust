@@ -45,7 +45,10 @@ start at the repository root (`mise.toml`, `.github/`, `.cargo/`).
 | `lvgl-rust-sys/tests/` | Unit tests for `build/config.rs` and integration tests driving nested `cargo` builds. |
 | `lvgl-rust-sys/tests/common/mod.rs` | Shared helpers for the integration tests. |
 | `lvgl-rust-sys/tests/fixtures/font_incremental/` | Package used by the incremental rebuild test. |
-| `lvgl-rust/` | Safe bindings crate. |
+| `lvgl-rust/src/base/` | Safe core: session and token (`session.rs`), handle registry (`registry.rs`), OBJ_ID hooks (`hook.rs`), deferred requests (`drain.rs`), structural checks (`structural.rs`), views and handles. |
+| `lvgl-rust/src/base/ffi.rs` | Every LVGL call the core makes; `ffi_stub.rs` is its Rust model for Miri and loom. |
+| `lvgl-rust/conf/lv_conf.h` | Second vendored configuration, with the OBJ_ID hooks the registry needs. |
+| `lvgl-rust/build.rs` | Checks the `-sys` build (linked, OBJ_ID config) and writes `config.rs` (`LVGL_RUST_HANDLE_SLOTS`, `LVGL_RUST_MAX_CALLBACK_DEPTH`). |
 | `lvgl-rust-gen/` | Generator library for the safe bindings. |
 | `mise.toml` (root) | Toolchain (Rust + mbx build cache) and tasks mirroring CI. |
 
@@ -119,7 +122,10 @@ building: compiling old sources against the 9.6 `lv_conf.h` fails.
      the `color_depth_*` features can override it;
    - `LV_USE_ASSERT_NULL` and `LV_USE_ASSERT_MALLOC` set to `1`.
 
-   Verify with `diff lvgl/lv_conf_template.h conf/lv_conf.h`.
+   Verify with `diff lvgl/lv_conf_template.h conf/lv_conf.h`. Then derive
+   `lvgl-rust/conf/lv_conf.h` from it; the two differ only by
+   `LV_USE_OBJ_ID 1` and `LV_USE_OBJ_ID_BUILTIN 0` (check with
+   `diff lvgl-rust-sys/conf/lv_conf.h lvgl-rust/conf/lv_conf.h`).
 3. Build and look for new LVGL deprecation warnings (`#warning ... is
    deprecated`). The build is expected to be warning-free with `conf/`.
 4. Check the shims in `shims/` and the shadcn theme still compile, then run
@@ -134,7 +140,7 @@ git submodule update --init --recursive
 # Nested builds run offline; their packages have their own lockfile.
 cargo fetch --manifest-path lvgl-rust-sys/examples/external-fonts/Cargo.toml
 cargo fetch --manifest-path lvgl-rust-sys/tests/fixtures/font_incremental/Cargo.toml
-cargo test --workspace                                     # full suite, a few minutes
+cargo test -p lvgl_rust_sys -p lvgl-rust-gen               # full suite, a few minutes
 cargo test -p lvgl_rust_sys --lib --test build_config      # fast loop, seconds
 cargo test -p lvgl_rust_sys --lib --features shadcn-theme,color_depth_32
 ```
@@ -150,6 +156,13 @@ says why something was rebuilt. Keep `mise.toml` tasks and CI in sync.
 `.cargo/config.toml` (only for
 cargo commands run in this checkout; an explicit value wins).
 
+`lvgl-rust` needs a configuration with the OBJ_ID hooks: it fails to build
+against `lvgl-rust-sys/conf` (a `compile_error!` that says what to add). Test
+it in a separate cargo invocation with its own configuration and target
+directory, as its mise tasks do: `mise run clippy-safe`, `test-safe`,
+`test-views-only` (no handles, `-sys` configuration), `miri` and `loom`. Do
+not use `--workspace` for cargo commands that build `lvgl-rust`.
+
 What the suites cover:
 
 - `src/lib.rs` tests: LVGL initialization, color shims, the configured color
@@ -163,6 +176,15 @@ What the suites cover:
   with a nested `cargo --offline` through `tests/common::cargo()`, then inspect
   `bindings.rs`, `liblvgl.a`, binaries (`nm`, `objdump`) or Cargo's
   `Fresh`/`Compiling` lines. Each compiles LVGL, so they are slow.
+
+- `lvgl-rust/src/tests.rs`: the core (sessions, handles, ownership, deferred
+  requests, structural checks). The same tests run against LVGL and, under
+  Miri, against `ffi_stub.rs`; keep the stub's behaviour in line with LVGL's
+  for every function `ffi.rs` exposes. Tests hold the `LOCK` guard.
+- `lvgl-rust/src/tests.rs` `protocol` module: loom models of `Owned::drop`
+  racing the drain (`--cfg loom`).
+- `lvgl-rust/tests/lifecycle.rs`: `init`, ticks, `deinit` (terminal, so in
+  its own process).
 
 Rules for integration tests:
 
@@ -189,8 +211,9 @@ Caches are saved only on pushes to `main`; pull requests restore them. It
 checks:
 
 - `cargo fmt --check` for the workspace, the example and the fixture;
-- clippy on the workspace, and on `lvgl_rust_sys` with `--all-features` and
-  `--no-default-features`;
+- clippy on `lvgl_rust_sys` (default, `--all-features`,
+  `--no-default-features`) and `lvgl-rust-gen`;
+- `lvgl-rust`: clippy, tests, views-only mode, Miri and loom;
 - the full test suite with default features, plus library and build-config
   tests for `shadcn-theme`, `color_depth_32`, `color_depth_8` and without string
   functions;
@@ -204,16 +227,29 @@ Before pushing, run at least:
 
 ```sh
 cargo fmt --all --check
-RUSTFLAGS="-D warnings" cargo clippy --workspace --all-targets
+RUSTFLAGS="-D warnings" cargo clippy -p lvgl_rust_sys -p lvgl-rust-gen --all-targets
 RUSTFLAGS="-D warnings" cargo clippy -p lvgl_rust_sys --all-targets --all-features
 RUSTFLAGS="-D warnings" cargo test -p lvgl_rust_sys --lib --test build_config
 ```
 
 or `mise run check`, which runs the same checks plus clippy for every feature
-set.
+set and the `lvgl-rust` clippy and tests.
 
 ## Pitfalls
 
+- **Shared versus exclusive in `lvgl-rust`.** A view (`&Obj`) borrows
+  `&Lvgl`; any call that may free an object, start deleting one, shrink a
+  children array or free memory LVGL objects point to must take `&mut Lvgl`
+  or an `ObjMut`, never `&self` on a view. Deletions requested from shared
+  code go through the registry (`delete_later`, `Owned::drop`) and run in the
+  drain.
+- **Registry atomics.** No read-modify-write anywhere (thumbv6m and
+  riscv32imc have no compare-and-swap): code without a token only stores
+  `req`, `any_req` and `ticks`. `Registry::request_drop` and `drain` pair
+  SeqCst fences; keep that pairing if either side changes, and rerun
+  `mise run loom`.
+- **New LVGL calls in the core** go through `base/ffi.rs`, with a matching
+  model in `base/ffi_stub.rs`, or Miri cannot run the tests.
 - **Bindgen output lints.** Generated code lives in the `bindings` module in
   `src/lib.rs`, which carries its own `#[allow(...)]` list. Do not add
   crate-wide allows for bindgen warnings.
