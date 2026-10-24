@@ -164,7 +164,8 @@ Rules for integration tests:
 
 `.github/workflows/ci.yml` runs with `RUSTFLAGS=-D warnings`. Every job
 installs the toolchain from `mise.toml` (`jdx/mise-action`); jobs that compile
-use `jdx/mr-boxington-action` for caching and run `mbx clippy`/`mbx test`.
+use `jdx/mr-boxington-action` to persist the mbx cache and run Cargo
+through `mise exec` (mise routes it through mbx, so builds never call `mbx` directly).
 Caches are saved only on pushes to `main`; pull requests restore them. It
 checks:
 

@@ -31,10 +31,13 @@ jobs:
       matrix:
         include:
           - name: default
+            key: default
             features: ""
           - name: all features
+            key: all-features
             features: --all-features
           - name: bindgen only
+            key: bindgen-only
             features: --no-default-features
     steps:
       - uses: actions/checkout@v4
@@ -43,8 +46,8 @@ jobs:
       - uses: jdx/mise-action@v4
       - uses: jdx/mr-boxington-action@v1
         with:
-          cache-key-suffix: clippy-${{ matrix.name }}
-      - run: mbx clippy --all-targets ${{ matrix.features }}
+          cache-key-suffix: clippy-${{ matrix.key }}
+      - run: mise exec -- cargo clippy --all-targets ${{ matrix.features }}
 
   test:
     name: Test (${{ matrix.name }})
@@ -55,15 +58,20 @@ jobs:
         include:
           # Full suite, including the integration tests that build fixture crates.
           - name: default
+            key: default
             args: ""
           # Feature variants: library and build-script unit tests only.
           - name: shadcn theme
+            key: shadcn-theme
             args: --lib --test build_config --features shadcn-theme
           - name: color depth 32
+            key: color-depth-32
             args: --lib --test build_config --features color_depth_32
           - name: color depth 8
+            key: color-depth-8
             args: --lib --test build_config --features color_depth_8
           - name: no string functions
+            key: no-string-functions
             args: --lib --test build_config --no-default-features --features build-lvgl
     steps:
       - uses: actions/checkout@v4
@@ -72,12 +80,12 @@ jobs:
       - uses: jdx/mise-action@v4
       - uses: jdx/mr-boxington-action@v1
         with:
-          cache-key-suffix: test-${{ matrix.name }}
+          cache-key-suffix: test-${{ matrix.key }}
       # Integration tests run nested `cargo --offline` builds of packages that
       # have their own lockfile: download their dependencies up front.
       - name: Fetch nested package dependencies
         run: mise run fetch
-      - run: mbx test ${{ matrix.args }}
+      - run: mise exec -- cargo test ${{ matrix.args }}
 
   docs:
     name: Docs (docs.rs mode)
