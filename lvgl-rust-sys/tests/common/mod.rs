@@ -97,7 +97,7 @@ pub fn dependent_manifest(name: &str, features: &[&str], build_script: bool) -> 
         .collect::<Vec<_>>()
         .join(", ");
     format!(
-        "[package]\nname = {name:?}\nversion = \"0.1.0\"\nedition = \"2021\"\n{}\n\
+        "[package]\nname = {name:?}\nversion = \"0.1.0\"\nedition = \"2024\"\n{}\n\
          [dependencies]\nlvgl_rust_sys = {{ path = {:?}, features = [{features}] }}\n",
         if build_script {
             "build = \"build.rs\"\n"

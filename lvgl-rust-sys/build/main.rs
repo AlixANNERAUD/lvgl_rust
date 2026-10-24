@@ -7,7 +7,7 @@
 
 mod config;
 
-use config::{ColorDepth, Define, CFLAGS_VAR, CONFIG_DIR_VAR, FONTS_DIR_VAR};
+use config::{CFLAGS_VAR, CONFIG_DIR_VAR, ColorDepth, Define, FONTS_DIR_VAR};
 use std::{
     env,
     path::{Path, PathBuf},

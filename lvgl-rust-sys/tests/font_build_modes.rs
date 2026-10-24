@@ -47,9 +47,11 @@ fn default_build_is_font_independent_but_explicit_legacy_mode_compiles_fonts() {
         "default build watched or consumed the app fonts directory:\n{default_output}"
     );
     let out_dir = lvgl_out_dir(&fixture.join("target"));
-    assert!(!fs::read_to_string(out_dir.join("bindings.rs"))
-        .unwrap()
-        .contains("lvgl_font_fixture"));
+    assert!(
+        !fs::read_to_string(out_dir.join("bindings.rs"))
+            .unwrap()
+            .contains("lvgl_font_fixture")
+    );
 
     build(&fixture, true);
     let out_dir = lvgl_out_dir(&fixture.join("target"));

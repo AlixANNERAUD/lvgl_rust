@@ -3,7 +3,7 @@ resolver = "2"
 members = ["lvgl-rust-sys", "lvgl-rust", "lvgl-rust-gen"]
 
 [workspace.package]
-edition = "2021"
+edition = "2024"
 rust-version = "1.89"
 license = "MIT"
 repository = "https://github.com/xila-project/lvgl_rust_sys"
