@@ -10,6 +10,11 @@ min_version = "2026.9.2"
 rust = { version = "stable", components = "rustfmt,clippy", targets = "wasm32-unknown-unknown,riscv32imc-unknown-none-elf", mr_boxington = true }
 mr-boxington = "latest"
 
+# C toolchain for the riscv32imc cross build (`mise bootstrap packages apply`).
+[bootstrap.packages]
+"apt:gcc-riscv64-unknown-elf" = { os = "linux" }
+"apt:picolibc-riscv64-unknown-elf" = { os = "linux" }
+
 [tasks.submodules]
 description = "Check out the LVGL and shadcn theme submodules"
 run = "git submodule update --init --recursive"
@@ -55,7 +60,7 @@ description = "Build lvgl_rust_sys for wasm32-unknown-unknown (no C library; nee
 run = "cargo build -p lvgl_rust_sys --target wasm32-unknown-unknown"
 
 [tasks.cross-riscv32]
-description = "Build lvgl_rust_sys for riscv32imc-unknown-none-elf (needs gcc-riscv64-unknown-elf and picolibc-riscv64-unknown-elf)"
+description = "Build lvgl_rust_sys for riscv32imc-unknown-none-elf (C toolchain from `mise bootstrap packages apply`)"
 env.RUSTFLAGS = "-D warnings"
 env.CC_riscv32imc_unknown_none_elf = "riscv64-unknown-elf-gcc"
 env.AR_riscv32imc_unknown_none_elf = "riscv64-unknown-elf-ar"
