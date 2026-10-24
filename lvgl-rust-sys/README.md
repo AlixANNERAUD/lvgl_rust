@@ -1,6 +1,6 @@
 # lvgl_rust_sys — Rust FFI bindings for LVGL 9
 
-[![CI](https://github.com/xila-project/lvgl_rust_sys/actions/workflows/ci.yml/badge.svg)](https://github.com/xila-project/lvgl_rust_sys/actions/workflows/ci.yml)
+[![CI](https://github.com/xila-project/lvgl_rust/actions/workflows/ci.yml/badge.svg)](https://github.com/xila-project/lvgl_rust/actions/workflows/ci.yml)
 [![LVGL](https://img.shields.io/badge/LVGL-9.6.0-blue)](https://github.com/lvgl/lvgl)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](../LICENSE)
 [![no_std](https://img.shields.io/badge/no__std-yes-orange)](#)
@@ -32,7 +32,7 @@ Add the crate (it is consumed from Git):
 
 ```toml
 [dependencies]
-lvgl_rust_sys = { git = "https://github.com/xila-project/lvgl_rust_sys" }
+lvgl_rust_sys = { git = "https://github.com/xila-project/lvgl_rust" }
 ```
 
 Point the build at the directory that contains your `lv_conf.h`, for example in
