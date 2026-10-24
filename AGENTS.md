@@ -241,7 +241,9 @@ set.
   the same headers with `BINDGEN_EXTRA_CLANG_ARGS_<target>` (see the
   `cross-riscv32` task). Targets without a C library (`wasm*-unknown-unknown`)
   get `shims/freestanding/` on every include path, for `inttypes.h`. CI builds
-  `wasm32-unknown-unknown` and `riscv32imc-unknown-none-elf`; host builds do
+  `wasm32-unknown-unknown` and `riscv32imc-unknown-none-elf` (the riscv C
+  toolchain is declared in `[bootstrap.packages]` of `mise.toml`, installed
+  with `mise bootstrap packages apply`); host builds do
   not prove that a change works on other targets (xtensa included), so say
   what you actually checked.
 - **Submodules.** Never edit files under `lvgl/` or `lvgl_theme_shadcn/`. Fix
