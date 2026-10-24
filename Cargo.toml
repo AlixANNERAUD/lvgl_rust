@@ -1,32 +1,9 @@
-[package]
-name = "lvgl_rust_sys"
-version = "0.1.0"
+[workspace]
+resolver = "2"
+members = ["lvgl-rust-sys", "lvgl-rust", "lvgl-rust-gen"]
+
+[workspace.package]
 edition = "2021"
-links = "lvgl_rust_sys"
-build = "build/main.rs"
-description = "Low-level no_std Rust FFI bindings to LVGL 9, the embedded graphics library"
+rust-version = "1.89"
 license = "MIT"
 repository = "https://github.com/xila-project/lvgl_rust_sys"
-readme = "README.md"
-keywords = ["lvgl", "gui", "embedded", "no-std", "ffi"]
-categories = ["external-ffi-bindings", "embedded", "gui", "no-std"]
-
-[features]
-default = ["build-lvgl", "use-string-functions"]
-build-lvgl = []
-use-vendored-config = []
-use-string-functions = []
-shadcn-theme = []
-
-color_depth_1 = []
-color_depth_8 = []
-color_depth_16 = []
-color_depth_24 = []
-color_depth_32 = []
-
-[dependencies]
-
-
-[build-dependencies]
-bindgen = "0.72.1"
-cc = "1.1.18"

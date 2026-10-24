@@ -16,42 +16,42 @@ run = "git submodule update --init --recursive"
 [tasks.fetch]
 description = "Download dependencies of the nested packages built offline by the tests"
 run = [
-  "cargo fetch --manifest-path examples/external-fonts/Cargo.toml",
-  "cargo fetch --manifest-path tests/fixtures/font_incremental/Cargo.toml",
+  "cargo fetch --manifest-path lvgl-rust-sys/examples/external-fonts/Cargo.toml",
+  "cargo fetch --manifest-path lvgl-rust-sys/tests/fixtures/font_incremental/Cargo.toml",
 ]
 
 [tasks.fmt]
-description = "Check formatting of the crate, the example and the fixture"
+description = "Check formatting of the workspace, the example and the fixture"
 run = [
   "cargo fmt --all --check",
-  "cargo fmt --check --manifest-path examples/external-fonts/Cargo.toml",
-  "cargo fmt --check --manifest-path tests/fixtures/font_incremental/Cargo.toml",
+  "cargo fmt --check --manifest-path lvgl-rust-sys/examples/external-fonts/Cargo.toml",
+  "cargo fmt --check --manifest-path lvgl-rust-sys/tests/fixtures/font_incremental/Cargo.toml",
 ]
 
 [tasks.clippy]
 env = { RUSTFLAGS = "-D warnings" }
-description = "Run clippy with default, all and no default features"
+description = "Run clippy on the workspace, and on lvgl_rust_sys with all and no default features"
 run = [
-  "cargo clippy --all-targets",
-  "cargo clippy --all-targets --all-features",
-  "cargo clippy --all-targets --no-default-features",
+  "cargo clippy --workspace --all-targets",
+  "cargo clippy -p lvgl_rust_sys --all-targets --all-features",
+  "cargo clippy -p lvgl_rust_sys --all-targets --no-default-features",
 ]
 
 [tasks.test-fast]
 env = { RUSTFLAGS = "-D warnings" }
 description = "Library and build-config tests (seconds)"
-run = "cargo test --lib --test build_config"
+run = "cargo test -p lvgl_rust_sys --lib --test build_config"
 
 [tasks.test]
 env = { RUSTFLAGS = "-D warnings" }
 description = "Full test suite, including the slow integration tests"
 depends = ["fetch"]
-run = "cargo test"
+run = "cargo test --workspace"
 
 [tasks.doc]
 description = "Build the documentation as docs.rs does"
 env = { DOCS_RS = "1", DEP_LV_CONFIG_PATH = "", RUSTDOCFLAGS = "-D warnings" }
-run = "cargo doc --no-deps --no-default-features"
+run = "cargo doc --no-deps -p lvgl_rust_sys --no-default-features"
 
 [tasks.check]
 description = "Checks to run before pushing"

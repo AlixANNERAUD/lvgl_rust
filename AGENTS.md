@@ -1,39 +1,52 @@
 # AGENTS.md
 
-Guidance for coding agents working on `lvgl_rust_sys`. `CLAUDE.md` and
+Guidance for coding agents working on this repository. `CLAUDE.md` and
 `GEMINI.md` are symlinks to this file: edit `AGENTS.md` only.
 
-## What this crate is
+## What this repository is
 
-A `-sys` crate: it compiles [LVGL](https://github.com/lvgl/lvgl) from source
-with `cc`, generates raw `no_std` FFI bindings with bindgen, and exports the
-native build configuration to dependent build scripts. It exposes the C API as
-is; there is no safe wrapper.
+A Cargo workspace with three crates:
 
-Its main consumer is the [Xila](https://github.com/xila-project) embedded OS,
+- `lvgl-rust-sys/` (package `lvgl_rust_sys`): a `-sys` crate. It compiles
+  [LVGL](https://github.com/lvgl/lvgl) from source with `cc`, generates raw
+  `no_std` FFI bindings with bindgen, and exports the native build
+  configuration to dependent build scripts. It exposes the C API as is.
+- `lvgl-rust/`: the safe, `no_std` layer on top of it (in progress).
+- `lvgl-rust-gen/`: the host-only generator used by `lvgl-rust`'s build
+  script (in progress).
+
+The main consumer is the [Xila](https://github.com/xila-project) embedded OS,
 which runs on microcontrollers (ESP32, ...) as well as native and WebAssembly
-hosts. Xila uses `default-features = false`, `shadcn-theme`,
+hosts. Xila depends on `lvgl_rust_sys` through git (Cargo finds the package by
+name inside the workspace) and uses `default-features = false`, `shadcn-theme`,
 `color_depth_16`/`color_depth_32`, its own `lv_conf.h` and, for now, the legacy
 `LVGL_FONTS_DIR` mode while it moves to an external font crate. Do not break
 these paths, and do not edit Xila from this repository.
 
 ## Repository map
 
+Paths in the following sections are relative to `lvgl-rust-sys/` unless they
+start at the repository root (`mise.toml`, `.github/`, `.cargo/`).
+
 | Path | Role |
 | --- | --- |
-| `build/main.rs` | Build script entry: resolves the config, compiles LVGL, exports metadata, runs bindgen. |
-| `build/config.rs` | Pure, `std`-only logic (define parsing, color depth, config dir checks, file collection). |
-| `src/lib.rs` | Includes the generated bindings in a `bindings` module and re-exports them; library tests. |
-| `src/string_impl.rs` | C string functions (`strlen`, `strcmp`, ...) for libc-less targets. |
-| `shims/` | Small C helpers bound alongside LVGL (`lvgl_sys.h` is bindgen's root header). |
-| `conf/lv_conf.h` | Vendored LVGL configuration (tests, docs.rs, `use-vendored-config`). |
-| `lvgl/` | LVGL submodule (do not edit; bump the pinned commit instead). |
-| `lvgl_theme_shadcn/` | shadcn theme submodule, compiled with `shadcn-theme`. |
-| `examples/external-fonts/` | Separate package showing how to build fonts in their own crate. |
-| `tests/` | Unit tests for `build/config.rs` and integration tests driving nested `cargo` builds. |
-| `tests/common/mod.rs` | Shared helpers for the integration tests. |
-| `tests/fixtures/font_incremental/` | Package used by the incremental rebuild test. |
-| `mise.toml` | Toolchain (Rust + mbx build cache) and tasks mirroring CI. |
+| `Cargo.toml` (root) | Workspace manifest; shared `edition`, `rust-version`, licence. |
+| `.cargo/config.toml` (root) | Default `DEP_LV_CONFIG_PATH` (`lvgl-rust-sys/conf`). |
+| `lvgl-rust-sys/build/main.rs` | Build script entry: resolves the config, compiles LVGL, exports metadata, runs bindgen. |
+| `lvgl-rust-sys/build/config.rs` | Pure, `std`-only logic (define parsing, color depth, config dir checks, file collection). |
+| `lvgl-rust-sys/src/lib.rs` | Includes the generated bindings in a `bindings` module and re-exports them; library tests. |
+| `lvgl-rust-sys/src/string_impl.rs` | C string functions (`strlen`, `strcmp`, ...) for libc-less targets. |
+| `lvgl-rust-sys/shims/` | Small C helpers bound alongside LVGL (`lvgl_sys.h` is bindgen's root header). |
+| `lvgl-rust-sys/conf/lv_conf.h` | Vendored LVGL configuration (tests, docs.rs, `use-vendored-config`). |
+| `lvgl-rust-sys/lvgl/` | LVGL submodule (do not edit; bump the pinned commit instead). |
+| `lvgl-rust-sys/lvgl_theme_shadcn/` | shadcn theme submodule, compiled with `shadcn-theme`. |
+| `lvgl-rust-sys/examples/external-fonts/` | Separate package showing how to build fonts in their own crate. |
+| `lvgl-rust-sys/tests/` | Unit tests for `build/config.rs` and integration tests driving nested `cargo` builds. |
+| `lvgl-rust-sys/tests/common/mod.rs` | Shared helpers for the integration tests. |
+| `lvgl-rust-sys/tests/fixtures/font_incremental/` | Package used by the incremental rebuild test. |
+| `lvgl-rust/` | Safe bindings crate. |
+| `lvgl-rust-gen/` | Generator library for the safe bindings. |
+| `mise.toml` (root) | Toolchain (Rust + mbx build cache) and tasks mirroring CI. |
 
 ## Build model
 
@@ -115,11 +128,11 @@ building: compiling old sources against the 9.6 `lv_conf.h` fails.
 ```sh
 git submodule update --init --recursive
 # Nested builds run offline; their packages have their own lockfile.
-cargo fetch --manifest-path examples/external-fonts/Cargo.toml
-cargo fetch --manifest-path tests/fixtures/font_incremental/Cargo.toml
-cargo test                                         # full suite, a few minutes
-cargo test --lib --test build_config               # fast loop, seconds
-cargo test --lib --features shadcn-theme,color_depth_32
+cargo fetch --manifest-path lvgl-rust-sys/examples/external-fonts/Cargo.toml
+cargo fetch --manifest-path lvgl-rust-sys/tests/fixtures/font_incremental/Cargo.toml
+cargo test --workspace                                     # full suite, a few minutes
+cargo test -p lvgl_rust_sys --lib --test build_config      # fast loop, seconds
+cargo test -p lvgl_rust_sys --lib --features shadcn-theme,color_depth_32
 ```
 
 With [mise](https://mise.jdx.dev) installed, `mise install` sets up the
@@ -129,7 +142,8 @@ Cargo then goes through mbx ([mr boxington](https://github.com/jdx/mr-boxington)
 which caches the LVGL C objects and build script output; `mbx explain --last`
 says why something was rebuilt. Keep `mise.toml` tasks and CI in sync.
 
-`DEP_LV_CONFIG_PATH` defaults to `conf/` through `.cargo/config.toml` (only for
+`DEP_LV_CONFIG_PATH` defaults to `lvgl-rust-sys/conf/` through the root
+`.cargo/config.toml` (only for
 cargo commands run in this checkout; an explicit value wins).
 
 What the suites cover:
@@ -154,7 +168,8 @@ Rules for integration tests:
   `LVGL_CFLAGS` inherited from the outer environment.
 - Use `common::scratch_dir()` for fixtures and separate target directories, and
   remove them at the end of the test.
-- A fixture with its own `Cargo.lock` needs a matching `cargo fetch` in the
+- A fixture with its own `Cargo.lock` needs an empty `[workspace]` table (so
+  Cargo does not attach it to the root workspace) and a matching `cargo fetch` in the
   `fetch` task of `mise.toml` (which CI runs), otherwise CI fails with "no
   matching package".
 - Restore any tracked file a test modifies, even on failure (see `RestoreFile`
@@ -169,8 +184,9 @@ through `mise exec` (mise routes it through mbx, so builds never call `mbx` dire
 Caches are saved only on pushes to `main`; pull requests restore them. It
 checks:
 
-- `cargo fmt --check` for the crate, the example and the fixture;
-- clippy with default features, `--all-features` and `--no-default-features`;
+- `cargo fmt --check` for the workspace, the example and the fixture;
+- clippy on the workspace, and on `lvgl_rust_sys` with `--all-features` and
+  `--no-default-features`;
 - the full test suite with default features, plus library and build-config
   tests for `shadcn-theme`, `color_depth_32`, `color_depth_8` and without string
   functions;
@@ -180,8 +196,9 @@ Before pushing, run at least:
 
 ```sh
 cargo fmt --all --check
-RUSTFLAGS="-D warnings" cargo clippy --all-targets --all-features
-RUSTFLAGS="-D warnings" cargo test --lib --test build_config
+RUSTFLAGS="-D warnings" cargo clippy --workspace --all-targets
+RUSTFLAGS="-D warnings" cargo clippy -p lvgl_rust_sys --all-targets --all-features
+RUSTFLAGS="-D warnings" cargo test -p lvgl_rust_sys --lib --test build_config
 ```
 
 or `mise run check`, which runs the same checks plus clippy for every feature
