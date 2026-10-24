@@ -1,0 +1,25 @@
+[package]
+name = "lvgl-rust"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+description = "Safe, generated no_std Rust bindings to LVGL 9"
+license.workspace = true
+repository.workspace = true
+keywords = ["lvgl", "gui", "embedded", "no-std"]
+categories = ["embedded", "gui", "no-std"]
+
+[features]
+default = ["use-string-functions"]
+use-string-functions = ["lvgl_rust_sys/use-string-functions"]
+shadcn-theme = ["lvgl_rust_sys/shadcn-theme"]
+
+color_depth_1 = ["lvgl_rust_sys/color_depth_1"]
+color_depth_8 = ["lvgl_rust_sys/color_depth_8"]
+color_depth_16 = ["lvgl_rust_sys/color_depth_16"]
+color_depth_24 = ["lvgl_rust_sys/color_depth_24"]
+color_depth_32 = ["lvgl_rust_sys/color_depth_32"]
+
+[dependencies]
+# The safe layer calls into the linked C library: `build-lvgl` is required.
+lvgl_rust_sys = { path = "../lvgl-rust-sys", default-features = false, features = ["build-lvgl"] }
