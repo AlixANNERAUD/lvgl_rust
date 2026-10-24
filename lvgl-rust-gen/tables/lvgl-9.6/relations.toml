@@ -1,0 +1,11 @@
+# Functions that store a pointer to another object. `param` names it and
+# `clear` how to drop it when that object is deleted; `raw = true` keeps
+# the function in `sys`.
+
+[fn.lv_keyboard_set_textarea]
+param = "ta"
+clear = "lv_keyboard_set_textarea(holder, NULL)"
+
+# Reparents the cursor and can never be cleared.
+[fn.lv_indev_set_cursor]
+raw = true

@@ -1,9 +1,18 @@
 [workspace]
 resolver = "2"
-members = ["lvgl-rust-sys", "lvgl-rust", "lvgl-rust-gen"]
+members = ["lvgl-rust-sys", "lvgl-rust", "lvgl-rust-gen", "lvgl-rust/size-gate"]
 
 [workspace.package]
-edition = "2021"
+edition = "2024"
 rust-version = "1.89"
 license = "MIT"
-repository = "https://github.com/xila-project/lvgl_rust_sys"
+repository = "https://github.com/xila-project/lvgl_rust"
+
+# Size gate builds (`mise run size-gate`): optimized for size, no LTO, so the
+# crate's symbols stay separate in the image.
+[profile.size]
+inherits = "release"
+opt-level = "s"
+codegen-units = 16
+lto = false
+debug = false

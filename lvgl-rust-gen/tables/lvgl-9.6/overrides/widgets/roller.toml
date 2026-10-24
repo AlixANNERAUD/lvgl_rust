@@ -1,0 +1,12 @@
+# Parameter kinds, each checked against the LVGL sources (file:line in `why`).
+[fn.lv_roller_set_options]
+params.options = { kind = "copied_str" }
+why = "widgets/roller/lv_roller.c:1010 (normal mode) copies through lv_label_set_text. Infinite mode lv_strcpys into opt_extra (:1036-1037), copies that with lv_label_set_text, then frees it (:1041-1042). The pointer is never stored. NULL is rejected by LV_CHECK_ARG at :130 and LV_ASSERT at :993, and it is dereferenced at :1003."
+
+[fn.lv_roller_set_selected]
+params.sel_opt = { kind = "checked" }
+why = "widgets/roller/lv_roller.c:198 clamps with a plain ternary against option_cnt, which is always >=1 after options are set (:1002-1006). The infinite-mode remap at :180-194 is arithmetic only. sel_opt_id is then used as a coordinate (:780-781) or in a scan bounded by txt_len with an `if(line != option)` guard (:325-331)."
+
+[fn.lv_roller_set_selected_str]
+params.sel_opt = { kind = "copied_str" }
+why = "widgets/roller/lv_roller.c:221: `sel_opt` is only read through lv_strncmp during the call and is never stored. NULL is rejected by LV_CHECK_ARG at :207."

@@ -8,4 +8,18 @@ license.workspace = true
 repository.workspace = true
 publish = false
 
+[features]
+# The `lvgl-rust-gen audit` maintainer tool (needs clang).
+cli = []
+
+[[bin]]
+name = "lvgl-rust-gen"
+required-features = ["cli"]
+
 [dependencies]
+prettyplease = "0.2.22"
+proc-macro2 = "1.0.86"
+quote = "1.0.37"
+serde = { version = "1", features = ["derive"] }
+syn = { version = "2.0.77", features = ["full"] }
+toml = { version = "0.8", default-features = false, features = ["parse"] }

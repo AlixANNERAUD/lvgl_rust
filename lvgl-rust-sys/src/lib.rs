@@ -125,6 +125,83 @@ mod tests {
     }
 
     #[test]
+    fn obj_is_deleting_is_set_during_delete_event() {
+        use core::sync::atomic::{AtomicBool, Ordering};
+
+        static SEEN_DELETING: AtomicBool = AtomicBool::new(false);
+        unsafe extern "C" fn on_delete(event: *mut lv_event_t) {
+            let target = unsafe { lv_event_get_target_obj(event) };
+            SEEN_DELETING.store(
+                unsafe { lvgl_sys_obj_is_deleting(target) },
+                Ordering::Relaxed,
+            );
+        }
+
+        let _lock = lvgl_lock();
+        unsafe {
+            lv_init();
+            let display = lv_display_create(8, 8);
+            let object = lv_obj_create(lv_display_get_screen_active(display));
+            assert!(!lvgl_sys_obj_is_deleting(object));
+            lv_obj_add_event_cb(
+                object,
+                Some(on_delete),
+                lv_event_code_t_LV_EVENT_DELETE,
+                core::ptr::null_mut(),
+            );
+            lv_obj_delete(object);
+            assert!(SEEN_DELETING.load(Ordering::Relaxed));
+            lv_display_delete(display);
+        }
+    }
+
+    #[test]
+    fn menu_parts_are_exposed_and_sidebar_parts_follow_the_sidebar() {
+        let _lock = lvgl_lock();
+        unsafe {
+            lv_init();
+            let display = lv_display_create(64, 64);
+            let menu = lv_menu_create(lv_display_get_screen_active(display));
+            let part = |part| lvgl_sys_menu_part(menu, part);
+
+            let main = part(lvgl_sys_menu_part_t_LVGL_SYS_MENU_PART_MAIN);
+            let header = part(lvgl_sys_menu_part_t_LVGL_SYS_MENU_PART_MAIN_HEADER);
+            assert!(!part(lvgl_sys_menu_part_t_LVGL_SYS_MENU_PART_STORAGE).is_null());
+            assert!(!main.is_null());
+            assert_eq!(lv_obj_get_parent(main), menu);
+            assert_eq!(lv_obj_get_parent(header), main);
+            assert!(!part(lvgl_sys_menu_part_t_LVGL_SYS_MENU_PART_MAIN_HEADER_TITLE).is_null());
+            assert!(
+                !part(lvgl_sys_menu_part_t_LVGL_SYS_MENU_PART_MAIN_HEADER_BACK_BUTTON).is_null()
+            );
+
+            let sidebar = lvgl_sys_menu_part_t_LVGL_SYS_MENU_PART_SIDEBAR;
+            assert!(part(sidebar).is_null());
+            let page = lv_menu_page_create(menu, core::ptr::null());
+            lv_menu_set_sidebar_page(menu, page);
+            assert!(!part(sidebar).is_null());
+            assert!(!part(lvgl_sys_menu_part_t_LVGL_SYS_MENU_PART_SIDEBAR_HEADER).is_null());
+            // The sidebar is deleted, but LVGL keeps the stale pointers.
+            lv_menu_set_sidebar_page(menu, core::ptr::null_mut());
+            assert!(part(sidebar).is_null());
+            assert!(part(lvgl_sys_menu_part_t_LVGL_SYS_MENU_PART_SIDEBAR_HEADER_TITLE).is_null());
+            assert!(part(99).is_null());
+
+            lv_display_delete(display);
+        }
+    }
+
+    #[test]
+    fn image_cache_drop_is_callable() {
+        let _lock = lvgl_lock();
+        unsafe {
+            lv_init();
+            lvgl_sys_image_cache_drop(c"A:missing.png".as_ptr().cast());
+            lvgl_sys_image_cache_drop(core::ptr::null());
+        }
+    }
+
+    #[test]
     fn raw_sources_are_exposed() {
         assert!(_bindgen_raw_src().contains("pub fn lv_init()"));
         assert!(_bindgen_raw_c_header().contains("lvgl"));

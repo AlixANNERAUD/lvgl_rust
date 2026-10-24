@@ -1,9 +1,10 @@
 # lvgl_rust_sys — Rust FFI bindings for LVGL 9
 
-[![CI](https://github.com/xila-project/lvgl_rust_sys/actions/workflows/ci.yml/badge.svg)](https://github.com/xila-project/lvgl_rust_sys/actions/workflows/ci.yml)
+[![CI](https://github.com/xila-project/lvgl_rust/actions/workflows/ci.yml/badge.svg)](https://github.com/xila-project/lvgl_rust/actions/workflows/ci.yml)
 [![LVGL](https://img.shields.io/badge/LVGL-9.6.0-blue)](https://github.com/lvgl/lvgl)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](../LICENSE)
 [![no_std](https://img.shields.io/badge/no__std-yes-orange)](#)
+[![MSRV](https://img.shields.io/badge/MSRV-1.89-informational)](#)
 
 **Low-level, `no_std` Rust bindings to [LVGL](https://lvgl.io)** (Light and
 Versatile Graphics Library), the most popular open-source embedded GUI library.
@@ -31,7 +32,7 @@ Add the crate (it is consumed from Git):
 
 ```toml
 [dependencies]
-lvgl_rust_sys = { git = "https://github.com/xila-project/lvgl_rust_sys" }
+lvgl_rust_sys = { git = "https://github.com/xila-project/lvgl_rust" }
 ```
 
 Point the build at the directory that contains your `lv_conf.h`, for example in
@@ -91,6 +92,23 @@ or the shims change. The bundled `conf/lv_conf.h` is LVGL's template with
 content enabled, NULL/malloc asserts on and an overridable color format. It is a
 good starting point for your own configuration.
 
+### Cross-compiling
+
+The C compiler comes from [`cc`](https://docs.rs/cc) (`CC_<target>`,
+`CFLAGS_<target>`) and bindgen picks the clang triple from Cargo's target. If
+the C library headers are not found by clang on its own, pass them with
+`BINDGEN_EXTRA_CLANG_ARGS_<target>`, e.g. for `riscv32imc-unknown-none-elf`
+with Debian's picolibc:
+
+```sh
+export CC_riscv32imc_unknown_none_elf=riscv64-unknown-elf-gcc
+export CFLAGS_riscv32imc_unknown_none_elf="-isystem /usr/lib/picolibc/riscv64-unknown-elf/include"
+export BINDGEN_EXTRA_CLANG_ARGS_riscv32imc_unknown_none_elf="$CFLAGS_riscv32imc_unknown_none_elf"
+```
+
+`wasm32-unknown-unknown` has no C library: the crate provides the one header
+LVGL needs (`inttypes.h`), so only clang is required.
+
 ### Color depth
 
 The `color_depth_*` features set both `LV_COLOR_FORMAT_DEFAULT` and
@@ -125,11 +143,25 @@ and definitions:
 | `DEP_LVGL_RUST_SYS_DEFINES` | `;`-separated `NAME` / `NAME=VALUE` definitions (config, color depth) |
 | `DEP_LVGL_RUST_SYS_CFLAGS` | `LVGL_CFLAGS` entries, `,`-separated |
 | `DEP_LVGL_RUST_SYS_TARGET` | Cargo target triple of the native build |
+| `DEP_LVGL_RUST_SYS_BINDINGS` | Absolute path to the generated `bindings.rs` |
+| `DEP_LVGL_RUST_SYS_LINKED` | `1` when the `build-lvgl` feature compiled the C library, `0` otherwise |
 
 Use the target-aware compiler from `cc` in the dependent build script. Do not
 substitute the host target or guess ABI-affecting defines yourself.
 [`examples/external-fonts/build.rs`](examples/external-fonts/build.rs) shows a
 complete consumer.
+
+## Helper functions
+
+Besides the LVGL API, the bindings include a few C helpers from `shims/` for
+state that LVGL keeps in private structures:
+
+| Function | Purpose |
+| --- | --- |
+| `lvgl_sys_obj_is_deleting` | Whether an object is being deleted. |
+| `lvgl_sys_obj_set_id_raw` | Store an object's id without running the OBJ_ID hooks (with `LV_USE_OBJ_ID`). |
+| `lvgl_sys_image_cache_drop` | Drop cached decodes of an image source (`lv_image_cache_drop`). |
+| `lvgl_sys_menu_part` | Cached parts of a menu, without the deprecation log of the menu getters; sidebar parts are NULL once the sidebar is removed (with `LV_USE_MENU`). |
 
 ## Fonts
 

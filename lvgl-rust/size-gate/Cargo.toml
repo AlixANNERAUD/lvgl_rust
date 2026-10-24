@@ -1,0 +1,15 @@
+[package]
+name = "lvgl-rust-size-gate"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+description = "Firmware measured by the lvgl-rust size gate (embedded targets only)"
+license.workspace = true
+publish = false
+build = "build.rs"
+
+[dependencies]
+lvgl-rust = { path = ".." }
+
+[build-dependencies]
+cc = "1.1.18"

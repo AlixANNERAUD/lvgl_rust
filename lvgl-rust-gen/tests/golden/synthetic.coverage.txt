@@ -1,0 +1,34 @@
+lv_bar_create: Create create
+lv_bar_select: ObjMut { consumes: false } select
+lv_bar_set_segment: raw (parameter `idx`: index parameter, not reviewed (overrides: kind = "checked"))
+lv_bar_set_value: View set_value
+lv_color_make: Free color_make
+lv_color_screen_of: raw (returns an object without a token)
+lv_label_create: Create create
+lv_label_set_recolor_text: raw (parameter `text`: string kept by LVGL (retained))
+lv_label_set_text: View set_text
+lv_label_set_text_fmt: skip (variadic)
+lv_label_set_text_static: View set_text_static
+lv_layer_count: LvglShared layer_count
+lv_msgbox_close: ObjMut { consumes: true } close
+lv_msgbox_set_parent_or_null: raw (exclusive call taking another object (not generated yet))
+lv_obj_add_state: View add_state
+lv_obj_align_to: raw (stores another object (relations.toml))
+lv_obj_get_coords: View get_coords
+lv_obj_get_screen: View get_screen
+lv_obj_get_state: View get_state
+lv_obj_old: skip (deprecated)
+lv_obj_set_ext_area: View set_ext_area
+lv_obj_set_id: skip (defined by the crate)
+lv_obj_set_opa: View set_opa
+lv_obj_set_size: View set_size
+lv_obj_set_user_data: raw (parameter `user_data`: pointer kept by LVGL (retained))
+lv_obj_unlisted: skip (no access.toml entry)
+lv_screen_clean_all: LvglExclusive screen_clean_all
+lv_slider_create: Create create
+lv_slider_get_value: View get_value
+lv_textarea_get_label: View get_label
+lv_textarea_set_placeholder_text: raw (kept by the textarea)
+lv_tick_inc: raw (crate-owned)
+lv_timer_get_paused: manual (generated with its owner type)
+lv_timer_set_period: manual (crate-managed resource)

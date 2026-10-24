@@ -155,3 +155,19 @@ fn shipped_config_lets_features_override_color_format() {
         validate_config_dir(&PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/conf"))).is_ok()
     );
 }
+
+#[test]
+fn only_targets_without_c_library_are_freestanding() {
+    assert!(is_freestanding("wasm32-unknown-unknown"));
+    assert!(is_freestanding("wasm64-unknown-unknown"));
+    for target in [
+        "wasm32-wasip1",
+        "wasm32-unknown-emscripten",
+        "riscv32imc-unknown-none-elf",
+        "thumbv6m-none-eabi",
+        "xtensa-esp32s3-espidf",
+        "x86_64-unknown-linux-gnu",
+    ] {
+        assert!(!is_freestanding(target), "{target}");
+    }
+}

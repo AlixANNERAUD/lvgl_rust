@@ -20,6 +20,12 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+// Ported from relibc: every function is a thin C-semantics loop whose
+// contract is the C one (valid NUL-terminated strings, large enough
+// buffers), so per-operation `unsafe` blocks would add noise without
+// documenting anything the function-level contract does not already say.
+#![allow(unsafe_op_in_unsafe_fn)]
+
 use core::{
     ffi::{c_char, c_int},
     ptr,
@@ -27,7 +33,7 @@ use core::{
 #[allow(non_camel_case_types)]
 type size_t = usize;
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn strchr(mut s: *const c_char, c: c_int) -> *mut c_char {
     // The terminating NUL is part of the string, so `strchr(s, 0)` finds it.
     let c = c as c_char;
@@ -42,18 +48,18 @@ pub unsafe extern "C" fn strchr(mut s: *const c_char, c: c_int) -> *mut c_char {
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn strcmp(s1: *const c_char, s2: *const c_char) -> c_int {
     strncmp(s1, s2, usize::MAX)
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn strcoll(s1: *const c_char, s2: *const c_char) -> c_int {
     // relibc has no locale stuff (yet)
     strcmp(s1, s2)
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn strcpy(dst: *mut c_char, src: *const c_char) -> *mut c_char {
     let mut i = 0;
 
@@ -71,12 +77,12 @@ pub unsafe extern "C" fn strcpy(dst: *mut c_char, src: *const c_char) -> *mut c_
     dst
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn strlen(s: *const c_char) -> size_t {
     strnlen(s, usize::MAX)
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn strnlen(s: *const c_char, size: size_t) -> size_t {
     let mut i = 0;
     while i < size {
@@ -88,21 +94,17 @@ pub unsafe extern "C" fn strnlen(s: *const c_char, size: size_t) -> size_t {
     i as size_t
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn strnlen_s(s: *const c_char, size: size_t) -> size_t {
-    if s.is_null() {
-        0
-    } else {
-        strnlen(s, size)
-    }
+    if s.is_null() { 0 } else { strnlen(s, size) }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn strcat(s1: *mut c_char, s2: *const c_char) -> *mut c_char {
     strncat(s1, s2, usize::MAX)
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn strncat(s1: *mut c_char, s2: *const c_char, n: size_t) -> *mut c_char {
     let len = strlen(s1 as *const c_char);
     let mut i = 0;
@@ -120,7 +122,7 @@ pub unsafe extern "C" fn strncat(s1: *mut c_char, s2: *const c_char, n: size_t) 
     s1
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn strncmp(s1: *const c_char, s2: *const c_char, n: size_t) -> c_int {
     let mut i = 0;
     while i < n {
@@ -136,7 +138,7 @@ pub unsafe extern "C" fn strncmp(s1: *const c_char, s2: *const c_char, n: size_t
     0
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn strncpy(dst: *mut c_char, src: *const c_char, n: size_t) -> *mut c_char {
     let mut i = 0;
 
@@ -152,7 +154,7 @@ pub unsafe extern "C" fn strncpy(dst: *mut c_char, src: *const c_char, n: size_t
     dst
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn strrchr(s: *const c_char, c: c_int) -> *mut c_char {
     // Searching includes the terminating NUL, like `strchr`.
     let c = c as c_char;

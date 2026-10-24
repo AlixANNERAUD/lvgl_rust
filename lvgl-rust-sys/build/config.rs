@@ -135,6 +135,12 @@ pub fn color_format(depth: u8) -> &'static str {
     }
 }
 
+/// Whether `target` has no C library, so LVGL needs the freestanding headers
+/// in `shims/freestanding` (clang's `inttypes.h` defers to the C library's).
+pub fn is_freestanding(target: &str) -> bool {
+    target.starts_with("wasm") && target.ends_with("-unknown-unknown")
+}
+
 /// Picks the configuration directory: the explicit one if given, otherwise the
 /// vendored fallback when it is allowed.
 pub fn resolve_config_dir(

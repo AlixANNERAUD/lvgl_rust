@@ -1,0 +1,12 @@
+# Parameter kinds, each checked against the LVGL sources (file:line in `why`).
+[fn.lv_tabview_add_tab]
+params.name = { kind = "copied_str" }
+why = "widgets/tabview/lv_tabview.c:110 passes `name` to lv_label_set_text, which copies it into an lv_malloc buffer (widgets/label/lv_label.c:1077-1080). NULL is accepted (lv_label.c:1049-1052, and lv_tabview.c:135 calls add_tab with NULL itself)."
+
+[fn.lv_tabview_get_tab_button]
+params.idx = { kind = "checked" }
+why = "widgets/tabview/lv_tabview.c:292 calls lv_obj_get_child_by_type, which walks children bounded by child_cnt for both signs of idx and returns NULL when not found (core/lv_obj_tree.c:343-361)."
+
+[fn.lv_tabview_set_active]
+params.idx = { kind = "checked" }
+why = "widgets/tabview/lv_tabview.c:161-162: a plain `if(idx >= tab_cnt) return;` runs before any use. The earlier `tab_cur = idx` (:155) is only a stored scalar, compared at :116 and returned at :285, never used as an index. Below the check idx only feeds scroll coordinates and comparisons (:173-191)."

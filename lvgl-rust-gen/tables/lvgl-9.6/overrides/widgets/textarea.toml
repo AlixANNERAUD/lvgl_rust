@@ -1,0 +1,24 @@
+# Parameter kinds, each checked against the LVGL sources (file:line in `why`).
+[fn.lv_textarea_add_text]
+params.txt = { kind = "copied_str" }
+why = "Not retained: the text is read during the call by add_text (lv_textarea.c:1481-1483), passed to the INSERT event for the duration of the call (line 1295), copied by lv_label_ins_text (line 220) and lv_text_ins into pwd_tmp (line 230), and measured at line 237. It is never stored. NULL is rejected by LV_CHECK_ARG at line 197."
+
+[fn.lv_textarea_set_accepted_chars]
+params.list = { kind = "copied_str" }
+why = "lv_textarea.c:494-497 copies the list with lv_strdup and stores the copy (line 502); the caller's pointer is not kept (the _static variant at line 513 is the one that keeps it). NULL is accepted and clears the list (line 494, if(list))."
+
+[fn.lv_textarea_set_insert_replace]
+params.txt = { kind = "static_str" }
+why = "lv_textarea.c:531 stores the pointer in the file-static ta_insert_replace (line 161). insert_handler reads it after the user's INSERT event returns (lines 1298-1304) and passes it on to lv_textarea_add_text, which reads it after ta_insert_replace has been reset to NULL. NULL is accepted (it means no replacement, line 1301)."
+
+[fn.lv_textarea_set_password_bullet]
+params.bullet = { kind = "copied_str" }
+why = "lv_textarea.c:442-452 uses lv_realloc for ta->pwd_bullet, then lv_memcpy(ta->pwd_bullet, bullet, txt_len) and adds a NUL terminator; the caller's pointer is never stored. NULL is accepted and frees the bullet (lines 437-440)."
+
+[fn.lv_textarea_set_placeholder_text]
+params.txt = { kind = "copied_str" }
+why = "lv_textarea.c:364-372 uses lv_realloc for placeholder_txt, then lv_strcpy(ta->placeholder_txt, txt); the caller's pointer is never stored. NULL or an empty string is accepted and clears the placeholder (lines 352-358)."
+
+[fn.lv_textarea_set_text]
+params.txt = { kind = "copied_str" }
+why = "Not retained: lv_label_set_text (lv_textarea.c:320) copies through set_text_internal, using lv_malloc and copy_text_to_label (lv_label.c:1076-1080). add_text only reads it (lv_textarea.c:318, 1481), and pwd_tmp gets lv_strdup(txt) at line 336. NULL is rejected by LV_CHECK_ARG at line 304."

@@ -32,7 +32,7 @@ jobs:
         include:
           - name: default
             key: default
-            args: --workspace --all-targets
+            args: -p lvgl_rust_sys -p lvgl-rust-gen --all-targets
           - name: all features
             key: all-features
             args: -p lvgl_rust_sys --all-targets --all-features
@@ -59,7 +59,7 @@ jobs:
           # Full suite, including the integration tests that build fixture crates.
           - name: default
             key: default
-            args: --workspace
+            args: -p lvgl_rust_sys -p lvgl-rust-gen
           # Feature variants: library and build-script unit tests only.
           - name: shadcn theme
             key: shadcn-theme
@@ -86,6 +86,78 @@ jobs:
       - name: Fetch nested package dependencies
         run: mise run fetch
       - run: mise exec -- cargo test ${{ matrix.args }}
+
+  audit:
+    name: Access audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: jdx/mise-action@v4
+      - uses: jdx/mr-boxington-action@v1
+        with:
+          cache-key-suffix: audit
+      - run: mise run audit-check
+
+  safe:
+    name: lvgl-rust (${{ matrix.task }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        task: [clippy-safe, test-safe, test-views-only, test-asan, miri, loom]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: jdx/mise-action@v4
+      - uses: jdx/mr-boxington-action@v1
+        with:
+          cache-key-suffix: safe-${{ matrix.task }}
+      - run: mise run ${{ matrix.task }}
+
+  cross:
+    name: Cross (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: wasm32-unknown-unknown
+            task: cross-wasm32
+          - target: riscv32imc-unknown-none-elf
+            task: cross-riscv32
+          - target: thumbv6m and riscv32imc firmware
+            task: size-gate
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: jdx/mise-action@v4
+      # C toolchains declared in `[bootstrap.packages]` of mise.toml.
+      - name: Install system packages
+        run: sudo apt-get update && mise bootstrap packages apply --yes
+      - uses: jdx/mr-boxington-action@v1
+        with:
+          cache-key-suffix: cross-${{ matrix.task }}
+      - run: mise run ${{ matrix.task }}
+
+  msrv:
+    name: MSRV
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: jdx/mise-action@v4
+      - name: Install system packages
+        run: sudo apt-get update && mise bootstrap packages apply --yes
+      - uses: jdx/mr-boxington-action@v1
+        with:
+          cache-key-suffix: msrv
+      # The task pins its own toolchain (the root `rust-version`).
+      - run: mise run msrv
 
   docs:
     name: Docs (docs.rs mode)

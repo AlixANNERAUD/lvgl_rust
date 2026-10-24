@@ -1,0 +1,23 @@
+[fn.lv_label_set_text]
+params.text = { kind = "copied_str" }
+why = "copied by lv_label_set_text (lv_label.c:1071-1078)"
+
+[fn.lv_label_get_letter_on]
+params.pos_in = { kind = "copied" }
+why = "Not retained: lv_label.c:435-436 only reads pos_in->x and pos_in->y into a local lv_point_t, and the pointer is never written or stored (NULL is rejected by LV_CHECK_ARG at line 432). It is declared non-const in C, so the wrapper can take &lv_point_t and cast."
+
+[fn.lv_label_ins_text]
+params.txt = { kind = "copied_str" }
+why = "Not retained: lv_label.c:734-737 copies txt into label->text, reallocated at line 731, through lv_text_ins (lv_text.c:545 lv_memcpy). The pointer is never stored, and lv_label_set_text(obj, NULL) at line 739 just refreshes the existing text. NULL is rejected by LV_CHECK_ARG at line 723 (enabled in the vendored config), but the API is non-null. Caveat: if txt aliases label->text, the realloc at line 731 invalidates it."
+
+[fn.lv_label_is_char_under_pos]
+params.pos = { kind = "copied" }
+why = "Not retained: lv_label.c:568 rejects NULL, and the function only reads pos->y (line 593) and pos->x (lines 627, 638) during the call, never writing or storing the pointer. It is declared non-const in C."
+
+[fn.lv_label_set_text_selection_end]
+params.index = { kind = "checked" }
+why = "lv_label.c:265 stores the value in label->sel_end. It is used only in comparisons, never as an index: lv_label.c:955, lv_draw_label.c:346-349, 411, 541-542 (logical_char_pos >= sel_start && < sel_end), and lv_textarea.c:679, 738, 1248-1262. Out-of-range values only change which glyphs are highlighted."
+
+[fn.lv_label_set_text_selection_start]
+params.index = { kind = "checked" }
+why = "lv_label.c:251 stores the value in label->sel_start. It is used only in comparisons (lv_label.c:955, lv_draw_label.c:346-349, 411, 541-542, lv_textarea.c:679, 738), never to index memory, so any value is harmless."

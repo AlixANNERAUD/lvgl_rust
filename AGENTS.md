@@ -36,7 +36,8 @@ start at the repository root (`mise.toml`, `.github/`, `.cargo/`).
 | `lvgl-rust-sys/build/config.rs` | Pure, `std`-only logic (define parsing, color depth, config dir checks, file collection). |
 | `lvgl-rust-sys/src/lib.rs` | Includes the generated bindings in a `bindings` module and re-exports them; library tests. |
 | `lvgl-rust-sys/src/string_impl.rs` | C string functions (`strlen`, `strcmp`, ...) for libc-less targets. |
-| `lvgl-rust-sys/shims/` | Small C helpers bound alongside LVGL (`lvgl_sys.h` is bindgen's root header). |
+| `lvgl-rust-sys/shims/freestanding/` | Headers for targets without a C library (`inttypes.h`). |
+| `lvgl-rust-sys/shims/` | Small C helpers bound alongside LVGL (`lvgl_sys.h` is bindgen's root header). `lvgl_sys.c` may include `lvgl_private.h` to reach private fields; keep private types out of `lvgl_sys.h`. |
 | `lvgl-rust-sys/conf/lv_conf.h` | Vendored LVGL configuration (tests, docs.rs, `use-vendored-config`). |
 | `lvgl-rust-sys/lvgl/` | LVGL submodule (do not edit; bump the pinned commit instead). |
 | `lvgl-rust-sys/lvgl_theme_shadcn/` | shadcn theme submodule, compiled with `shadcn-theme`. |
@@ -44,8 +45,14 @@ start at the repository root (`mise.toml`, `.github/`, `.cargo/`).
 | `lvgl-rust-sys/tests/` | Unit tests for `build/config.rs` and integration tests driving nested `cargo` builds. |
 | `lvgl-rust-sys/tests/common/mod.rs` | Shared helpers for the integration tests. |
 | `lvgl-rust-sys/tests/fixtures/font_incremental/` | Package used by the incremental rebuild test. |
-| `lvgl-rust/` | Safe bindings crate. |
-| `lvgl-rust-gen/` | Generator library for the safe bindings. |
+| `lvgl-rust/src/base/` | Safe core: session and token (`session.rs`), handle registry (`registry.rs`), OBJ_ID hooks (`hook.rs`), deferred requests (`drain.rs`), structural checks (`structural.rs`), views and handles. |
+| `lvgl-rust/src/base/ffi.rs` | Every LVGL call the core makes; `ffi_stub.rs` is its Rust model for Miri and loom. |
+| `lvgl-rust/conf/lv_conf.h` | Second vendored configuration, with the OBJ_ID hooks the registry needs. |
+| `lvgl-rust/build.rs` | Checks the `-sys` build (linked, OBJ_ID config) and writes `config.rs` (`LVGL_RUST_HANDLE_SLOTS`, `LVGL_RUST_MAX_CALLBACK_DEPTH`). |
+| `lvgl-rust/size-gate/` | Firmware and script (`gate.sh`) checking lvgl-rust's footprint on thumbv6m and riscv32imc. |
+| `lvgl-rust-gen/src/` | Generator: parses `bindings.rs` (`parse.rs`) and the headers (`headers.rs`), loads the tables (`tables.rs`), classifies every function (`classify.rs`) and emits `gen.rs` (`emit.rs`). |
+| `lvgl-rust-gen/tables/lvgl-9.6/` | Reviewed tables: `access.toml` (what is wrapped, shared or exclusive), `classes.toml` (hierarchy, names, crate-owned and hand-written functions, composite parts), `relations.toml`, `overrides/**/*.toml`, `universe.txt`. |
+| `lvgl-rust-gen/tests/golden/` | Expected generator output for the synthetic input of `tests/generate.rs`. |
 | `mise.toml` (root) | Toolchain (Rust + mbx build cache) and tasks mirroring CI. |
 
 ## Build model
@@ -58,7 +65,10 @@ include paths and definitions feed:
 3. the metadata exported through `links = "lvgl_rust_sys"`:
    `DEP_LVGL_RUST_SYS_INCLUDE_PATHS` (`;`-separated), `DEP_LVGL_RUST_SYS_DEFINES`
    (`;`-separated), `DEP_LVGL_RUST_SYS_CFLAGS` (`,`-separated `LVGL_CFLAGS`) and
-   `DEP_LVGL_RUST_SYS_TARGET`.
+   `DEP_LVGL_RUST_SYS_TARGET`. Two keys describe the build itself:
+   `DEP_LVGL_RUST_SYS_BINDINGS` (absolute path to `bindings.rs`, read by the
+   safe crate's generator) and `DEP_LVGL_RUST_SYS_LINKED` (`1` with
+   `build-lvgl`, `0` otherwise).
 
 Never add an include path or define to only one of these: the bindings, the
 library and downstream C code (fonts) must agree on the ABI. The metadata names
@@ -115,7 +125,10 @@ building: compiling old sources against the 9.6 `lv_conf.h` fails.
      the `color_depth_*` features can override it;
    - `LV_USE_ASSERT_NULL` and `LV_USE_ASSERT_MALLOC` set to `1`.
 
-   Verify with `diff lvgl/lv_conf_template.h conf/lv_conf.h`.
+   Verify with `diff lvgl/lv_conf_template.h conf/lv_conf.h`. Then derive
+   `lvgl-rust/conf/lv_conf.h` from it; the two differ only by
+   `LV_USE_OBJ_ID 1` and `LV_USE_OBJ_ID_BUILTIN 0` (check with
+   `diff lvgl-rust-sys/conf/lv_conf.h lvgl-rust/conf/lv_conf.h`).
 3. Build and look for new LVGL deprecation warnings (`#warning ... is
    deprecated`). The build is expected to be warning-free with `conf/`.
 4. Check the shims in `shims/` and the shadcn theme still compile, then run
@@ -130,7 +143,7 @@ git submodule update --init --recursive
 # Nested builds run offline; their packages have their own lockfile.
 cargo fetch --manifest-path lvgl-rust-sys/examples/external-fonts/Cargo.toml
 cargo fetch --manifest-path lvgl-rust-sys/tests/fixtures/font_incremental/Cargo.toml
-cargo test --workspace                                     # full suite, a few minutes
+cargo test -p lvgl_rust_sys -p lvgl-rust-gen               # full suite, a few minutes
 cargo test -p lvgl_rust_sys --lib --test build_config      # fast loop, seconds
 cargo test -p lvgl_rust_sys --lib --features shadcn-theme,color_depth_32
 ```
@@ -146,6 +159,15 @@ says why something was rebuilt. Keep `mise.toml` tasks and CI in sync.
 `.cargo/config.toml` (only for
 cargo commands run in this checkout; an explicit value wins).
 
+`lvgl-rust` needs a configuration with the OBJ_ID hooks: it fails to build
+against `lvgl-rust-sys/conf` (a `compile_error!` that says what to add). Test
+it in a separate cargo invocation with its own configuration and target
+directory, as its mise tasks do: `mise run clippy-safe`, `test-safe`,
+`test-views-only` (no handles, `-sys` configuration), `test-asan` (LVGL under
+AddressSanitizer, with C library malloc so freed objects are visible),
+`miri`, `loom` and `size-gate`. Do
+not use `--workspace` for cargo commands that build `lvgl-rust`.
+
 What the suites cover:
 
 - `src/lib.rs` tests: LVGL initialization, color shims, the configured color
@@ -159,6 +181,20 @@ What the suites cover:
   with a nested `cargo --offline` through `tests/common::cargo()`, then inspect
   `bindings.rs`, `liblvgl.a`, binaries (`nm`, `objdump`) or Cargo's
   `Fresh`/`Compiling` lines. Each compiles LVGL, so they are slow.
+
+- `lvgl-rust/src/tests.rs`: the core (sessions, handles, ownership, deferred
+  requests, structural checks). The same tests run against LVGL and, under
+  Miri, against `ffi_stub.rs`; keep the stub's behaviour in line with LVGL's
+  for every function `ffi.rs` exposes. Tests hold the `LOCK` guard.
+- `lvgl-rust/src/tests.rs` `protocol` module: loom models of `Owned::drop`
+  racing the drain (`--cfg loom`).
+- `lvgl-rust/tests/lifecycle.rs`: `init`, ticks, `deinit` (terminal, so in
+  its own process).
+- `lvgl-rust/size-gate/gate.sh`: links firmware for thumbv6m and riscv32imc
+  (16 slots and views-only) and checks the crate's symbols: registry size and
+  `.bss` placement, no `.data`, no `core::fmt` or panic code, the OBJ_ID
+  hooks, and a code budget per target (set in the `size-gate` task). Raise a
+  budget only in the change that needs it, and say why.
 
 Rules for integration tests:
 
@@ -185,27 +221,120 @@ Caches are saved only on pushes to `main`; pull requests restore them. It
 checks:
 
 - `cargo fmt --check` for the workspace, the example and the fixture;
-- clippy on the workspace, and on `lvgl_rust_sys` with `--all-features` and
-  `--no-default-features`;
+- clippy on `lvgl_rust_sys` (default, `--all-features`,
+  `--no-default-features`) and `lvgl-rust-gen`;
+- `lvgl-rust`: clippy, tests, views-only mode, ASan, Miri and loom, plus a
+  `wasm32-unknown-unknown` build and the size gate;
 - the full test suite with default features, plus library and build-config
   tests for `shadcn-theme`, `color_depth_32`, `color_depth_8` and without string
   functions;
+- cross builds for `wasm32-unknown-unknown` and `riscv32imc-unknown-none-elf`;
+- `cargo check` with the minimum Rust version (`mise run msrv`) on the host
+  and both cross targets; raise the version in the task and in the root
+  `rust-version` together;
 - `cargo doc` in docs.rs mode (`DOCS_RS=1`, empty `DEP_LV_CONFIG_PATH`).
 
 Before pushing, run at least:
 
 ```sh
 cargo fmt --all --check
-RUSTFLAGS="-D warnings" cargo clippy --workspace --all-targets
+RUSTFLAGS="-D warnings" cargo clippy -p lvgl_rust_sys -p lvgl-rust-gen --all-targets
 RUSTFLAGS="-D warnings" cargo clippy -p lvgl_rust_sys --all-targets --all-features
 RUSTFLAGS="-D warnings" cargo test -p lvgl_rust_sys --lib --test build_config
 ```
 
 or `mise run check`, which runs the same checks plus clippy for every feature
-set.
+set and the `lvgl-rust` clippy and tests.
+
+## Generated wrappers
+
+`lvgl-rust/build.rs` runs `lvgl-rust-gen` on the bindings of the current
+build (`DEP_LVGL_RUST_SYS_BINDINGS`) and writes `$OUT_DIR/gen.rs`, included
+as the `widgets`, `enums` and `functions` modules, plus `$OUT_DIR/coverage.txt`
+listing what happened to every bound function. Disabled widgets are simply
+absent from the bindings, so nothing is generated for them; `lv_use_<x>`
+cfgs mirror the `LV_USE_*` values for hand-written code.
+
+- **A function is wrapped only if `access.toml` lists it**, as `shared`
+  (view method), `exclusive` (`ObjMut` method, or `&mut Lvgl`), `pure`/`isr`
+  (free function) or `raw` (stays in `sys`). `access.toml` is generated by
+  the audit (below): never edit it by hand.
+- Pointer parameters are retained (raw) until `overrides/` classifies them
+  (`copied_str`, `static_str`, `copied`, ...). `@nullable` in the header gives
+  `Option`. Object returns are untyped (`&Obj`) unless an override certifies
+  the class.
+- `classes.toml` `crate_owned` functions can never be shared or exclusive;
+  `manual` ones are wrapped by hand in `lvgl-rust/src/base/`.
+- `classes.toml` `[composite.<widget>]` tables drive the structural checks:
+  `parts` are the objects LVGL holds pointers to (getters, `child:N`,
+  `shim:`), `indexed` how many levels below a part LVGL finds objects by
+  index, and `parts = []` declares a widget whose children are all the
+  application's. Inside a widget class with no entry, nothing can be
+  deleted, owned, moved or cleaned. Add an entry only after reading the
+  widget's sources (constructor, cached pointers, `lv_obj_get_child` uses).
+- Pointer parameters stay raw, and index parameters (`idx`, `*_id`, `row`,
+  `sel_opt`, ...) too, until an override gives their kind with a `why`
+  citing the lines that copy, write or bounds-check them (a check under
+  `LV_USE_CHECK_ARG` or `LV_ASSERT` does not count: configurations turn
+  them off). Functions in `relations.toml` stay raw until relations are
+  supported.
+- Table errors always fail the build. Entries for functions missing from a
+  build's bindings warn (they may be disabled by that `lv_conf.h`) unless
+  `universe.txt` lists them; `LVGL_RUST_GEN_STRICT=1`, set for every mise
+  task, turns those warnings into errors.
+- After changing the generator, rerun `UPDATE_GOLDEN=1 cargo test -p
+  lvgl-rust-gen` and review the diff of `tests/golden/`.
+- On an LVGL bump, add `tables/lvgl-<major>.<minor>/`: the generator refuses
+  bindings without matching tables. Regenerate `universe.txt` from the
+  bindings built with `lvgl-rust/conf` and recheck the hierarchy
+  (`.base_class` in the LVGL sources).
+
+## Access audit
+
+`mise run audit` (`lvgl-rust-gen audit`, feature `cli`) compiles the vendored
+LVGL with `lvgl-rust/conf` to LLVM IR (pinned clang from mise, fixed
+`x86_64-unknown-none-elf` target, so the result does not depend on the
+host), builds a call graph and rewrites `access.toml`; CI runs
+`mise run audit-check`. A function that can reach a sink (`sinks` in
+`audit.toml`: deleting objects or displays, shrinking children arrays,
+freeing group nodes) is exclusive, with the witness path as `why`; one that
+schedules a deletion for later is raw; anything else is shared.
+
+The graph is conservative; `audit.toml` makes it precise without losing
+soundness:
+
+- callbacks are tracked per struct field (`_lv_obj_class_t.3`, ...), through
+  setters' parameters; an indirect call reaches only what LVGL stores in
+  that field, and an unresolved one every escaping function of its
+  signature;
+- event sends with constant codes reach only the handlers of that code, and
+  `if (code == ...)` guards in handlers are followed;
+- widget code reaches only handlers registered by core code, by itself, by
+  widgets it creates or that create it, and by its `peers`;
+- animation callbacks are attributed to whoever installs them
+  (`caller_slots`), and `lv_anim_delete` with a constant `exec_cb` reaches
+  only the `deleted_cb`s installed with it (`anim_delete`);
+- `exceptions` holds hand decisions (pure functions), with a reason.
+
+Change `audit.toml` only with a source-backed reason in a comment; run
+`mise run audit -- --verbose` to list handlers and class callbacks that
+reach a sink, and review the `access.toml` diff.
 
 ## Pitfalls
 
+- **Shared versus exclusive in `lvgl-rust`.** A view (`&Obj`) borrows
+  `&Lvgl`; any call that may free an object, start deleting one, shrink a
+  children array or free memory LVGL objects point to must take `&mut Lvgl`
+  or an `ObjMut`, never `&self` on a view. Deletions requested from shared
+  code go through the registry (`delete_later`, `Owned::drop`) and run in the
+  drain.
+- **Registry atomics.** No read-modify-write anywhere (thumbv6m and
+  riscv32imc have no compare-and-swap): code without a token only stores
+  `req`, `any_req` and `ticks`. `Registry::request_drop` and `drain` pair
+  SeqCst fences; keep that pairing if either side changes, and rerun
+  `mise run loom`.
+- **New LVGL calls in the core** go through `base/ffi.rs`, with a matching
+  model in `base/ffi_stub.rs`, or Miri cannot run the tests.
 - **Bindgen output lints.** Generated code lives in the `bindings` module in
   `src/lib.rs`, which carries its own `#[allow(...)]` list. Do not add
   crate-wide allows for bindgen warnings.
@@ -225,10 +354,21 @@ set.
   exported metadata, so font edits never rebuild LVGL. Legacy `LVGL_FONTS_DIR`
   must keep working, but must stay opt-in: never scan the working directory
   for fonts implicitly.
-- **Cross-compilation.** bindgen gets `--target` only when `TARGET != HOST`;
-  the C compiler comes from `cc`, which honours `CC_<target>`/`CFLAGS_<target>`.
-  Host builds do not prove that a change works on embedded targets; say what
-  you actually checked.
+- **Cross-compilation.** The build script never passes `--target` to clang:
+  for non-host targets bindgen derives the clang triple from `TARGET` itself
+  (`riscv32imc-unknown-none-elf` becomes `riscv32-unknown-none-elf`, `espidf`
+  becomes `elf`, `aarch64-apple-*` becomes `arm64-apple-*`). The C compiler
+  comes from `cc`, which honours `CC_<target>`/`CFLAGS_<target>`; give bindgen
+  the same headers with `BINDGEN_EXTRA_CLANG_ARGS_<target>` (see the
+  `cross-riscv32` task). Targets without a C library (`wasm*-unknown-unknown`)
+  get `shims/freestanding/` on every include path, for `inttypes.h`. The
+  root `[env]` of `mise.toml` points `cc` and bindgen at the Debian/Ubuntu
+  riscv32 and arm-none-eabi toolchains. CI builds
+  `wasm32-unknown-unknown` and `riscv32imc-unknown-none-elf` (the riscv C
+  toolchain is declared in `[bootstrap.packages]` of `mise.toml`, installed
+  with `mise bootstrap packages apply`); host builds do
+  not prove that a change works on other targets (xtensa included), so say
+  what you actually checked.
 - **Submodules.** Never edit files under `lvgl/` or `lvgl_theme_shadcn/`. Fix
   problems in `build/`, `shims/` or `conf/`, or bump the pinned commit.
 - **Generated files.** `bindings.rs` and `liblvgl.a` live in `target/`; never
@@ -237,8 +377,8 @@ set.
 
 ## Conventions
 
-- Rust 2021, recent stable toolchain. Format with `cargo fmt`; match the
-  surrounding style and comment density.
+- Rust 2024 edition, MSRV 1.89 (`rust-version` in the root `Cargo.toml`).
+  Format with `cargo fmt`; match the surrounding style and comment density.
 - Commit messages follow `type: summary` (`build:`, `conf:`, `fix:`, `test:`,
   `docs:`, `ci:`, `feat:`), with a body explaining the why for anything
   non-trivial.

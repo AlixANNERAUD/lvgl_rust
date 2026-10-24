@@ -1,0 +1,16 @@
+# Parameter kinds, each checked against the LVGL sources (file:line in `why`).
+[fn.lv_dropdown_get_option_index]
+params.option = { kind = "copied_str" }
+why = "widgets/dropdown/lv_dropdown.c:552,558: `option` is only read (lv_strlen, lv_memcmp) during the call and is never stored. NULL is rejected by LV_CHECK_ARG at :546."
+
+[fn.lv_dropdown_set_options]
+params.options = { kind = "copied_str" }
+why = "widgets/dropdown/lv_dropdown.c:1566-1585: update_options lv_mallocs a buffer and lv_strcpys `options` into it, so dropdown->options keeps the copy, not the caller pointer. NULL is rejected by LV_CHECK_ARG at :227 and LV_ASSERT at :1555."
+
+[fn.lv_dropdown_set_selected]
+params.sel_opt = { kind = "checked" }
+why = "widgets/dropdown/lv_dropdown.c:422 clamps with a plain ternary (`sel_opt < option_cnt ? sel_opt : option_cnt-1`). sel_opt_id is then used only as a coordinate multiplier (:1477, :1280, :1327) or in string scans bounded by txt_len (:527), so an out-of-range value cannot index memory."
+
+[fn.lv_dropdown_set_text]
+params.text = { kind = "copied_str" }
+why = "widgets/dropdown/lv_dropdown.c:1531-1546: update_text lv_strdups `text` and stores the copy. NULL is accepted: copied_text stays NULL (:1531-1532), which means 'show the selected option'."

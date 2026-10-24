@@ -24,6 +24,11 @@ fn dependent_build_script_receives_lvgl_native_configuration() {
     let flags = std::env::var("DEP_LVGL_RUST_SYS_CFLAGS").expect("C flags metadata");
     assert!(flags.contains("LVGL_TEST_ABI=7"));
     assert_eq!(std::env::var("DEP_LVGL_RUST_SYS_TARGET").unwrap(), std::env::var("TARGET").unwrap());
+    let bindings = std::env::var("DEP_LVGL_RUST_SYS_BINDINGS").expect("bindings metadata");
+    let bindings = std::path::Path::new(&bindings);
+    assert!(bindings.is_absolute() && bindings.ends_with("bindings.rs"));
+    assert!(std::fs::read_to_string(bindings).unwrap().contains("pub fn lv_init()"));
+    assert_eq!(std::env::var("DEP_LVGL_RUST_SYS_LINKED").unwrap(), "1");
     println!("cargo:warning=LVGL_NATIVE_INTERFACE_OK={paths}|{defines}|{flags}");
 }
 "#,
@@ -48,8 +53,16 @@ fn bindgen_only_build_skips_native_archive() {
     let fixture = scratch_dir("bindgen-only");
     write(
         fixture.join("Cargo.toml"),
-        &dependent_manifest("bindgen-only-fixture", &[], false)
+        &dependent_manifest("bindgen-only-fixture", &[], true)
             .replace("features = []", "default-features = false"),
+    );
+    write(
+        fixture.join("build.rs"),
+        r#"fn main() {
+    assert_eq!(std::env::var("DEP_LVGL_RUST_SYS_LINKED").unwrap(), "0");
+    assert!(std::path::Path::new(&std::env::var("DEP_LVGL_RUST_SYS_BINDINGS").unwrap()).exists());
+}
+"#,
     );
     write(
         fixture.join("src/lib.rs"),
