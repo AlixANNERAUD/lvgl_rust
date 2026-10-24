@@ -609,7 +609,10 @@ mod lvgl_only {
         assert_eq!(label.own().err(), Some(Error::Internal));
         assert_eq!(label.delete_later(), Err(Error::Internal));
         assert_eq!(textarea.clean_later(), Err(Error::Internal));
-        assert_eq!(handle.get_mut(&mut lv).unwrap().clean(), Err(Error::Internal));
+        assert_eq!(
+            handle.get_mut(&mut lv).unwrap().clean(),
+            Err(Error::Internal)
+        );
         // The label, once `other` below is the screen's last child.
         fn in_textarea(lv: &Lvgl) -> Option<&Obj> {
             lv.screen_active()?.child(-2)?.child(0)
