@@ -1,0 +1,59 @@
+# Development tools and tasks. `mise install` sets up the toolchain, then
+# `mise run <task>` (or `mise tasks` to list them). Tasks mirror CI, including
+# `RUSTFLAGS=-D warnings`.
+min_version = "2026.9.2"
+
+[tools]
+# `mr_boxington` routes Cargo through mbx, a shared build cache: LVGL's C
+# objects and the build script output are restored instead of recompiled.
+rust = { version = "stable", components = "rustfmt,clippy", mr_boxington = true }
+mr-boxington = "latest"
+
+[tasks.submodules]
+description = "Check out the LVGL and shadcn theme submodules"
+run = "git submodule update --init --recursive"
+
+[tasks.fetch]
+description = "Download dependencies of the nested packages built offline by the tests"
+run = [
+  "cargo fetch --manifest-path examples/external-fonts/Cargo.toml",
+  "cargo fetch --manifest-path tests/fixtures/font_incremental/Cargo.toml",
+]
+
+[tasks.fmt]
+description = "Check formatting of the crate, the example and the fixture"
+run = [
+  "cargo fmt --all --check",
+  "cargo fmt --check --manifest-path examples/external-fonts/Cargo.toml",
+  "cargo fmt --check --manifest-path tests/fixtures/font_incremental/Cargo.toml",
+]
+
+[tasks.clippy]
+env = { RUSTFLAGS = "-D warnings" }
+description = "Run clippy with default, all and no default features"
+run = [
+  "cargo clippy --all-targets",
+  "cargo clippy --all-targets --all-features",
+  "cargo clippy --all-targets --no-default-features",
+]
+
+[tasks.test-fast]
+env = { RUSTFLAGS = "-D warnings" }
+description = "Library and build-config tests (seconds)"
+run = "cargo test --lib --test build_config"
+
+[tasks.test]
+env = { RUSTFLAGS = "-D warnings" }
+description = "Full test suite, including the slow integration tests"
+depends = ["fetch"]
+run = "cargo test"
+
+[tasks.doc]
+description = "Build the documentation as docs.rs does"
+env = { DOCS_RS = "1", DEP_LV_CONFIG_PATH = "", RUSTDOCFLAGS = "-D warnings" }
+run = "cargo doc --no-deps --no-default-features"
+
+[tasks.check]
+description = "Checks to run before pushing"
+# Sequential: concurrent builds in the same target directory race under mbx.
+run = [{ task = "fmt" }, { task = "clippy" }, { task = "test-fast" }]

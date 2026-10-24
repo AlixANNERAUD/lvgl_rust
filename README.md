@@ -169,6 +169,19 @@ cargo test --features shadcn-theme,color_depth_32
 cargo clippy --all-targets --all-features
 ```
 
+The repository also ships a [mise](https://mise.jdx.dev) configuration that
+installs the Rust toolchain with
+[mr boxington](https://github.com/jdx/mr-boxington) (`mbx`), a build cache that
+avoids recompiling LVGL, and defines the CI checks as tasks (needs mise
+2026.9.2 or newer):
+
+```sh
+mise install
+mise tasks             # list the tasks
+mise run check         # fmt, clippy and the fast tests, as before a push
+mise run test          # full suite
+```
+
 - `build/main.rs` drives `cc`, bindgen and the exported metadata from a single
   `NativeConfig`, so all of them share the same include paths and definitions.
 - `build/config.rs` holds the pure logic, unit tested by `tests/build_config.rs`.
