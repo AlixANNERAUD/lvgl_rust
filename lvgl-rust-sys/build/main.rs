@@ -17,11 +17,13 @@ fn main() {
     let paths = Paths::new();
     let native = NativeConfig::from_env(&paths);
 
-    if cargo_feature("BUILD_LVGL") {
+    let linked = cargo_feature("BUILD_LVGL");
+    if linked {
         compile_lvgl(&native);
     }
-    native.export_metadata();
-    generate_bindings(&native);
+    let bindings = PathBuf::from(cargo_env("OUT_DIR")).join("bindings.rs");
+    native.export_metadata(&bindings, linked);
+    generate_bindings(&native, &bindings);
 }
 
 /// Locations inside this crate.
@@ -140,7 +142,7 @@ impl NativeConfig {
     }
 
     /// Publishes the configuration as `DEP_LVGL_RUST_SYS_*` variables.
-    fn export_metadata(&self) {
+    fn export_metadata(&self, bindings: &Path, linked: bool) {
         println!(
             "cargo:INCLUDE_PATHS={}",
             config::join_paths(&self.include_paths)
@@ -151,6 +153,8 @@ impl NativeConfig {
             config::join_defines(&self.custom_defines, ",")
         );
         println!("cargo:TARGET={}", self.target);
+        println!("cargo:BINDINGS={}", bindings.display());
+        println!("cargo:LINKED={}", u8::from(linked));
     }
 
     /// Arguments making clang see the headers exactly as the C compiler does.
@@ -207,8 +211,7 @@ fn compile_lvgl(native: &NativeConfig) {
     build.compile("lvgl");
 }
 
-fn generate_bindings(native: &NativeConfig) {
-    let out_dir = PathBuf::from(cargo_env("OUT_DIR"));
+fn generate_bindings(native: &NativeConfig, output: &Path) {
     native
         .headers
         .iter()
@@ -223,7 +226,7 @@ fn generate_bindings(native: &NativeConfig) {
         .clang_args(native.clang_args())
         .generate()
         .expect("Unable to generate bindings")
-        .write_to_file(out_dir.join("bindings.rs"))
+        .write_to_file(output)
         .expect("Unable to write bindings");
 }
 

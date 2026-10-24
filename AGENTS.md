@@ -36,7 +36,7 @@ start at the repository root (`mise.toml`, `.github/`, `.cargo/`).
 | `lvgl-rust-sys/build/config.rs` | Pure, `std`-only logic (define parsing, color depth, config dir checks, file collection). |
 | `lvgl-rust-sys/src/lib.rs` | Includes the generated bindings in a `bindings` module and re-exports them; library tests. |
 | `lvgl-rust-sys/src/string_impl.rs` | C string functions (`strlen`, `strcmp`, ...) for libc-less targets. |
-| `lvgl-rust-sys/shims/` | Small C helpers bound alongside LVGL (`lvgl_sys.h` is bindgen's root header). |
+| `lvgl-rust-sys/shims/` | Small C helpers bound alongside LVGL (`lvgl_sys.h` is bindgen's root header). `lvgl_sys.c` may include `lvgl_private.h` to reach private fields; keep private types out of `lvgl_sys.h`. |
 | `lvgl-rust-sys/conf/lv_conf.h` | Vendored LVGL configuration (tests, docs.rs, `use-vendored-config`). |
 | `lvgl-rust-sys/lvgl/` | LVGL submodule (do not edit; bump the pinned commit instead). |
 | `lvgl-rust-sys/lvgl_theme_shadcn/` | shadcn theme submodule, compiled with `shadcn-theme`. |
@@ -58,7 +58,10 @@ include paths and definitions feed:
 3. the metadata exported through `links = "lvgl_rust_sys"`:
    `DEP_LVGL_RUST_SYS_INCLUDE_PATHS` (`;`-separated), `DEP_LVGL_RUST_SYS_DEFINES`
    (`;`-separated), `DEP_LVGL_RUST_SYS_CFLAGS` (`,`-separated `LVGL_CFLAGS`) and
-   `DEP_LVGL_RUST_SYS_TARGET`.
+   `DEP_LVGL_RUST_SYS_TARGET`. Two keys describe the build itself:
+   `DEP_LVGL_RUST_SYS_BINDINGS` (absolute path to `bindings.rs`, read by the
+   safe crate's generator) and `DEP_LVGL_RUST_SYS_LINKED` (`1` with
+   `build-lvgl`, `0` otherwise).
 
 Never add an include path or define to only one of these: the bindings, the
 library and downstream C code (fonts) must agree on the ABI. The metadata names

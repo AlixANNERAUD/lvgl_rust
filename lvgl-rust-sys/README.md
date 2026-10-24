@@ -125,11 +125,25 @@ and definitions:
 | `DEP_LVGL_RUST_SYS_DEFINES` | `;`-separated `NAME` / `NAME=VALUE` definitions (config, color depth) |
 | `DEP_LVGL_RUST_SYS_CFLAGS` | `LVGL_CFLAGS` entries, `,`-separated |
 | `DEP_LVGL_RUST_SYS_TARGET` | Cargo target triple of the native build |
+| `DEP_LVGL_RUST_SYS_BINDINGS` | Absolute path to the generated `bindings.rs` |
+| `DEP_LVGL_RUST_SYS_LINKED` | `1` when the `build-lvgl` feature compiled the C library, `0` otherwise |
 
 Use the target-aware compiler from `cc` in the dependent build script. Do not
 substitute the host target or guess ABI-affecting defines yourself.
 [`examples/external-fonts/build.rs`](examples/external-fonts/build.rs) shows a
 complete consumer.
+
+## Helper functions
+
+Besides the LVGL API, the bindings include a few C helpers from `shims/` for
+state that LVGL keeps in private structures:
+
+| Function | Purpose |
+| --- | --- |
+| `lvgl_sys_obj_is_deleting` | Whether an object is being deleted. |
+| `lvgl_sys_obj_set_id_raw` | Store an object's id without running the OBJ_ID hooks (with `LV_USE_OBJ_ID`). |
+| `lvgl_sys_image_cache_drop` | Drop cached decodes of an image source (`lv_image_cache_drop`). |
+| `lvgl_sys_menu_part` | Cached parts of a menu, without the deprecation log of the menu getters; sidebar parts are NULL once the sidebar is removed (with `LV_USE_MENU`). |
 
 ## Fonts
 

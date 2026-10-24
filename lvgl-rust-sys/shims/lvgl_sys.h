@@ -14,6 +14,40 @@ extern "C"
     uint16_t _LV_COLOR_GET_B(lv_color_t color);
     uint16_t _LV_COLOR_GET_A(lv_color_t color);
 
+    /** Whether `obj` is being deleted (its `LV_EVENT_DELETE` was sent). */
+    bool lvgl_sys_obj_is_deleting(const lv_obj_t * obj);
+
+#if LV_USE_OBJ_ID
+    /** Stores `id` in the object without calling `lv_obj_free_id` or
+     *  `lv_obj_assign_id`, for applications that implement the OBJ_ID hooks. */
+    void lvgl_sys_obj_set_id_raw(lv_obj_t * obj, void * id);
+#endif
+
+    /** Removes the image cache entries decoded from `src` (forwards to
+     *  `lv_image_cache_drop`, which LVGL declares in a private header). */
+    void lvgl_sys_image_cache_drop(const void * src);
+
+#if LV_USE_MENU
+    /** Parts of a menu that LVGL caches in the widget. */
+    typedef enum {
+        LVGL_SYS_MENU_PART_STORAGE,
+        LVGL_SYS_MENU_PART_MAIN,
+        LVGL_SYS_MENU_PART_MAIN_HEADER,
+        LVGL_SYS_MENU_PART_MAIN_HEADER_BACK_BUTTON,
+        LVGL_SYS_MENU_PART_MAIN_HEADER_TITLE,
+        LVGL_SYS_MENU_PART_SIDEBAR,
+        LVGL_SYS_MENU_PART_SIDEBAR_HEADER,
+        LVGL_SYS_MENU_PART_SIDEBAR_HEADER_BACK_BUTTON,
+        LVGL_SYS_MENU_PART_SIDEBAR_HEADER_TITLE,
+    } lvgl_sys_menu_part_t;
+
+    /** A cached part of `menu`, without the deprecation log of the public
+     *  getters. Sidebar parts are NULL unless a sidebar is shown:
+     *  `lv_menu_set_sidebar_page(menu, NULL)` deletes the sidebar but leaves
+     *  the cached pointers dangling. NULL for an unknown part. */
+    lv_obj_t * lvgl_sys_menu_part(const lv_obj_t * menu, lvgl_sys_menu_part_t part);
+#endif
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif
