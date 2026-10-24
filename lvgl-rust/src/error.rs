@@ -16,8 +16,8 @@ pub enum Error {
     InvalidArg,
     /// LVGL still uses the object (a screen being loaded); retried later.
     Busy,
-    /// LVGL manages the object itself (a display layer, a widget's internal
-    /// part): the operation is refused.
+    /// LVGL keeps pointers to the object: a display layer, or a child of a
+    /// widget (see [`ObjMut`](crate::ObjMut)). The operation is refused.
     Internal,
     /// LVGL is already initialized, or a session or a callback is active.
     Reentrant,

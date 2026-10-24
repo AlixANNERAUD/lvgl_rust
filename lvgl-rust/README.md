@@ -27,8 +27,9 @@ Handles rely on LVGL's OBJ_ID hooks, which the crate defines. Add to your
 ```
 
 `conf/lv_conf.h` is the vendored configuration used by this crate's tests.
-With `LVGL_RUST_HANDLE_SLOTS=0`, no hook is defined and any configuration
-works.
+With `LVGL_RUST_HANDLE_SLOTS=0` the crate defines no hook: use a
+configuration where LVGL provides them (`LV_USE_OBJ_ID_BUILTIN 1`), where
+OBJ_ID is off, or where your application defines them.
 
 ## Example
 

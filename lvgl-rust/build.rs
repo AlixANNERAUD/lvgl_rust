@@ -43,13 +43,23 @@ fn main() {
                     .to_owned(),
             );
         }
+        let bindings = env_var("DEP_LVGL_RUST_SYS_BINDINGS")
+            .expect("lvgl_rust_sys did not export DEP_LVGL_RUST_SYS_BINDINGS");
+        println!("cargo::rerun-if-changed={bindings}");
+        let bindings = fs::read_to_string(&bindings)
+            .unwrap_or_else(|error| panic!("Cannot read {bindings}: {error}"));
+        // rustfmt may be missing: compare the bindings without whitespace.
+        let compact: String = bindings.chars().filter(|c| !c.is_whitespace()).collect();
         if slots > 0 {
-            let bindings = env_var("DEP_LVGL_RUST_SYS_BINDINGS")
-                .expect("lvgl_rust_sys did not export DEP_LVGL_RUST_SYS_BINDINGS");
-            println!("cargo::rerun-if-changed={bindings}");
-            let bindings = fs::read_to_string(&bindings)
-                .unwrap_or_else(|error| panic!("Cannot read {bindings}: {error}"));
-            errors.extend(check_obj_id(&bindings));
+            errors.extend(check_obj_id(&compact));
+        } else if constant(&compact, "LV_USE_OBJ_ID") == Some(1)
+            && constant(&compact, "LV_USE_OBJ_ID_BUILTIN") == Some(0)
+        {
+            println!(
+                "cargo::warning=views-only mode defines no OBJ_ID hooks: the application must \
+                 define the five lv_obj_*_id functions, or lv_conf.h must set \
+                 LV_USE_OBJ_ID_BUILTIN 1 (or LV_USE_OBJ_ID 0)"
+            );
         }
     }
 
@@ -114,14 +124,13 @@ fn check_obj_id(bindings: &str) -> Option<String> {
     ))
 }
 
-/// Value of an integer constant in bindgen output (`pub const NAME: T = V;`).
-fn constant(bindings: &str, name: &str) -> Option<i64> {
-    let prefix = format!("pub const {name}:");
-    bindings.lines().find_map(|line| {
-        let rest = line.trim().strip_prefix(&prefix)?;
-        let value = rest.split('=').nth(1)?.trim().trim_end_matches(';');
-        value.trim().parse().ok()
-    })
+/// Value of an integer constant in bindgen output stripped of whitespace
+/// (`pubconstNAME:T=V;`).
+fn constant(compact: &str, name: &str) -> Option<i64> {
+    let start = compact.find(&format!("pubconst{name}:"))?;
+    let rest = &compact[start..];
+    let statement = &rest[..rest.find(';')?];
+    statement.split('=').nth(1)?.parse().ok()
 }
 
 fn env_var(name: &str) -> Option<String> {

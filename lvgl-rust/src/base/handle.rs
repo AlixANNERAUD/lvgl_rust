@@ -15,6 +15,12 @@ use core::{fmt, hash, marker::PhantomData, mem, num::NonZeroU32, sync::atomic::A
 ///
 /// A handle never keeps its object alive: once the object is deleted, by any
 /// path, [`get`](Handle::get) returns [`Error::Dead`].
+///
+/// Handles carry a 16-bit generation of their registry slot. A handle kept
+/// after its object died is reported dead until that slot has been reused
+/// 65,536 times; after that it may resolve to the slot's current object (of
+/// a compatible class: a logic error, never undefined behaviour). Drop
+/// handles to dead objects rather than keeping them for days.
 #[repr(transparent)]
 pub struct Handle<W> {
     raw: NonZeroU32,

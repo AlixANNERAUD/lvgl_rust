@@ -3,9 +3,19 @@
 //!
 //! - Display layers cannot be deleted, owned or reparented:
 //!   `lv_display_delete` deletes them again through stored pointers.
+//! - Widgets keep pointers to some of their children (a textarea's label, a
+//!   menu's pages) and find others by index (a tabview's pages). Until the
+//!   per-widget part tables exist, structural operations apply only where
+//!   LVGL keeps no such pointer: deleting, owning or moving an object needs
+//!   every ancestor to be a plain `lv_obj`, cleaning needs the object itself
+//!   to be one too, and a new parent must be one with plain ancestors.
+//!   Anything else is `Internal`.
 //! - A screen being loaded, or the previous one during an animated load,
-//!   cannot be deleted yet (`Busy`): LVGL keeps pointers to both.
-//! - `set_parent` refuses cycles (LVGL has no guard).
+//!   cannot be deleted yet (`Busy`): LVGL keeps pointers to both. The
+//!   previous screen cannot be loaded either: with `auto_delete`, LVGL
+//!   deletes it first and then loads the freed object.
+//! - `set_parent` refuses cycles (LVGL has no guard) and screens (LVGL
+//!   ignores the call).
 //! - Only parentless objects can be loaded as screens.
 
 use super::ffi::{self, lv_obj_t};
@@ -26,6 +36,35 @@ fn is_loading(o: *mut lv_obj_t) -> bool {
     any_display(|d| unsafe { ffi::display_loading_screens(d) }.contains(&o))
 }
 
+/// Whether LVGL holds `o` as the previous screen of an animated load.
+fn is_previous_screen(o: *mut lv_obj_t) -> bool {
+    any_display(|d| unsafe { ffi::display_loading_screens(d) }[1] == o)
+}
+
+/// Whether `o` is a plain `lv_obj` (no widget class).
+fn is_plain(o: *mut lv_obj_t) -> bool {
+    // SAFETY: token held, `o` is a live object.
+    unsafe { ffi::obj_class_of(o) == ffi::obj_class() }
+}
+
+/// Whether `o` and all its ancestors are plain objects (true for null).
+fn plain_from(mut o: *mut lv_obj_t) -> bool {
+    while !o.is_null() {
+        if !is_plain(o) {
+            return false;
+        }
+        // SAFETY: token held, ancestors of a live object are live.
+        o = unsafe { ffi::obj_parent(o) };
+    }
+    true
+}
+
+/// No widget above `o` can hold a pointer to it, or find it by index.
+fn has_plain_ancestors(o: *mut lv_obj_t) -> bool {
+    // SAFETY: token held, `o` is a live object.
+    plain_from(unsafe { ffi::obj_parent(o) })
+}
+
 fn any_display(mut f: impl FnMut(*mut ffi::lv_display_t) -> bool) -> bool {
     // SAFETY: token held; LVGL owns the display list.
     let mut display = unsafe { ffi::display_next(ptr::null_mut()) };
@@ -39,7 +78,7 @@ fn any_display(mut f: impl FnMut(*mut ffi::lv_display_t) -> bool) -> bool {
 }
 
 pub(crate) fn check_delete(o: *mut lv_obj_t) -> Result<(), Error> {
-    if is_layer(o) {
+    if is_layer(o) || !has_plain_ancestors(o) {
         return Err(Error::Internal);
     }
     if is_loading(o) {
@@ -48,13 +87,16 @@ pub(crate) fn check_delete(o: *mut lv_obj_t) -> Result<(), Error> {
     Ok(())
 }
 
-pub(crate) fn check_clean(_o: *mut lv_obj_t) -> Result<(), Error> {
+pub(crate) fn check_clean(o: *mut lv_obj_t) -> Result<(), Error> {
+    if !plain_from(o) {
+        return Err(Error::Internal);
+    }
     Ok(())
 }
 
 #[cfg(not(lvgl_rust_views_only))]
 pub(crate) fn check_own(o: *mut lv_obj_t) -> Result<(), Error> {
-    if is_layer(o) {
+    if is_layer(o) || !has_plain_ancestors(o) {
         return Err(Error::Internal);
     }
     Ok(())
@@ -62,6 +104,13 @@ pub(crate) fn check_own(o: *mut lv_obj_t) -> Result<(), Error> {
 
 pub(crate) fn check_set_parent(o: *mut lv_obj_t, parent: *mut lv_obj_t) -> Result<(), Error> {
     if is_layer(o) {
+        return Err(Error::Internal);
+    }
+    // SAFETY: token held, `o` is a live object.
+    if unsafe { ffi::obj_parent(o) }.is_null() {
+        return Err(Error::InvalidArg); // a screen: LVGL would ignore the call
+    }
+    if !has_plain_ancestors(o) || !plain_from(parent) {
         return Err(Error::Internal);
     }
     // Reject `o` itself and its descendants.
@@ -106,6 +155,9 @@ pub(crate) fn load_screen(screen: *mut lv_obj_t, anim: ScreenAnim) -> Result<(),
     }
     if is_layer(screen) {
         return Err(Error::Internal);
+    }
+    if is_previous_screen(screen) {
+        return Err(Error::Busy);
     }
     // SAFETY: exclusive access, checks passed.
     unsafe {

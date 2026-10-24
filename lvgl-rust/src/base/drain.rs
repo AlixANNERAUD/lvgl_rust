@@ -80,13 +80,16 @@ mod slots {
             // Clears the id of an object left alive by a refusal.
             reg.release(index);
         } else if slot.has(P_DELETE) {
+            // Read before the delete: in case (c) the hook frees the slot, and
+            // a callback run by the deletion may reuse it.
+            let owned = slot.has(OWNED);
             if allowed {
                 // (b) owned: the hook leaves the slot DEAD and OWNED until the
                 // `Owned` is dropped. (c) not owned: the hook frees it.
                 // SAFETY: as above.
                 unsafe { ffi::obj_delete(o) };
             }
-            if slot.has(OWNED) || !allowed {
+            if owned || !allowed {
                 slot.clear(P_DELETE | P_CLEAN);
                 release_temp(index);
             }
@@ -118,7 +121,8 @@ mod slots {
         };
         hdr.load.set(0);
         let slot = reg().slot(index);
-        if slot.state() != LIVE || slot.has(P_DELETE) {
+        // Skip a screen that is dead or about to be deleted.
+        if slot.state() != LIVE || slot.has(P_DELETE) || slot.req.load(Ordering::Relaxed) != 0 {
             return;
         }
         let screen = slot.ptr().cast();

@@ -50,7 +50,6 @@ pub(crate) unsafe fn obj_child(obj: *const lv_obj_t, index: i32) -> *mut lv_obj_
     unsafe { sys::lv_obj_get_child(obj, index) }
 }
 
-#[cfg(not(lvgl_rust_views_only))]
 pub(crate) unsafe fn obj_class_of(obj: *const lv_obj_t) -> *const lv_obj_class_t {
     unsafe { sys::lv_obj_get_class(obj) }
 }

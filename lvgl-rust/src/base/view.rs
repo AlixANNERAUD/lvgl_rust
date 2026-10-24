@@ -135,7 +135,10 @@ impl Obj {
     ///
     /// # Safety
     ///
-    /// `p` must be a live object that is not being deleted.
+    /// `p` must be a live object that is not being deleted. Cross-object
+    /// pointers set up through `sys` (a keyboard's textarea, a widget given a
+    /// user object as part) are the caller's responsibility: safe code may
+    /// delete the objects they point to.
     pub unsafe fn from_raw(lv: &Lvgl, p: NonNull<lv_obj_t>) -> &Obj {
         let _ = lv;
         // SAFETY: caller contract.

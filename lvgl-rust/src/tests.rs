@@ -501,6 +501,16 @@ mod model {
         let mut lv = session(&mut guard);
         let plain = Obj::create(lv.screen_active().unwrap()).unwrap();
         assert!(plain.downcast::<Other>().is_none());
+        // Children of a widget class are out of reach of structural calls.
+        {
+            // SAFETY: test lock held, live parent.
+            let widget = unsafe { ffi::obj_create_other(plain.as_ptr()) };
+            let widget = unsafe { Obj::from_raw(&lv, core::ptr::NonNull::new(widget).unwrap()) };
+            let part = Obj::create(widget).unwrap();
+            assert_eq!(part.own().err(), Some(Error::Internal));
+            assert_eq!(part.delete_later(), Err(Error::Internal));
+            assert_eq!(widget.clean_later(), Err(Error::Internal));
+        }
         let plain = plain.handle().unwrap();
         assert!(plain.downcast::<Other>(&lv).is_none());
         // SAFETY: test lock held, live parent.
@@ -576,5 +586,105 @@ mod protocol {
             drop(guard);
             assert_free_list_consistent();
         });
+    }
+}
+
+/// Structural refusals that need real widgets and animations.
+#[cfg(all(not(any(miri, loom)), not(lvgl_rust_views_only)))]
+mod lvgl_only {
+    use super::*;
+    use crate::sys;
+
+    #[test]
+    fn children_of_widgets_are_refused() {
+        let mut guard = guard();
+        let mut lv = session(&mut guard);
+        let screen = lv.screen_active().unwrap();
+        // SAFETY: session held, live parent. The textarea keeps a pointer to
+        // its label child (`ta->label`).
+        let textarea = unsafe { sys::lv_textarea_create(screen.as_ptr()) };
+        let textarea = unsafe { Obj::from_raw(&lv, core::ptr::NonNull::new(textarea).unwrap()) };
+        let handle = textarea.handle().unwrap();
+        let label = textarea.child(0).unwrap();
+        assert_eq!(label.own().err(), Some(Error::Internal));
+        assert_eq!(label.delete_later(), Err(Error::Internal));
+        assert_eq!(textarea.clean_later(), Err(Error::Internal));
+        assert_eq!(handle.get_mut(&mut lv).unwrap().clean(), Err(Error::Internal));
+        // The label, once `other` below is the screen's last child.
+        fn in_textarea(lv: &Lvgl) -> Option<&Obj> {
+            lv.screen_active()?.child(-2)?.child(0)
+        }
+        let other = Obj::create(lv_screen(&lv)).unwrap().handle().unwrap();
+        // Neither into the textarea, nor its label anywhere else.
+        assert_eq!(
+            other.get_mut(&mut lv).unwrap().set_parent(handle.upcast()),
+            Err(Error::Internal)
+        );
+        assert_eq!(
+            lv.edit(in_textarea).unwrap().set_parent(other),
+            Err(Error::Internal)
+        );
+        assert_eq!(lv.edit(in_textarea).unwrap().delete(), Err(Error::Internal));
+        // The widget itself can go, with its parts.
+        handle.get_mut(&mut lv).unwrap().delete().unwrap();
+        other.get_mut(&mut lv).unwrap().delete().unwrap();
+    }
+
+    fn lv_screen(lv: &Lvgl) -> &Obj {
+        lv.screen_active().unwrap()
+    }
+
+    #[test]
+    fn screens_cannot_be_reparented() {
+        let mut guard = guard();
+        let mut lv = session(&mut guard);
+        let screen = lv.create_screen().unwrap();
+        let mut edit = screen.get_mut(&mut lv).unwrap();
+        assert_eq!(
+            edit.set_parent_to(|lv| lv.screen_active()),
+            Err(Error::InvalidArg)
+        );
+        screen.delete(&mut lv).unwrap();
+    }
+
+    #[test]
+    fn the_previous_screen_of_an_animated_load_cannot_be_loaded() {
+        let mut guard = guard();
+        let mut lv = session(&mut guard);
+        let original = lv.screen_active().unwrap().handle().unwrap();
+        let first = lv.create_screen().unwrap();
+        let second = lv.create_screen().unwrap();
+        lv.load_screen(first.handle(), ScreenAnim::NONE).unwrap();
+        let slide = ScreenAnim::new(ScreenLoadAnim::MOVE_LEFT, 1000, 0, true);
+        lv.load_screen(second.handle(), slide).unwrap();
+        let first_ptr = first.get(&lv).unwrap().as_ptr();
+        // The animation starts at the next timer run: `first` becomes the
+        // previous screen, deleted by LVGL when the animation completes.
+        for _ in 0..10 {
+            tick_inc(10);
+            lv.timer_handler();
+        }
+        // SAFETY: session held.
+        let prev = unsafe { sys::lv_display_get_screen_prev(core::ptr::null_mut()) };
+        assert_eq!(prev, first_ptr);
+        assert_eq!(
+            lv.load_screen(first.handle(), ScreenAnim::NONE),
+            Err(Error::Busy)
+        );
+        lv.load_screen_later(first.handle(), ScreenAnim::NONE)
+            .unwrap();
+        for _ in 0..30 {
+            tick_inc(100);
+            lv.timer_handler();
+        }
+        assert_eq!(first.get(&lv).err(), Some(Error::Dead));
+        assert_eq!(
+            lv.screen_active().unwrap().as_ptr(),
+            second.get(&lv).unwrap().as_ptr()
+        );
+        lv.load_screen(original, ScreenAnim::NONE).unwrap();
+        drop(first);
+        second.delete(&mut lv).unwrap();
+        lv.timer_handler();
     }
 }
