@@ -118,9 +118,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-      - name: Install the riscv32 C toolchain
-        run: sudo apt-get update && sudo apt-get install -y gcc-riscv64-unknown-elf picolibc-riscv64-unknown-elf
       - uses: jdx/mise-action@v4
+      - name: Install system packages
+        run: sudo apt-get update && mise bootstrap packages apply --yes
       - uses: jdx/mr-boxington-action@v1
         with:
           cache-key-suffix: msrv
