@@ -63,6 +63,25 @@ env.CFLAGS_riscv32imc_unknown_none_elf = "-isystem /usr/lib/picolibc/riscv64-unk
 env.BINDGEN_EXTRA_CLANG_ARGS_riscv32imc_unknown_none_elf = "-isystem /usr/lib/picolibc/riscv64-unknown-elf/include"
 run = "cargo build -p lvgl_rust_sys --target riscv32imc-unknown-none-elf"
 
+[tasks.msrv]
+description = "Check the workspace with the minimum Rust version, on the host and the cross targets"
+# Keep in sync with `rust-version` in the root Cargo.toml.
+tools = { rust = { version = "1.89", targets = "wasm32-unknown-unknown,riscv32imc-unknown-none-elf" } }
+env.RUSTFLAGS = "-D warnings"
+# A separate target directory: another compiler version invalidates the
+# regular build.
+env.CARGO_TARGET_DIR = "target/msrv"
+env.CC_riscv32imc_unknown_none_elf = "riscv64-unknown-elf-gcc"
+env.AR_riscv32imc_unknown_none_elf = "riscv64-unknown-elf-ar"
+env.CFLAGS_riscv32imc_unknown_none_elf = "-isystem /usr/lib/picolibc/riscv64-unknown-elf/include"
+env.BINDGEN_EXTRA_CLANG_ARGS_riscv32imc_unknown_none_elf = "-isystem /usr/lib/picolibc/riscv64-unknown-elf/include"
+run = [
+  "rustc --version",
+  "cargo check --workspace --all-targets",
+  "cargo check -p lvgl_rust_sys -p lvgl-rust --target wasm32-unknown-unknown",
+  "cargo check -p lvgl_rust_sys -p lvgl-rust --target riscv32imc-unknown-none-elf",
+]
+
 [tasks.doc]
 description = "Build the documentation as docs.rs does"
 env = { DOCS_RS = "1", DEP_LV_CONFIG_PATH = "", RUSTDOCFLAGS = "-D warnings" }

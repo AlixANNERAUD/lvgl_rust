@@ -194,6 +194,10 @@ checks:
 - the full test suite with default features, plus library and build-config
   tests for `shadcn-theme`, `color_depth_32`, `color_depth_8` and without string
   functions;
+- cross builds for `wasm32-unknown-unknown` and `riscv32imc-unknown-none-elf`;
+- `cargo check` with the minimum Rust version (`mise run msrv`) on the host
+  and both cross targets; raise the version in the task and in the root
+  `rust-version` together;
 - `cargo doc` in docs.rs mode (`DOCS_RS=1`, empty `DEP_LV_CONFIG_PATH`).
 
 Before pushing, run at least:

@@ -4,6 +4,7 @@
 [![LVGL](https://img.shields.io/badge/LVGL-9.6.0-blue)](https://github.com/lvgl/lvgl)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](../LICENSE)
 [![no_std](https://img.shields.io/badge/no__std-yes-orange)](#)
+[![MSRV](https://img.shields.io/badge/MSRV-1.89-informational)](#)
 
 **Low-level, `no_std` Rust bindings to [LVGL](https://lvgl.io)** (Light and
 Versatile Graphics Library), the most popular open-source embedded GUI library.

@@ -113,6 +113,22 @@ jobs:
           cache-key-suffix: cross-${{ matrix.task }}
       - run: mise run ${{ matrix.task }}
 
+  msrv:
+    name: MSRV
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install the riscv32 C toolchain
+        run: sudo apt-get update && sudo apt-get install -y gcc-riscv64-unknown-elf picolibc-riscv64-unknown-elf
+      - uses: jdx/mise-action@v4
+      - uses: jdx/mr-boxington-action@v1
+        with:
+          cache-key-suffix: msrv
+      # The task pins its own toolchain (the root `rust-version`).
+      - run: mise run msrv
+
   docs:
     name: Docs (docs.rs mode)
     runs-on: ubuntu-latest
