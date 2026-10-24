@@ -1,0 +1,8 @@
+# Parameter kinds, each checked against the LVGL sources (file:line in `why`).
+[fn.lv_spangroup_get_child]
+params.id = { kind = "checked" }
+why = "widgets/span/lv_span.c:453-466 walks the linked list until cur_node is NULL, comparing indexes, and returns NULL when id is out of range. There is no array indexing."
+
+[fn.lv_spangroup_get_span_by_point]
+params.p = { kind = "copied" }
+why = "widgets/span/lv_span.c:753-754 copies p->x and p->y into a local lv_point_t, and `p` is not used afterwards or stored. NULL is rejected by LV_CHECK_ARG at :743."

@@ -184,6 +184,11 @@ impl<'a> Classifier<'a> {
         if entry.access == Access::Raw {
             return Plan::Raw(entry.why.clone().unwrap_or_else(|| "access.toml".into()));
         }
+        if self.tables.relations.functions.contains_key(name) {
+            // The object stays referenced after the call: wrapped once
+            // relations clear it when that object is deleted.
+            return Plan::Raw("stores another object (relations.toml)".into());
+        }
         let overrides = self.tables.overrides.functions.get(name);
         let nullable = |param: &str| header.is_some_and(|h| h.nullable.iter().any(|n| n == param));
 

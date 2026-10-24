@@ -88,12 +88,13 @@ run = "cargo build -p lvgl_rust_sys --target riscv32imc-unknown-none-elf"
 description = "Check lvgl-rust's footprint in thumbv6m and riscv32imc firmware (see lvgl-rust/size-gate/gate.sh)"
 env.RUSTFLAGS = "-D warnings"
 # Budgets: the crate's code in bytes, with N = 16 slots and in views-only
-# mode. Raise them only with the feature that needs it.
+# mode. Raise them only with the feature that needs it (the composite part
+# checks took about 1.35 KB on thumbv6m).
 run = [
-  "lvgl-rust/size-gate/gate.sh thumbv6m-none-eabi 16 3072",
-  "lvgl-rust/size-gate/gate.sh thumbv6m-none-eabi 0 1024",
-  "lvgl-rust/size-gate/gate.sh riscv32imc-unknown-none-elf 16 4096",
-  "lvgl-rust/size-gate/gate.sh riscv32imc-unknown-none-elf 0 1280",
+  "lvgl-rust/size-gate/gate.sh thumbv6m-none-eabi 16 4608",
+  "lvgl-rust/size-gate/gate.sh thumbv6m-none-eabi 0 2304",
+  "lvgl-rust/size-gate/gate.sh riscv32imc-unknown-none-elf 16 5888",
+  "lvgl-rust/size-gate/gate.sh riscv32imc-unknown-none-elf 0 2816",
 ]
 
 [tasks.msrv]

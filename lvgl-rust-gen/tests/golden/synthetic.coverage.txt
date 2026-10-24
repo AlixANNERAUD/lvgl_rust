@@ -13,7 +13,7 @@ lv_layer_count: LvglShared layer_count
 lv_msgbox_close: ObjMut { consumes: true } close
 lv_msgbox_set_parent_or_null: raw (exclusive call taking another object (not generated yet))
 lv_obj_add_state: View add_state
-lv_obj_align_to: View align_to
+lv_obj_align_to: raw (stores another object (relations.toml))
 lv_obj_get_coords: View get_coords
 lv_obj_get_screen: View get_screen
 lv_obj_get_state: View get_state

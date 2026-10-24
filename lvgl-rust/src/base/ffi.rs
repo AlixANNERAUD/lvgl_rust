@@ -130,3 +130,13 @@ pub(crate) unsafe fn display_loading_screens(display: *mut lv_display_t) -> [*mu
         ]
     }
 }
+
+/// The composite widgets of the part tables (generated).
+pub(crate) fn composites() -> &'static [super::structural::Composite] {
+    crate::generated::COMPOSITES
+}
+
+/// Widget classes without parts (generated).
+pub(crate) fn leaves() -> &'static [super::structural::ClassRef] {
+    crate::generated::LEAVES
+}

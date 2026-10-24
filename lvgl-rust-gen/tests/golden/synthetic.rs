@@ -2,20 +2,6 @@
 
 /// Enum and flags types, with the values of these bindings.
 pub mod enums {
-    /// `lv_align_t`.
-    #[repr(transparent)]
-    #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-    pub struct Align(pub(crate) u32);
-    #[allow(clippy::unnecessary_cast)]
-    impl Align {
-        pub const CENTER: Self = Self(crate::sys::lv_align_t_LV_ALIGN_CENTER as u32);
-        pub const TOP_LEFT: Self = Self(crate::sys::lv_align_t_LV_ALIGN_TOP_LEFT as u32);
-        /// The raw value.
-        #[inline]
-        pub const fn bits(self) -> u32 {
-            self.0
-        }
-    }
     /// `lv_state_t`.
     #[repr(transparent)]
     #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -233,26 +219,6 @@ impl crate::Obj {
             )
         }
     }
-    /// `lv_obj_align_to`.
-    #[inline]
-    #[allow(clippy::unnecessary_cast, clippy::too_many_arguments)]
-    pub fn align_to(
-        &self,
-        base: &crate::Obj,
-        align: crate::enums::Align,
-        x: i32,
-        y: i32,
-    ) {
-        unsafe {
-            crate::sys::lv_obj_align_to(
-                crate::base::gen_support::ptr_of(self),
-                base.as_ptr(),
-                align.0 as crate::sys::lv_align_t,
-                x,
-                y,
-            )
-        }
-    }
     /// `lv_obj_get_coords`.
     #[inline]
     #[allow(clippy::unnecessary_cast, clippy::too_many_arguments)]
@@ -378,4 +344,27 @@ impl crate::Lvgl {
     pub fn screen_clean_all(&mut self) {
         unsafe { crate::sys::lv_screen_clean_all() }
     }
+}
+/// Most parts of a composite widget.
+pub(crate) const MAX_PARTS: usize = 1usize;
+/// Composite widgets: their internal parts (`classes.toml`).
+pub(crate) static COMPOSITES: &[crate::base::structural::Composite] = &[
+    crate::base::structural::Composite {
+        class: core::ptr::addr_of!(crate ::sys::lv_textarea_class),
+        max_depth: 1u8,
+        indexed: &[0u8],
+        parts: textarea_parts,
+    },
+];
+/// Widgets that create no child and keep no pointer to their
+/// children.
+pub(crate) static LEAVES: &[crate::base::structural::ClassRef] = &[];
+fn textarea_parts(
+    o: *mut crate::sys::lv_obj_t,
+    out: &mut [*mut crate::sys::lv_obj_t; MAX_PARTS],
+) -> usize {
+    unsafe {
+        out[0usize] = crate::sys::lv_textarea_get_label(o);
+    }
+    1usize
 }

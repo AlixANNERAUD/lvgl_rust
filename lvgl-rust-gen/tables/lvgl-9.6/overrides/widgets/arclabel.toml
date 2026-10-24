@@ -1,0 +1,4 @@
+# Parameter kinds, each checked against the LVGL sources (file:line in `why`).
+[fn.lv_arclabel_set_text]
+params.text = { kind = "copied_str" }
+why = "widgets/arclabel/lv_arclabel.c:130-134 lv_mallocs and lv_strcpys `text` into arclabel->text (the self-text case reallocs at :118-121). NULL is accepted and just refreshes (:109-112)."
