@@ -89,6 +89,10 @@ pub enum RetPlan {
     View(Option<String>),
     /// A font, borrowed like a view.
     Font,
+    /// A string inside the object (`returns = "borrowed_internal"`): a
+    /// shared setter could free it, so views copy it out (`x_into`) and only
+    /// `ObjMut` borrows it.
+    BorrowedStr,
 }
 
 /// Receivers whose resources the crate manages by hand.
@@ -261,6 +265,9 @@ impl<'a> Classifier<'a> {
         }
         if shape == Shape::Free && matches!(ret, RetPlan::View(_)) {
             return Plan::Raw("returns an object without a token".into());
+        }
+        if ret == RetPlan::BorrowedStr && !matches!(shape, Shape::View | Shape::ObjMut { .. }) {
+            return Plan::Raw("borrowed string without an object".into());
         }
         if ret == RetPlan::Font && !matches!(shape, Shape::View | Shape::LvglShared) {
             // The font is borrowed from shared access.
@@ -465,9 +472,14 @@ impl<'a> Classifier<'a> {
                 }
                 None => Ok(RetPlan::View(None)),
             },
-            CType::Ptr { .. } => match returns {
+            CType::Ptr { pointee, .. } => match returns {
+                Some(Returns::Keyword(ReturnKeyword::BorrowedInternal))
+                    if pointee.named() == Some("c_char") =>
+                {
+                    Ok(RetPlan::BorrowedStr)
+                }
                 Some(Returns::Keyword(ReturnKeyword::BorrowedInternal)) => {
-                    Err("borrowed_internal returns are not generated yet".into())
+                    Err("borrowed_internal returns other than strings are not generated yet".into())
                 }
                 _ => Err("pointer return".into()),
             },

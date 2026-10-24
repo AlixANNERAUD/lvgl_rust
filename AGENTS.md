@@ -272,6 +272,12 @@ cfgs mirror the `LV_USE_*` values for hand-written code.
   fonts may sit in flash. Each `lv_style_set_<p>` whose value fits a
   constant also gets a `props::<p>` constructor for `const_style!`, and
   each `lv_font_t` static of the bindings a `const` `Font` constructor.
+- A string getter that points into the object stays raw until an override
+  says `returns = "borrowed_internal"` (after checking that the pointer is
+  the object's own text, a literal or static text it was given, never
+  something else such as an image source). It becomes a copy-out
+  `x_into(&self, buf)` on the view, since a shared setter could free the
+  string, and a borrowing `x(&mut self)` on `ObjMut`.
 - `classes.toml` `crate_owned` functions can never be shared or exclusive;
   `manual` ones are wrapped by hand in `lvgl-rust/src/base/`.
 - `classes.toml` `[composite.<widget>]` tables drive the structural checks:

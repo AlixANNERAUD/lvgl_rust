@@ -1,0 +1,5 @@
+# Parameter kinds, each checked against the LVGL sources (file:line in `why`).
+
+[fn.lv_checkbox_get_text]
+returns = "borrowed_internal"
+why = "lv_checkbox.c:139-145 returns cb->txt, the checkbox's copy or its static text."

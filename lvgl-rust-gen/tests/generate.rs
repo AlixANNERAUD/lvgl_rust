@@ -77,6 +77,8 @@ unsafe extern "C" {
     pub fn lv_label_set_text_static(obj: *mut lv_obj_t, text: *const core::ffi::c_char);
     pub fn lv_label_set_text_fmt(obj: *mut lv_obj_t, fmt: *const core::ffi::c_char, ...);
     pub fn lv_label_set_recolor_text(obj: *mut lv_obj_t, text: *const core::ffi::c_char);
+    pub fn lv_label_get_text(obj: *const lv_obj_t) -> *mut core::ffi::c_char;
+    pub fn lv_label_get_letter(obj: *const lv_obj_t) -> *mut core::ffi::c_char;
     pub fn lv_textarea_get_label(obj: *const lv_obj_t) -> *mut lv_obj_t;
     pub fn lv_textarea_set_placeholder_text(obj: *mut lv_obj_t, txt: *const core::ffi::c_char);
     pub fn lv_msgbox_close(mbox: *mut lv_obj_t);
@@ -161,6 +163,10 @@ access = "shared"
 access = "shared"
 [fn.lv_label_set_recolor_text]
 access = "shared"
+[fn.lv_label_get_text]
+access = "shared"
+[fn.lv_label_get_letter]
+access = "shared"
 [fn.lv_textarea_get_label]
 access = "shared"
 [fn.lv_textarea_set_placeholder_text]
@@ -240,6 +246,8 @@ params.text = { kind = "copied_str" }
 params.area = { kind = "copied" }
 [fn.lv_textarea_get_label]
 returns = { view = "label" }
+[fn.lv_label_get_text]
+returns = "borrowed_internal"
 [fn.lv_bar_select]
 params.sel_opt = { kind = "checked" }
 [fn.lv_obj_get_coords]

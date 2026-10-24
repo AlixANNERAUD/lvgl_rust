@@ -1,4 +1,5 @@
 # Parameter kinds, each checked against the LVGL sources (file:line in `why`).
 [fn.lv_keyboard_get_button_text]
+returns = "borrowed_internal"
 params.btn_id = { kind = "checked" }
-why = "widgets/keyboard/lv_keyboard.c:450 forwards to lv_buttonmatrix_get_button_text, which returns NULL through plain ifs for LV_BUTTONMATRIX_BUTTON_NONE and `btn_id >= btnm->btn_cnt` before any map_p access (widgets/buttonmatrix/lv_buttonmatrix.c, lv_buttonmatrix_get_button_text, first lines of the body)."
+why = "widgets/keyboard/lv_keyboard.c:450 forwards to lv_buttonmatrix_get_button_text, which returns NULL through plain ifs for LV_BUTTONMATRIX_BUTTON_NONE and `btn_id >= btnm->btn_cnt` before any map_p access (widgets/buttonmatrix/lv_buttonmatrix.c, lv_buttonmatrix_get_button_text, first lines of the body). Returns: forwards to lv_buttonmatrix_get_button_text (lv_keyboard.c:446-451), an entry of the keyboard's map or NULL."

@@ -30,4 +30,5 @@ pub use view::{IsA, Obj, Widget};
 pub(crate) mod gen_support {
     pub(crate) use super::view::{getter_view, ptr_of, view};
     pub(crate) use crate::style::font;
+    pub(crate) use crate::text::{borrow_str, copy_str};
 }

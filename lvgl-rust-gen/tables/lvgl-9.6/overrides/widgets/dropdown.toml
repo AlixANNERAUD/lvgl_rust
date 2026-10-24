@@ -14,3 +14,11 @@ why = "widgets/dropdown/lv_dropdown.c:422 clamps with a plain ternary (`sel_opt 
 [fn.lv_dropdown_set_text]
 params.text = { kind = "copied_str" }
 why = "widgets/dropdown/lv_dropdown.c:1531-1546: update_text lv_strdups `text` and stores the copy. NULL is accepted: copied_text stays NULL (:1531-1532), which means 'show the selected option'."
+
+[fn.lv_dropdown_get_text]
+returns = "borrowed_internal"
+why = "lv_dropdown.c:474-480 returns dropdown->text, the static text given to lv_dropdown_set_text, or NULL."
+
+[fn.lv_dropdown_get_options]
+returns = "borrowed_internal"
+why = "lv_dropdown.c:482-488 returns dropdown->options (owned or static) or a literal \"\". (lv_dropdown_get_symbol stays raw: the symbol may be an image descriptor, not a string.)"

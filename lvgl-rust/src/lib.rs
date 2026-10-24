@@ -28,6 +28,7 @@ mod base;
 mod error;
 mod screen;
 mod style;
+mod text;
 
 /// Wrappers generated from this build's bindings and the reviewed tables of
 /// `lvgl-rust-gen` (the list of what is wrapped is `$OUT_DIR/coverage.txt`).

@@ -69,6 +69,22 @@ pub fn emit(classifier: &Classifier, plans: &BTreeMap<String, Plan>) -> String {
         .map(|m| m.name.clone())
         .chain(CORE_OBJMUT.iter().map(|n| (*n).to_owned()))
         .collect();
+    // A string inside the object: a copy-out `x_into` on the view and a
+    // borrow on `ObjMut`.
+    let methods: Vec<Method> = methods
+        .iter()
+        .flat_map(|m| {
+            if m.ret == RetPlan::BorrowedStr && m.shape == Shape::View {
+                let mut into = (*m).clone();
+                into.name = format!("{}_into", m.name);
+                let mut borrow = (*m).clone();
+                borrow.shape = Shape::ObjMut { consumes: false };
+                vec![into, borrow]
+            } else {
+                vec![(*m).clone()]
+            }
+        })
+        .collect();
     for m in &methods {
         let renamed;
         let m = if matches!(m.shape, Shape::ObjMut { .. })
@@ -80,7 +96,7 @@ pub fn emit(classifier: &Classifier, plans: &BTreeMap<String, Plan>) -> String {
             renamed = copy;
             &renamed
         } else {
-            *m
+            m
         };
         let tokens = emit_method(classifier, m);
         match (&m.shape, &m.class) {
@@ -324,6 +340,7 @@ fn emit_method(classifier: &Classifier, m: &Method) -> TokenStream {
         _ => {}
     }
     let mut out = None;
+    let mut generics = quote!();
     for p in &m.params {
         if let ParamPlan::Out { name, ty } = p {
             let n = Ident::new(name, Span::call_site());
@@ -344,8 +361,22 @@ fn emit_method(classifier: &Classifier, m: &Method) -> TokenStream {
         }
         Shape::Free | Shape::Create => quote!(),
     };
+    if m.ret == RetPlan::BorrowedStr && m.shape == Shape::View {
+        args.push(quote!(buf: &'b mut [u8]));
+        generics = quote!(<'b>);
+    }
     let call = quote!(crate::sys::#c_fn(#(#call_args),*));
     let (ret_ty, body) = match &m.ret {
+        RetPlan::BorrowedStr if m.shape == Shape::View => (
+            quote!(-> Result<Option<&'b core::ffi::CStr>, crate::Error>),
+            quote!(crate::base::gen_support::copy_str(unsafe { #call }, buf)),
+        ),
+        // Exclusive access, borrowed for as long as the string: nothing
+        // can change or free it meanwhile.
+        RetPlan::BorrowedStr => (
+            quote!(-> Option<&core::ffi::CStr>),
+            quote!(crate::base::gen_support::borrow_str(unsafe { #call })),
+        ),
         RetPlan::Unit => (quote!(), quote!(unsafe { #call })),
         RetPlan::Scalar(ty) => {
             let ty: syn::Type = syn::parse_str(ty).unwrap();
@@ -410,7 +441,7 @@ fn emit_method(classifier: &Classifier, m: &Method) -> TokenStream {
         #doc
         #[inline]
         #[allow(clippy::unnecessary_cast, clippy::too_many_arguments)]
-        pub fn #name(#receiver #(#args),*) #ret_ty {
+        pub fn #name #generics(#receiver #(#args),*) #ret_ty {
             #body
         }
     }

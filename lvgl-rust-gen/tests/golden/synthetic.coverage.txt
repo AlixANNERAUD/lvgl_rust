@@ -8,6 +8,8 @@ lv_font_get_default: raw (returns a font without shared access)
 lv_font_get_line_height: LvglShared font_get_line_height
 lv_font_set_kerning: raw (parameter `font`: writes into a font)
 lv_label_create: Create create
+lv_label_get_letter: raw (return: pointer return)
+lv_label_get_text: View get_text
 lv_label_set_recolor_text: raw (parameter `text`: string kept by LVGL (retained))
 lv_label_set_text: View set_text
 lv_label_set_text_fmt: skip (variadic)

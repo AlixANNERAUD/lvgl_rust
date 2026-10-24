@@ -222,6 +222,20 @@ impl crate::widgets::Label {
     ) -> Result<crate::Owned<crate::widgets::Label>, crate::Error> {
         crate::WidgetExt::own(Self::create(parent)?)
     }
+    /// `lv_label_get_text`.
+    #[inline]
+    #[allow(clippy::unnecessary_cast, clippy::too_many_arguments)]
+    pub fn get_text_into<'b>(
+        &self,
+        buf: &'b mut [u8],
+    ) -> Result<Option<&'b core::ffi::CStr>, crate::Error> {
+        crate::base::gen_support::copy_str(
+            unsafe {
+                crate::sys::lv_label_get_text(crate::base::gen_support::ptr_of(self))
+            },
+            buf,
+        )
+    }
     /// `lv_label_set_text`.
     #[inline]
     #[allow(clippy::unnecessary_cast, clippy::too_many_arguments)]
@@ -370,6 +384,16 @@ impl crate::ObjMut<'_, crate::widgets::Bar> {
     #[allow(clippy::unnecessary_cast, clippy::too_many_arguments)]
     pub fn select(&mut self, sel_opt: u32) {
         unsafe { crate::sys::lv_bar_select(self.as_raw(), sel_opt) }
+    }
+}
+impl crate::ObjMut<'_, crate::widgets::Label> {
+    /// `lv_label_get_text`.
+    #[inline]
+    #[allow(clippy::unnecessary_cast, clippy::too_many_arguments)]
+    pub fn get_text(&mut self) -> Option<&core::ffi::CStr> {
+        crate::base::gen_support::borrow_str(unsafe {
+            crate::sys::lv_label_get_text(self.as_raw())
+        })
     }
 }
 impl crate::ObjMut<'_, crate::widgets::MsgBox> {

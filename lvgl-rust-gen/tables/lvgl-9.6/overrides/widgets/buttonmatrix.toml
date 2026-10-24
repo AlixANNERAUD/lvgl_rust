@@ -4,8 +4,9 @@ params.btn_id = { kind = "checked" }
 why = "lv_buttonmatrix.c:204 has a plain if(btn_id >= btnm->btn_cnt) return; before ctrl_bits[btn_id] at line 206. invalidate_button_area checks again at lv_buttonmatrix.c:984 and :990."
 
 [fn.lv_buttonmatrix_get_button_text]
+returns = "borrowed_internal"
 params.btn_id = { kind = "checked" }
-why = "lv_buttonmatrix.c:283 rejects LV_BUTTONMATRIX_BUTTON_NONE and line 286 has a plain if(btn_id >= btnm->btn_cnt) return NULL; before the map walk at lines 293-297, which therefore stays inside the btn_cnt buttons of the map."
+why = "lv_buttonmatrix.c:283 rejects LV_BUTTONMATRIX_BUTTON_NONE and line 286 has a plain if(btn_id >= btnm->btn_cnt) return NULL; before the map walk at lines 293-297, which therefore stays inside the btn_cnt buttons of the map. Returns: lv_buttonmatrix.c:279-302 returns an entry of map_p, the map the widget was given, or NULL."
 
 [fn.lv_buttonmatrix_has_button_ctrl]
 params.btn_id = { kind = "checked" }
