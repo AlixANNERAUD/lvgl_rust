@@ -121,14 +121,14 @@ description = "Run clippy on lvgl-rust"
 env.RUSTFLAGS = "-D warnings"
 env.DEP_LV_CONFIG_PATH = "{{config_root}}/lvgl-rust/conf"
 env.CARGO_TARGET_DIR = "target/safe"
-run = "cargo clippy -p lvgl-rust -p lvgl-rust-size-gate --all-targets"
+run = "cargo clippy -p lvgl-rust -p lvgl-rust-size-gate --all-targets --features lvgl-rust/async"
 
 [tasks.test-safe]
 description = "Test lvgl-rust against LVGL"
 env.RUSTFLAGS = "-D warnings"
 env.DEP_LV_CONFIG_PATH = "{{config_root}}/lvgl-rust/conf"
 env.CARGO_TARGET_DIR = "target/safe"
-run = "cargo test -p lvgl-rust"
+run = "cargo test -p lvgl-rust --features async"
 
 [tasks.test-views-only]
 description = "Lint and test lvgl-rust without handles, on a config that keeps LVGL's own OBJ_ID support"

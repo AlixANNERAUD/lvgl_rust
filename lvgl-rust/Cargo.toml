@@ -17,6 +17,8 @@ build = "build.rs"
 default = ["use-string-functions"]
 use-string-functions = ["lvgl_rust_sys/use-string-functions"]
 shadcn-theme = ["lvgl_rust_sys/shadcn-theme"]
+# Event queues and `next_event` for async code (no executor dependency).
+async = []
 
 color_depth_1 = ["lvgl_rust_sys/color_depth_1"]
 color_depth_8 = ["lvgl_rust_sys/color_depth_8"]

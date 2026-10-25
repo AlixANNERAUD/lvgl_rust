@@ -38,6 +38,8 @@ mod group;
 mod image;
 mod indev;
 mod manual;
+#[cfg(feature = "async")]
+mod queue;
 mod screen;
 mod style;
 mod subject;
@@ -80,6 +82,8 @@ pub use group::Group;
 pub use image::{ImageColorkey, ImageData, ImageDsc, ImageSrc, PixelFormat};
 pub use indev::{Indev, IndevCell, IndevData, IndevKind, Read};
 pub use lvgl_rust_sys as sys;
+#[cfg(feature = "async")]
+pub use queue::{Receiver, Recv, StaticQueue, StaticRx, next_event};
 pub use screen::{ScreenAnim, ScreenLoadAnim};
 pub use style::{
     AnimPath, ColorFilter, ConstProp, ConstStyle, Font, GradDir, GradDsc, Selector, Style,

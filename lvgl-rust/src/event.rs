@@ -270,7 +270,7 @@ pub struct Handler<C: Sync + 'static> {
 /// Runs `body` for the event `e` if its code is allowed and the callback
 /// depth limit is not reached. Non-generic: the trampolines only add the
 /// user call.
-fn dispatch(e: *mut sys::lv_event_t, body: &mut dyn FnMut(&Event<'_>)) {
+pub(crate) fn dispatch(e: *mut sys::lv_event_t, body: &mut dyn FnMut(&Event<'_>)) {
     let Some(e) = NonNull::new(e) else { return };
     let event = Event { e, _p: PhantomData };
     if !handler_allowed(event.code()) {
@@ -382,7 +382,7 @@ where
 }
 
 impl Obj {
-    fn add_handler(
+    pub(crate) fn add_handler(
         &self,
         code: EventCode,
         cb: unsafe extern "C" fn(*mut sys::lv_event_t),
