@@ -178,7 +178,10 @@ impl Lvgl {
     ///
     /// Call it only from a callback that LVGL runs inside a call made by the
     /// session holder (an event, timer or animation callback), and keep the
-    /// guard within that callback.
+    /// guard within that callback. Never call it from a restricted handler
+    /// ([`QueryEvent`](crate::QueryEvent)) or a raw handler of a query or
+    /// draw code: LVGL is in the middle of layout or rendering there, and
+    /// shared access could free what it holds.
     pub unsafe fn enter_callback() -> Option<DepthGuard> {
         let depth = &reg().hdr.depth;
         let current = depth.get();

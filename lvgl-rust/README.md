@@ -29,8 +29,16 @@ else stays reachable through `lvgl_rust::sys`.
   without captures), `on_with(code, data, ...)` (a value of up to 4 bytes),
   `on_static` (a `static` context), `on_removable`. Handlers get shared
   access; `delete_later` and `lv.post(f, data)` defer what needs exclusive
-  access to the next drain. Codes sent in the middle of layout or
-  rendering are not offered.
+  access to the next drain.
+- **Restricted handlers for query and draw codes.** Codes sent in the
+  middle of layout or rendering (`GET_SELF_SIZE`, `HIT_TEST`,
+  `COVER_CHECK`, `REFR_EXT_DRAW_SIZE`, `DRAW_*`, `DRAW_TASK_ADDED`) go to
+  `obj.on_query(QueryCode::X, |e| ...)` (also `on_query_with`,
+  `on_query_fn`). The handler gets a `QueryEvent`, with no `Lvgl` access
+  and no views: it reads the typed parameter and writes the answer
+  (`e.self_size()?.extend(w, h)`, `e.hit_test()?.set_result(false)`,
+  `e.draw_task()?.set_color(c)`), and the compiler rejects anything else.
+  Drawing into a layer stays raw (`Layer::as_ptr`).
 - **Timers.** `lv.timer(period_ms, data, f)` returns an `Owned<Timer>`
   (dropping it deletes the timer); `Handle<Timer>` pauses, resumes and
   changes the period and repeat count. No allocation besides LVGL's timer.
