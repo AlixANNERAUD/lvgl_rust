@@ -234,3 +234,42 @@ fn labels_take_str_and_numbers() {
         .delete()
         .unwrap();
 }
+
+/// Composite deletion paths, for ASan (`mise run test-asan`): an open
+/// dropdown deletes the list it put on the top layer, a closed message box
+/// deletes its parts (and its backdrop when it has one).
+#[test]
+fn composites_free_their_parts_when_deleted() {
+    use lvgl_rust::widgets::MsgBox;
+    let mut guard = guard();
+    let mut lv = session(&mut guard);
+    // The dropdown puts its list on the screen, after itself.
+    let index = Dropdown::create(lv.screen_active().unwrap())
+        .unwrap()
+        .get_index();
+    fn dropdown(lv: &Lvgl, index: i32) -> Option<&Dropdown> {
+        lv.screen_active()?.child(index)?.downcast()
+    }
+    let children = lv.screen_active().unwrap().get_child_count();
+    lv.edit(|lv| dropdown(lv, index)).unwrap().open();
+    assert!(dropdown(&lv, index).unwrap().get_list().is_some());
+    lv.edit(|lv| dropdown(lv, index)).unwrap().delete().unwrap();
+    lv.timer_handler();
+    assert_eq!(lv.screen_active().unwrap().get_child_count(), children - 2);
+
+    fn last_msgbox(lv: &Lvgl) -> Option<&MsgBox> {
+        lv.screen_active()?.child(-1)?.downcast()
+    }
+    MsgBox::create(lv.screen_active().unwrap()).unwrap();
+    // SAFETY: session held, live message box: adds a header and footer.
+    unsafe {
+        let mbox = last_msgbox(&lv).unwrap().as_ptr();
+        lvgl_rust::sys::lv_msgbox_add_title(mbox, c"Title".as_ptr());
+        lvgl_rust::sys::lv_msgbox_add_close_button(mbox);
+        lvgl_rust::sys::lv_msgbox_add_footer_button(mbox, c"OK".as_ptr());
+    }
+    let children = lv.screen_active().unwrap().get_child_count();
+    lv.edit(last_msgbox).unwrap().close();
+    lv.timer_handler();
+    assert_eq!(lv.screen_active().unwrap().get_child_count(), children - 1);
+}
