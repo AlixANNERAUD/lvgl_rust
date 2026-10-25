@@ -46,11 +46,12 @@ run = [
 ]
 
 [tasks.fmt]
-description = "Check formatting of the workspace, the example and the fixture"
+description = "Check formatting of the workspace, the example, the fixture and the social banner program"
 run = [
   "cargo fmt --all --check",
   "cargo fmt --check --manifest-path lvgl-rust-sys/examples/external-fonts/Cargo.toml",
   "cargo fmt --check --manifest-path lvgl-rust-sys/tests/fixtures/font_incremental/Cargo.toml",
+  "cargo fmt --check --manifest-path assets/social-banner/screen/Cargo.toml",
 ]
 
 [tasks.clippy]
@@ -93,6 +94,11 @@ run = [
   "DEP_LV_CONFIG_PATH={{config_root}}/lvgl-rust/conf cargo llvm-cov --no-report -p lvgl-rust --features async,heap,fmt",
   "cargo llvm-cov report --lcov --output-path coverage.lcov",
 ]
+
+[tasks.social-banner]
+description = "Render assets/social-banner/social-banner.png, the GitHub social preview (real LVGL output; downloads its fonts)"
+tools = { "cargo:resvg" = "0.49.0" }
+run = "sh assets/social-banner/render.sh"
 
 [tasks.cross-wasm32]
 env = { RUSTFLAGS = "-D warnings" }

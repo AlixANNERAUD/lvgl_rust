@@ -1,0 +1,11 @@
+[package]
+name = "social-banner-screen"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+lvgl-rust = { path = "../../../lvgl-rust", features = ["color_depth_32"] }
+png = "0.17"
