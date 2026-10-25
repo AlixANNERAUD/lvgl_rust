@@ -1970,6 +1970,7 @@ lv_win_get_content
 lv_win_get_header
 lv_zalloc
 lvgl_sys_image_cache_drop
+lvgl_sys_keyboard_forget_textarea
 lvgl_sys_menu_part
 lvgl_sys_obj_events_traversing
 lvgl_sys_obj_is_deleting

@@ -433,6 +433,23 @@ impl crate::ObjMut<'_, crate::widgets::MsgBox> {
     pub fn close(self) {
         unsafe { crate::sys::lv_msgbox_close(self.as_raw()) }
     }
+    /// Change the parent of a message box.
+    ///
+    /// `lv_msgbox_set_parent_or_null`.
+    #[cfg(not(lvgl_rust_views_only))]
+    #[inline]
+    #[allow(clippy::unnecessary_cast, clippy::too_many_arguments)]
+    pub fn set_parent_or_null(
+        &mut self,
+        parent: Option<crate::Handle<crate::Obj>>,
+    ) -> Result<(), crate::Error> {
+        let parent = match parent {
+            Some(h) => crate::base::gen_support::resolve_obj(h)?,
+            None => core::ptr::null_mut(),
+        };
+        unsafe { crate::sys::lv_msgbox_set_parent_or_null(self.as_raw(), parent) };
+        Ok(())
+    }
 }
 impl<W: crate::Widget> crate::ObjMut<'_, W> {
     /// `lv_obj_add_style`.

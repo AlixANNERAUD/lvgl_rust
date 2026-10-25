@@ -144,3 +144,84 @@ mod scale {
         }
     }
 }
+
+/// Relations (`relations.toml`): an object that keeps another one gets it
+/// cleared when that one is deleted.
+#[cfg(all(lv_use_keyboard, lv_use_textarea, not(lvgl_rust_views_only)))]
+mod keyboard {
+    use crate::{
+        Error, Handle, ObjMut, WidgetExt,
+        base::gen_support::resolve_obj,
+        event::{decode, encode},
+        sys,
+        widgets::{Keyboard, TextArea},
+    };
+    use core::ptr;
+
+    impl ObjMut<'_, Keyboard> {
+        /// Types into `textarea` (`None`: no textarea). LVGL keeps it; the
+        /// keyboard forgets it when the textarea is deleted. Takes a
+        /// registry slot for the keyboard.
+        ///
+        /// `lv_keyboard_set_textarea`.
+        pub fn set_textarea(&mut self, textarea: Option<Handle<TextArea>>) -> Result<(), Error> {
+            let keyboard = self.view().handle()?;
+            let ta = match textarea {
+                Some(h) => resolve_obj(h.upcast())?,
+                None => ptr::null_mut(),
+            };
+            if !ta.is_null() {
+                watch(ta, keyboard)?;
+            }
+            // SAFETY: exclusive access; a live textarea or NULL.
+            unsafe { sys::lv_keyboard_set_textarea(self.as_raw(), ta) };
+            Ok(())
+        }
+    }
+
+    /// Installs, once per keyboard, a DELETE handler on `ta` that clears the
+    /// keyboard's pointer.
+    fn watch(ta: *mut sys::lv_obj_t, keyboard: Handle<Keyboard>) -> Result<(), Error> {
+        let data = encode(keyboard);
+        // SAFETY: a live object under exclusive access; descriptors are only
+        // compared.
+        unsafe {
+            for i in 0..sys::lv_obj_get_event_count(ta) {
+                let dsc = sys::lv_obj_get_event_dsc(ta, i);
+                let same_cb = sys::lv_event_dsc_get_cb(dsc)
+                    .is_some_and(|cb| ptr::fn_addr_eq(cb, forget as unsafe extern "C" fn(_)));
+                if same_cb && sys::lv_event_dsc_get_user_data(dsc) == data {
+                    return Ok(());
+                }
+            }
+            let dsc = sys::lv_obj_add_event_cb(
+                ta,
+                Some(forget),
+                sys::lv_event_code_t_LV_EVENT_DELETE,
+                data,
+            );
+            if dsc.is_null() {
+                Err(Error::OutOfMemory)
+            } else {
+                Ok(())
+            }
+        }
+    }
+
+    /// The textarea is being deleted: the keyboard (if alive) forgets it if
+    /// it still types into it. Runs no user code.
+    unsafe extern "C" fn forget(e: *mut sys::lv_event_t) {
+        // SAFETY: a DELETE event of the textarea, with a keyboard handle
+        // stored by `watch`.
+        unsafe {
+            let keyboard = decode::<Handle<Keyboard>>(sys::lv_event_get_user_data(e));
+            let Ok(kb) = resolve_obj(keyboard.upcast()) else {
+                return;
+            };
+            let ta = sys::lv_event_get_target_obj(e);
+            if sys::lv_keyboard_get_textarea(kb) == ta {
+                sys::lvgl_sys_keyboard_forget_textarea(kb);
+            }
+        }
+    }
+}

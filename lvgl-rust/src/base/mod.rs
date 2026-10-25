@@ -35,6 +35,16 @@ pub(crate) fn callback_depth() -> u8 {
 /// What the generated wrappers (`gen.rs`) use from the core.
 pub(crate) mod gen_support {
     pub(crate) use super::structural::check_create;
+
+    /// The object of a handle, under exclusive access.
+    #[cfg(not(lvgl_rust_views_only))]
+    pub(crate) fn resolve_obj(
+        handle: crate::Handle<crate::Obj>,
+    ) -> Result<*mut super::ffi::lv_obj_t, crate::Error> {
+        super::registry::reg()
+            .resolve(handle.raw(), super::registry::Kind::Obj, core::ptr::null())
+            .map(|p| p.as_ptr().cast())
+    }
     pub(crate) use super::view::{getter_view, ptr_of, view};
     pub(crate) use crate::style::font;
     pub(crate) use crate::text::{borrow_str, copy_str};

@@ -17,7 +17,7 @@ lv_label_set_text_fmt: skip (variadic)
 lv_label_set_text_static: View set_text_static
 lv_layer_count: LvglShared layer_count
 lv_msgbox_close: ObjMut { consumes: true } close
-lv_msgbox_set_parent_or_null: raw (exclusive call taking another object (not generated yet))
+lv_msgbox_set_parent_or_null: ObjMut { consumes: false } set_parent_or_null
 lv_obj_add_state: View add_state
 lv_obj_add_style: ObjMut { consumes: false } add_style
 lv_obj_align_to: raw (stores another object (relations.toml))

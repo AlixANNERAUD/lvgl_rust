@@ -9,3 +9,21 @@ clear = "lv_keyboard_set_textarea(holder, NULL)"
 # Reparents the cursor and can never be cleared.
 [fn.lv_indev_set_cursor]
 raw = true
+
+# Caches the tile in tile_act, never cleared when the tile is deleted
+# (lv_tileview.c:99, 192).
+[fn.lv_tileview_set_tile]
+raw = true
+
+# Write into the needle as a line without checking its class, and register
+# a handler on it that keeps the scale (lv_scale.c:284-345).
+[fn.lv_scale_set_line_needle_value]
+raw = true
+
+[fn.lv_scale_set_image_needle_value]
+raw = true
+
+# Reorders two objects, possibly in different parents: not checked like a
+# move yet.
+[fn.lv_obj_swap]
+raw = true

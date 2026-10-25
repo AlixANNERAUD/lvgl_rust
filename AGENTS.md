@@ -301,8 +301,12 @@ cfgs mirror the `LV_USE_*` values for hand-written code.
   `sel_opt`, ...) too, until an override gives their kind with a `why`
   citing the lines that copy, write or bounds-check them (a check under
   `LV_USE_CHECK_ARG` or `LV_ASSERT` does not count: configurations turn
-  them off). Functions in `relations.toml` stay raw until relations are
-  supported.
+  them off). Functions in `relations.toml` are raw unless wrapped by hand
+  with a clear-on-delete watcher (`manual.rs`: the keyboard's textarea);
+  `raw = true` marks those that cache another object and cannot be cleared.
+- An exclusive call taking another object takes a `Handle` (resolved
+  under the exclusive access) and returns a `Result`; one returning an
+  object lends a view borrowing the `ObjMut`.
 - Table errors always fail the build. Entries for functions missing from a
   build's bindings warn (they may be disabled by that `lv_conf.h`) unless
   `universe.txt` lists them; `LVGL_RUST_GEN_STRICT=1`, set for every mise

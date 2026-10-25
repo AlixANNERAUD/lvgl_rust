@@ -25,6 +25,15 @@ extern "C"
      */
     bool lvgl_sys_obj_events_traversing(const lv_obj_t * obj);
 
+#if LV_USE_KEYBOARD
+    /**
+     * Makes a keyboard forget its textarea without touching it (unlike
+     * `lv_keyboard_set_textarea(kb, NULL)`), for when the textarea is being
+     * deleted.
+     */
+    void lvgl_sys_keyboard_forget_textarea(lv_obj_t * keyboard);
+#endif
+
 #if LV_USE_OBJ_ID
     /** Stores `id` in the object without calling `lv_obj_free_id` or
      *  `lv_obj_assign_id`, for applications that implement the OBJ_ID hooks. */

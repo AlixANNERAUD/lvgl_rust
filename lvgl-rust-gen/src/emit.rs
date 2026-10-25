@@ -391,6 +391,27 @@ fn emit_method(classifier: &Classifier, m: &Method) -> TokenStream {
         args.push(quote!(buf: &'b mut [u8]));
         generics = quote!(<'b>);
     }
+    // Other objects of exclusive calls are handles, resolved first.
+    let handles: Vec<TokenStream> = m
+        .params
+        .iter()
+        .filter_map(|p| match p {
+            ParamPlan::ObjHandle { name, nullable } => {
+                let n = Ident::new(name, Span::call_site());
+                Some(if *nullable {
+                    quote! {
+                        let #n = match #n {
+                            Some(h) => crate::base::gen_support::resolve_obj(h)?,
+                            None => core::ptr::null_mut(),
+                        };
+                    }
+                } else {
+                    quote!(let #n = crate::base::gen_support::resolve_obj(#n)?;)
+                })
+            }
+            _ => None,
+        })
+        .collect();
     let call = quote!(crate::sys::#c_fn(#(#call_args),*));
     let (ret_ty, body) = match &m.ret {
         RetPlan::BorrowedStr if m.shape == Shape::View => (
@@ -470,11 +491,37 @@ fn emit_method(classifier: &Classifier, m: &Method) -> TokenStream {
             )
         }
     };
+    // Resolving handles can fail: the result becomes a `Result`.
+    let returns_result = matches!(m.ret, RetPlan::Observer);
+    let (ret_ty, body, cfg) = if handles.is_empty() {
+        (ret_ty, body, quote!())
+    } else {
+        let cfg = quote!(#[cfg(not(lvgl_rust_views_only))]);
+        if returns_result {
+            (ret_ty, quote! { #(#handles)* #body }, cfg)
+        } else {
+            if ret_ty.is_empty() {
+                (
+                    quote!(-> Result<(), crate::Error>),
+                    quote! { #(#handles)* #body; Ok(()) },
+                    cfg,
+                )
+            } else {
+                let inner = strip_arrow(ret_ty);
+                (
+                    quote!(-> Result<#inner, crate::Error>),
+                    quote! { #(#handles)* let value = { #body }; Ok(value) },
+                    cfg,
+                )
+            }
+        }
+    };
     // Safety of every call: the receiver (view, `ObjMut`, `Lvgl`) proves
     // the access the table assigns to the function, and each parameter is
     // mapped to a type that upholds what LVGL expects of it.
     quote! {
         #doc
+        #cfg
         #[inline]
         #[allow(clippy::unnecessary_cast, clippy::too_many_arguments)]
         pub fn #name #generics(#receiver #(#args),*) #ret_ty {
@@ -609,6 +656,14 @@ fn emit_param(p: &ParamPlan) -> (TokenStream, TokenStream) {
                 )
             } else {
                 (quote!(#n: #ty), quote!(#n.as_ptr().cast()))
+            }
+        }
+        ParamPlan::ObjHandle { name, nullable } => {
+            let n = ident(name);
+            if *nullable {
+                (quote!(#n: Option<crate::Handle<crate::Obj>>), quote!(#n))
+            } else {
+                (quote!(#n: crate::Handle<crate::Obj>), quote!(#n))
             }
         }
         ParamPlan::Selector { name } => {

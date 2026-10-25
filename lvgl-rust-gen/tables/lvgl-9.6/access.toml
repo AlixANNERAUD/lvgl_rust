@@ -6416,6 +6416,9 @@ access = "shared"
 [fn.lvgl_sys_image_cache_drop]
 access = "shared"
 
+[fn.lvgl_sys_keyboard_forget_textarea]
+access = "shared"
+
 [fn.lvgl_sys_menu_part]
 access = "shared"
 

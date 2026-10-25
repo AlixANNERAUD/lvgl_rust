@@ -34,6 +34,7 @@ manual = [
     "lvgl_sys_menu_part",
     "lvgl_sys_obj_is_deleting",
     "lvgl_sys_obj_events_traversing",
+    "lvgl_sys_keyboard_forget_textarea",
     "lv_deinit",
     "lv_timer_handler",
 ]

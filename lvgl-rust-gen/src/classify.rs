@@ -77,6 +77,9 @@ pub enum ParamPlan {
     Font { name: String, nullable: bool },
     /// A style selector (`lv_style_selector_t`): a part and states.
     Selector { name: String },
+    /// Another object of an exclusive call: a `Handle`, resolved under the
+    /// exclusive access (a view could not coexist with it).
+    ObjHandle { name: String, nullable: bool },
     /// Data LVGL keeps, as an `lvgl-rust` type that guarantees its layout
     /// (`rust = "..."` in the overrides); `by_value` for `Copy` handles.
     Retained {
@@ -310,13 +313,19 @@ impl<'a> Classifier<'a> {
             shape,
             Shape::ObjMut { .. } | Shape::LvglExclusive | Shape::Style
         );
-        if exclusive && params.iter().any(|p| matches!(p, ParamPlan::Obj { .. })) {
-            // A view of the other object cannot coexist with `&mut Lvgl`;
-            // these take a `Handle` once generated.
-            return Plan::Raw("exclusive call taking another object (not generated yet)".into());
+        if exclusive {
+            // A view of the other object cannot coexist with `&mut Lvgl`.
+            for p in &mut params {
+                if let ParamPlan::Obj { name, nullable } = p {
+                    *p = ParamPlan::ObjHandle {
+                        name: name.clone(),
+                        nullable: *nullable,
+                    };
+                }
+            }
         }
-        if exclusive && matches!(ret, RetPlan::View(_)) {
-            return Plan::Raw("exclusive call returning an object (not generated yet)".into());
+        if matches!(shape, Shape::ObjMut { consumes: true }) && matches!(ret, RetPlan::View(_)) {
+            return Plan::Raw("consumes its receiver and returns an object".into());
         }
         let method_name = match &class {
             None if style => rust_ident(name.strip_prefix("lv_style_").unwrap_or(name)),
