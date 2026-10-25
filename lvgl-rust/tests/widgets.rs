@@ -43,10 +43,18 @@ fn labels_take_copied_and_static_text() {
     let mut buf = [0u8; 16];
     assert_eq!(label.get_text_into(&mut buf), Ok(Some(c"temporary")));
     label.set_text_static(Some(c"static")).unwrap();
-    label.set_long_mode(LabelLongMode::DOTS);
-    assert_eq!(label.get_long_mode(), LabelLongMode::DOTS);
     drop(lv);
     let mut lv = Lvgl::enter(&mut guard).unwrap();
+    // Deletes the label's animations, which other frames may be running:
+    // exclusive access.
+    lv.edit(|lv| lv.screen_active()?.child(-1)?.downcast::<Label>())
+        .unwrap()
+        .set_long_mode(LabelLongMode::DOTS);
+    let label = lv.screen_active().unwrap().child(-1).unwrap();
+    assert_eq!(
+        label.downcast::<Label>().unwrap().get_long_mode(),
+        LabelLongMode::DOTS
+    );
     lv.edit(|lv| lv.screen_active()?.child(-1))
         .unwrap()
         .delete()

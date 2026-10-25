@@ -166,13 +166,15 @@ access = "exclusive"
 why = "lv_anim_start -> misc/lv_anim::remove_concurrent_anims -> core/lv_obj_scroll::scroll_end_cb -> widgets/tabview/lv_tabview::cont_scroll_end_event_cb -> core/lv_observer::obj_value_changed_event_cb -> lv_subject_set_int -> core/lv_observer::lv_subject_notify_if_changed -> lv_subject_notify -> core/lv_observer::obj_flag_observer_cb -> lv_obj_add_flag -> lv_obj_set_hidden -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child"
 
 [fn.lv_anim_timeline_add]
-access = "shared"
+access = "exclusive"
+why = "frees Buf(_lv_anim_timeline_t.0), held by misc/lv_anim_timeline::anim_timeline_set_act_time keeps %7 across an indirect call through _lv_anim_t.3 (via lv_anim_timeline_set_progress, site 2) (via core/lv_obj::play_timeline_on_trigger_event_cb, site 3) (frees Buf(_lv_anim_timeline_t.0) in lv_anim_timeline_add) (codes SCROLL_BEGIN SCROLL_END SCROLL FOCUSED DEFOCUSED INDEV_RESET VALUE_CHANGED INSERT and 14 more)"
 
 [fn.lv_anim_timeline_create]
 access = "shared"
 
 [fn.lv_anim_timeline_delete]
-access = "shared"
+access = "exclusive"
+why = "frees Obj(_lv_anim_t), held by lv_anim_start keeps %4 across an indirect call through _lv_anim_t.1 (frees Obj(_lv_anim_t) in misc/lv_anim::remove_anim for lv_anim_delete) (codes PRESSED PRESSING PRESS_LOST SHORT_CLICKED SINGLE_CLICKED DOUBLE_CLICKED TRIPLE_CLICKED LONG_PRESSED and 39 more)"
 
 [fn.lv_anim_timeline_get_delay]
 access = "shared"
@@ -196,10 +198,12 @@ access = "shared"
 access = "shared"
 
 [fn.lv_anim_timeline_merge]
-access = "shared"
+access = "exclusive"
+why = "frees Buf(_lv_anim_timeline_t.0), held by misc/lv_anim_timeline::anim_timeline_set_act_time keeps %7 across an indirect call through _lv_anim_t.3 (via lv_anim_timeline_set_progress, site 2) (via core/lv_obj::play_timeline_on_trigger_event_cb, site 3) (frees Buf(_lv_anim_timeline_t.0) in lv_anim_timeline_add for lv_anim_timeline_merge) (codes SCROLL_BEGIN SCROLL_END SCROLL FOCUSED DEFOCUSED INDEV_RESET VALUE_CHANGED INSERT and 14 more)"
 
 [fn.lv_anim_timeline_pause]
-access = "shared"
+access = "exclusive"
+why = "frees Obj(_lv_anim_t), held by lv_anim_start keeps %4 across an indirect call through _lv_anim_t.1 (frees Obj(_lv_anim_t) in misc/lv_anim::remove_anim for lv_anim_delete) (codes PRESSED PRESSING PRESS_LOST SHORT_CLICKED SINGLE_CLICKED DOUBLE_CLICKED TRIPLE_CLICKED LONG_PRESSED and 39 more)"
 
 [fn.lv_anim_timeline_restart]
 access = "exclusive"
@@ -1320,7 +1324,8 @@ access = "shared"
 access = "shared"
 
 [fn.lv_draw_buf_destroy]
-access = "shared"
+access = "exclusive"
+why = "frees Obj(_lv_draw_buf_t), held by lv_canvas_set_draw_buf keeps %4 across lv_image_set_src (frees Obj(_lv_draw_buf_t) in lv_draw_buf_destroy) (codes SCROLL_BEGIN SCROLL_END SCROLL FOCUSED DEFOCUSED VALUE_CHANGED INSERT READY and 9 more)"
 
 [fn.lv_draw_buf_dup]
 access = "shared"
@@ -1657,7 +1662,8 @@ access = "shared"
 access = "shared"
 
 [fn.lv_event_add]
-access = "shared"
+access = "exclusive"
+why = "frees Copy(_lv_event_list_t.0/*), held by lv_event_send keeps %8 across an indirect call through _lv_event_dsc_t.0 (via core/lv_obj_event::event_send_core, site 1) (frees Buf(_lv_event_list_t.0/_lv_array_t.0) in lv_array_resize for lv_array_push_back for lv_event_add) (codes PRESSED PRESSING PRESS_LOST SHORT_CLICKED SINGLE_CLICKED DOUBLE_CLICKED TRIPLE_CLICKED LONG_PRESSED and 39 more)"
 
 [fn.lv_event_code_get_name]
 access = "shared"
@@ -2220,7 +2226,8 @@ access = "raw"
 why = "schedules a deletion: lv_indev_create -> lv_indev_read_timer_cb -> lv_indev_read -> indev/lv_indev::indev_encoder_proc -> indev/lv_indev::send_event -> lv_indev_send_event -> core/lv_obj::delete_on_screen_unloaded_event_cb -> lv_obj_delete -> core/lv_obj_tree::obj_delete_core"
 
 [fn.lv_indev_delete]
-access = "shared"
+access = "exclusive"
+why = "frees Obj(_lv_indev_t), held by core/lv_obj_tree::obj_delete_core keeps %6 across core/lv_obj_tree::obj_indev_reset (frees Obj(_lv_indev_t) in lv_indev_delete) (codes PRESSED PRESSING PRESS_LOST SHORT_CLICKED SINGLE_CLICKED DOUBLE_CLICKED TRIPLE_CLICKED LONG_PRESSED and 39 more)"
 
 [fn.lv_indev_enable]
 access = "shared"
@@ -2476,7 +2483,8 @@ access = "shared"
 access = "shared"
 
 [fn.lv_label_set_long_mode]
-access = "shared"
+access = "exclusive"
+why = "frees Obj(_lv_anim_t), held by lv_anim_start keeps %4 across an indirect call through _lv_anim_t.1 (frees Obj(_lv_anim_t) in misc/lv_anim::remove_anim for lv_anim_delete) (codes PRESSED PRESSING PRESS_LOST SHORT_CLICKED SINGLE_CLICKED DOUBLE_CLICKED TRIPLE_CLICKED LONG_PRESSED and 39 more)"
 
 [fn.lv_label_set_max_lines]
 access = "shared"
@@ -2746,7 +2754,8 @@ access = "exclusive"
 why = "lv_menu_separator_create -> lv_obj_class_init_obj -> lv_group_add_obj -> lv_group_remove_obj"
 
 [fn.lv_menu_set_load_page_event]
-access = "shared"
+access = "exclusive"
+why = "frees Copy(_lv_event_list_t.0/*), held by lv_event_send keeps %8 across an indirect call through _lv_event_dsc_t.0 (via core/lv_obj_event::event_send_core, site 1) (frees Buf(_lv_obj_spec_attr_t.2/_lv_event_list_t.0/_lv_array_t.0) in lv_array_resize for lv_array_push_back for lv_event_add for lv_obj_add_event_cb) (codes PRESSED PRESSING PRESS_LOST SHORT_CLICKED SINGLE_CLICKED DOUBLE_CLICKED TRIPLE_CLICKED LONG_PRESSED and 39 more)"
 
 [fn.lv_menu_set_mode_header]
 access = "exclusive"
@@ -2822,7 +2831,8 @@ access = "shared"
 access = "shared"
 
 [fn.lv_obj_add_delete_cb]
-access = "shared"
+access = "exclusive"
+why = "frees Copy(_lv_event_list_t.0/*), held by lv_event_send keeps %8 across an indirect call through _lv_event_dsc_t.0 (via core/lv_obj_event::event_send_core, site 1) (frees Buf(_lv_obj_spec_attr_t.2/_lv_event_list_t.0/_lv_array_t.0) in lv_array_resize for lv_array_push_back for lv_event_add for lv_obj_add_event_cb) (codes PRESSED PRESSING PRESS_LOST SHORT_CLICKED SINGLE_CLICKED DOUBLE_CLICKED TRIPLE_CLICKED LONG_PRESSED and 39 more)"
 
 [fn.lv_obj_add_event_cb]
 access = "shared"
@@ -2832,7 +2842,8 @@ access = "exclusive"
 why = "lv_obj_add_flag -> lv_obj_set_hidden -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child"
 
 [fn.lv_obj_add_play_timeline_event]
-access = "shared"
+access = "exclusive"
+why = "frees Copy(_lv_event_list_t.0/*), held by lv_event_send keeps %8 across an indirect call through _lv_event_dsc_t.0 (via core/lv_obj_event::event_send_core, site 1) (frees Buf(_lv_obj_spec_attr_t.2/_lv_event_list_t.0/_lv_array_t.0) in lv_array_resize for lv_array_push_back for lv_event_add for lv_obj_add_event_cb) (codes PRESSED PRESSING PRESS_LOST SHORT_CLICKED SINGLE_CLICKED DOUBLE_CLICKED TRIPLE_CLICKED LONG_PRESSED and 39 more)"
 
 [fn.lv_obj_add_screen_create_event]
 access = "raw"
@@ -2851,16 +2862,20 @@ access = "exclusive"
 why = "lv_obj_add_style -> core/lv_obj_style::remove_trans_styles -> lv_anim_delete -> misc/lv_anim::remove_anim -> core/lv_obj_scroll::scroll_end_cb -> widgets/tabview/lv_tabview::cont_scroll_end_event_cb -> core/lv_observer::obj_value_changed_event_cb -> lv_subject_set_int -> core/lv_observer::lv_subject_notify_if_changed -> lv_subject_notify -> core/lv_observer::obj_flag_observer_cb -> lv_obj_add_flag -> lv_obj_set_hidden -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child"
 
 [fn.lv_obj_add_subject_increment_event]
-access = "shared"
+access = "exclusive"
+why = "frees Copy(_lv_event_list_t.0/*), held by lv_event_send keeps %8 across an indirect call through _lv_event_dsc_t.0 (via core/lv_obj_event::event_send_core, site 1) (frees Buf(_lv_obj_spec_attr_t.2/_lv_event_list_t.0/_lv_array_t.0) in lv_array_resize for lv_array_push_back for lv_event_add for lv_obj_add_event_cb) (codes PRESSED PRESSING PRESS_LOST SHORT_CLICKED SINGLE_CLICKED DOUBLE_CLICKED TRIPLE_CLICKED LONG_PRESSED and 39 more)"
 
 [fn.lv_obj_add_subject_set_int_event]
-access = "shared"
+access = "exclusive"
+why = "frees Copy(_lv_event_list_t.0/*), held by lv_event_send keeps %8 across an indirect call through _lv_event_dsc_t.0 (via core/lv_obj_event::event_send_core, site 1) (frees Buf(_lv_obj_spec_attr_t.2/_lv_event_list_t.0/_lv_array_t.0) in lv_array_resize for lv_array_push_back for lv_event_add for lv_obj_add_event_cb) (codes PRESSED PRESSING PRESS_LOST SHORT_CLICKED SINGLE_CLICKED DOUBLE_CLICKED TRIPLE_CLICKED LONG_PRESSED and 39 more)"
 
 [fn.lv_obj_add_subject_set_string_event]
-access = "shared"
+access = "exclusive"
+why = "frees Copy(_lv_event_list_t.0/*), held by lv_event_send keeps %8 across an indirect call through _lv_event_dsc_t.0 (via core/lv_obj_event::event_send_core, site 1) (frees Buf(_lv_obj_spec_attr_t.2/_lv_event_list_t.0/_lv_array_t.0) in lv_array_resize for lv_array_push_back for lv_event_add for lv_obj_add_event_cb) (codes PRESSED PRESSING PRESS_LOST SHORT_CLICKED SINGLE_CLICKED DOUBLE_CLICKED TRIPLE_CLICKED LONG_PRESSED and 39 more)"
 
 [fn.lv_obj_add_subject_toggle_event]
-access = "shared"
+access = "exclusive"
+why = "frees Copy(_lv_event_list_t.0/*), held by lv_event_send keeps %8 across an indirect call through _lv_event_dsc_t.0 (via core/lv_obj_event::event_send_core, site 1) (frees Buf(_lv_obj_spec_attr_t.2/_lv_event_list_t.0/_lv_array_t.0) in lv_array_resize for lv_array_push_back for lv_event_add for lv_obj_add_event_cb) (codes PRESSED PRESSING PRESS_LOST SHORT_CLICKED SINGLE_CLICKED DOUBLE_CLICKED TRIPLE_CLICKED LONG_PRESSED and 39 more)"
 
 [fn.lv_obj_align]
 access = "exclusive"
@@ -3850,7 +3865,8 @@ access = "shared"
 access = "shared"
 
 [fn.lv_obj_null_on_delete]
-access = "shared"
+access = "exclusive"
+why = "frees Copy(_lv_event_list_t.0/*), held by lv_event_send keeps %8 across an indirect call through _lv_event_dsc_t.0 (via core/lv_obj_event::event_send_core, site 1) (frees Buf(_lv_obj_spec_attr_t.2/_lv_event_list_t.0/_lv_array_t.0) in lv_array_resize for lv_array_push_back for lv_event_add for lv_obj_add_event_cb) (codes PRESSED PRESSING PRESS_LOST SHORT_CLICKED SINGLE_CLICKED DOUBLE_CLICKED TRIPLE_CLICKED LONG_PRESSED and 39 more)"
 
 [fn.lv_obj_readjust_scroll]
 access = "exclusive"
@@ -3900,7 +3916,8 @@ access = "exclusive"
 why = "lv_obj_remove_flag -> lv_obj_set_hidden -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child"
 
 [fn.lv_obj_remove_from_subject]
-access = "shared"
+access = "exclusive"
+why = "frees Buf(_lv_observer_t.3), held by lv_subject_notify keeps %2 across an indirect call through _lv_observer_t.1 (via core/lv_observer::group_notify_cb, site 0) (via lv_subject_add_observer_obj, site 3) (frees Buf(_lv_observer_t.3) in lv_observer_delete for lv_obj_remove_from_subject) (codes SCROLL_BEGIN SCROLL_END SCROLL FOCUSED DEFOCUSED VALUE_CHANGED INSERT READY and 9 more)"
 
 [fn.lv_obj_remove_local_style_prop]
 access = "exclusive"
@@ -4019,7 +4036,8 @@ access = "shared"
 access = "shared"
 
 [fn.lv_obj_set_ext_draw_size]
-access = "shared"
+access = "exclusive"
+why = "frees Copy(_lv_event_list_t.0/*), held by lv_event_send keeps %8 across an indirect call through _lv_event_dsc_t.0 (via core/lv_obj_event::event_send_core, site 1) (frees Buf(_lv_obj_spec_attr_t.2/_lv_event_list_t.0/_lv_array_t.0) in lv_array_resize for lv_array_push_back for lv_event_add for lv_obj_add_event_cb) (codes PRESSED PRESSING PRESS_LOST SHORT_CLICKED SINGLE_CLICKED DOUBLE_CLICKED TRIPLE_CLICKED LONG_PRESSED and 39 more)"
 
 [fn.lv_obj_set_flag]
 access = "exclusive"
@@ -4821,7 +4839,8 @@ access = "exclusive"
 why = "lv_obj_update_snap -> lv_obj_scroll_by -> widgets/tabview/lv_tabview::cont_scroll_end_event_cb -> core/lv_observer::obj_value_changed_event_cb -> lv_subject_set_int -> core/lv_observer::lv_subject_notify_if_changed -> lv_subject_notify -> core/lv_observer::obj_flag_observer_cb -> lv_obj_add_flag -> lv_obj_set_hidden -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child"
 
 [fn.lv_observer_delete]
-access = "shared"
+access = "exclusive"
+why = "frees Obj(_lv_observer_t), held by lv_subject_add_observer_obj keeps %10 across an indirect call through _lv_observer_t.1 (frees Obj(_lv_observer_t) in lv_observer_delete) (codes SCROLL_BEGIN SCROLL_END SCROLL FOCUSED DEFOCUSED VALUE_CHANGED INSERT READY and 9 more)"
 
 [fn.lv_observer_get_target]
 access = "shared"
@@ -4833,7 +4852,8 @@ access = "shared"
 access = "shared"
 
 [fn.lv_observer_set_user_data]
-access = "shared"
+access = "exclusive"
+why = "frees Buf(_lv_observer_t.3), held by lv_subject_notify keeps %2 across an indirect call through _lv_observer_t.1 (via core/lv_observer::group_notify_cb, site 0) (via lv_subject_add_observer_obj, site 3) (frees Buf(_lv_observer_t.3) in lv_observer_set_user_data) (codes SCROLL_BEGIN SCROLL_END SCROLL FOCUSED DEFOCUSED VALUE_CHANGED INSERT READY and 9 more)"
 
 [fn.lv_palette_darken]
 access = "shared"
@@ -5859,10 +5879,12 @@ access = "exclusive"
 why = "lv_subject_create -> core/lv_observer::init_group -> core/lv_observer::add_observers_to_group_subject -> lv_subject_add_observer -> lv_subject_add_observer_obj -> core/lv_observer::obj_flag_observer_cb -> lv_obj_add_flag -> lv_obj_set_hidden -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child"
 
 [fn.lv_subject_deinit]
-access = "shared"
+access = "exclusive"
+why = "frees Obj(_lv_observer_t), held by lv_subject_add_observer_obj keeps %10 across an indirect call through _lv_observer_t.1 (frees Obj(_lv_observer_t) in lv_observer_delete for core/lv_observer::deinit) (codes SCROLL_BEGIN SCROLL_END SCROLL FOCUSED DEFOCUSED VALUE_CHANGED INSERT READY and 9 more)"
 
 [fn.lv_subject_delete]
-access = "shared"
+access = "exclusive"
+why = "frees Obj(_lv_observer_t), held by lv_subject_add_observer_obj keeps %10 across an indirect call through _lv_observer_t.1 (frees Obj(_lv_observer_t) in lv_observer_delete for core/lv_observer::deinit) (codes SCROLL_BEGIN SCROLL_END SCROLL FOCUSED DEFOCUSED VALUE_CHANGED INSERT READY and 9 more)"
 
 [fn.lv_subject_get_color]
 access = "shared"
@@ -6157,13 +6179,16 @@ access = "exclusive"
 why = "lv_textarea_set_one_line -> lv_obj_scroll_to -> lv_obj_scroll_to_x -> lv_obj_scroll_by_bounded -> lv_obj_scroll_by -> widgets/tabview/lv_tabview::cont_scroll_end_event_cb -> core/lv_observer::obj_value_changed_event_cb -> lv_subject_set_int -> core/lv_observer::lv_subject_notify_if_changed -> lv_subject_notify -> core/lv_observer::obj_flag_observer_cb -> lv_obj_add_flag -> lv_obj_set_hidden -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child"
 
 [fn.lv_textarea_set_password_bullet]
-access = "shared"
+access = "exclusive"
+why = "frees Obj(_lv_anim_t), held by lv_anim_start keeps %4 across an indirect call through _lv_anim_t.1 (frees Obj(_lv_anim_t) in misc/lv_anim::remove_anim for lv_anim_delete) (codes PRESSED PRESSING PRESS_LOST SHORT_CLICKED SINGLE_CLICKED DOUBLE_CLICKED TRIPLE_CLICKED LONG_PRESSED and 39 more)"
 
 [fn.lv_textarea_set_password_mode]
-access = "shared"
+access = "exclusive"
+why = "frees Obj(_lv_anim_t), held by lv_anim_start keeps %4 across an indirect call through _lv_anim_t.1 (frees Obj(_lv_anim_t) in misc/lv_anim::remove_anim for lv_anim_delete) (codes PRESSED PRESSING PRESS_LOST SHORT_CLICKED SINGLE_CLICKED DOUBLE_CLICKED TRIPLE_CLICKED LONG_PRESSED and 39 more)"
 
 [fn.lv_textarea_set_password_show_time]
-access = "shared"
+access = "exclusive"
+why = "frees Obj(_lv_anim_t), held by lv_anim_start keeps %4 across an indirect call through _lv_anim_t.1 (frees Obj(_lv_anim_t) in misc/lv_anim::remove_anim for lv_anim_delete) (codes PRESSED PRESSING PRESS_LOST SHORT_CLICKED SINGLE_CLICKED DOUBLE_CLICKED TRIPLE_CLICKED LONG_PRESSED and 39 more)"
 
 [fn.lv_textarea_set_placeholder_text]
 access = "shared"
