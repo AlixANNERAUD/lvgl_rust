@@ -46,6 +46,11 @@ pub(crate) unsafe fn obj_move_to_index(obj: *mut lv_obj_t, index: i32) {
     unsafe { sys::lv_obj_move_to_index(obj, index) }
 }
 
+#[cfg(not(lvgl_rust_views_only))]
+pub(crate) unsafe fn timer_delete(timer: *mut sys::lv_timer_t) {
+    unsafe { sys::lv_timer_delete(timer) }
+}
+
 pub(crate) unsafe fn obj_parent(obj: *const lv_obj_t) -> *mut lv_obj_t {
     unsafe { sys::lv_obj_get_parent(obj) }
 }

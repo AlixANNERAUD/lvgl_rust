@@ -266,3 +266,10 @@ pub(crate) fn composites() -> &'static [super::structural::Composite] {
 pub(crate) fn leaves() -> &'static [super::structural::ClassRef] {
     &[]
 }
+
+/// Timers are created only through LVGL (`timer.rs`), which the model does
+/// not run: no timer slot exists under Miri or loom.
+#[cfg(not(lvgl_rust_views_only))]
+pub(crate) unsafe fn timer_delete(_: *mut lvgl_rust_sys::lv_timer_t) {
+    unreachable!("timers are not modelled")
+}

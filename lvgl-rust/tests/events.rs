@@ -280,7 +280,7 @@ fn posted_work_runs_at_the_drain_with_exclusive_access() {
         let _: &mut Lvgl = lv;
         RAN.lock().unwrap().push(n);
         if n == 1 {
-            // Posted while running: waits for the next drain.
+            // Posted while running: waits for the next drain, not this one.
             lv.post(record, 99).unwrap();
         }
     }
@@ -299,8 +299,8 @@ fn posted_work_runs_at_the_drain_with_exclusive_access() {
         .unwrap();
     send(object, EventCode::CLICKED);
     assert!(RAN.lock().unwrap().is_empty());
-    lv.timer_handler();
-    assert_eq!(*RAN.lock().unwrap(), [1, 2, 3, 4]);
+    // `timer_handler` drains before and after LVGL's timers: the entry
+    // posted by `record(1)` runs at the second drain.
     lv.timer_handler();
     assert_eq!(*RAN.lock().unwrap(), [1, 2, 3, 4, 99]);
     // Exclusive work from a posted function.

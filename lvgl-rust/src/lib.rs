@@ -34,6 +34,8 @@ mod manual;
 mod screen;
 mod style;
 mod text;
+#[cfg(not(lvgl_rust_views_only))]
+mod timer;
 
 /// Wrappers generated from this build's bindings and the reviewed tables of
 /// `lvgl-rust-gen` (the list of what is wrapped is `$OUT_DIR/coverage.txt`).
@@ -68,3 +70,5 @@ pub use style::{
     AnimPath, ColorFilter, ConstProp, ConstStyle, Font, GradDir, GradDsc, Selector, Style,
     StyleMut, StyleProp, StyleRef, TransitionDsc, color,
 };
+#[cfg(not(lvgl_rust_views_only))]
+pub use timer::{Timer, TimerCtx};

@@ -55,6 +55,12 @@ impl<W> fmt::Debug for Handle<W> {
     }
 }
 
+impl<W> Handle<W> {
+    pub(crate) fn raw(self) -> u32 {
+        self.raw.get()
+    }
+}
+
 impl<W: Widget> Handle<W> {
     /// # Safety
     ///
@@ -65,10 +71,6 @@ impl<W: Widget> Handle<W> {
             raw: NonZeroU32::new(raw).unwrap_or(NonZeroU32::MIN),
             _w: PhantomData,
         }
-    }
-
-    pub(crate) fn raw(self) -> u32 {
-        self.raw.get()
     }
 
     /// A view of the object, or [`Error::Dead`] if it was deleted.
@@ -112,28 +114,56 @@ impl<W: Widget> Handle<W> {
     }
 }
 
-/// The single owner of an object: dropping it deletes the object.
+/// What an [`Owned`] can own: every widget, and [`Timer`](crate::Timer).
+pub trait Tracked: private::Sealed + 'static {}
+
+impl<W: Widget> Tracked for W {}
+impl<W: Widget> private::Sealed for W {}
+
+pub(crate) mod private {
+    pub trait Sealed {}
+}
+
+/// The single owner of an object (or a timer): dropping it deletes it.
 ///
 /// Dropping needs no session: the deletion is recorded and carried out at the
 /// next drain ([`Lvgl::enter`] or after [`Lvgl::timer_handler`]), so an
 /// `Owned` can be dropped on any thread. 4 bytes.
 #[repr(transparent)]
-pub struct Owned<W: Widget>(Handle<W>);
+pub struct Owned<W: Tracked>(Handle<W>);
 
-impl<W: Widget> Owned<W> {
+impl<W: Tracked> Owned<W> {
     /// # Safety
     ///
-    /// `raw` must be the handle of a slot just marked OWNED for this value.
+    /// `raw` must be the handle of a slot just marked OWNED for this value,
+    /// tracking a `W`.
     pub(crate) unsafe fn from_raw(raw: u32) -> Self {
-        // SAFETY: caller contract.
-        Self(unsafe { Handle::from_raw(raw) })
+        Self(Handle {
+            // Raw handles hold `index + 1` in their low half: never zero.
+            raw: NonZeroU32::new(raw).unwrap_or(NonZeroU32::MIN),
+            _w: PhantomData,
+        })
     }
 
-    /// A handle to the owned object.
+    /// A handle to what this value owns.
     pub fn handle(&self) -> Handle<W> {
         self.0
     }
 
+    /// Deletes it now. An object that is a screen LVGL is still loading
+    /// ([`Error::Busy`]) stays pending and is retried at each drain. What is
+    /// already dead is just released.
+    pub fn delete(self, lv: &mut Lvgl) -> Result<(), Error> {
+        let _ = lv;
+        let index = index(self.0.raw.get());
+        mem::forget(self);
+        // The token is held: no other thread reads `req` meanwhile.
+        reg().slot(index).req.store(1, Ordering::Relaxed);
+        drain::act(index)
+    }
+}
+
+impl<W: Widget> Owned<W> {
     /// A view of the object, or [`Error::Dead`] if it was deleted through
     /// another path (its parent deleted, for instance).
     pub fn get<'a>(&self, lv: &'a Lvgl) -> Result<&'a W, Error> {
@@ -143,18 +173,6 @@ impl<W: Widget> Owned<W> {
     /// Exclusive access to the object.
     pub fn get_mut<'s>(&self, lv: &'s mut Lvgl) -> Result<ObjMut<'s, W>, Error> {
         self.0.get_mut(lv)
-    }
-
-    /// Deletes the object now. If it is a screen LVGL is still loading
-    /// ([`Error::Busy`]), the deletion stays pending and is retried at each
-    /// drain. An object that is already dead is just released.
-    pub fn delete(self, lv: &mut Lvgl) -> Result<(), Error> {
-        let _ = lv;
-        let index = index(self.0.raw());
-        mem::forget(self);
-        // The token is held: no other thread reads `req` meanwhile.
-        reg().slot(index).req.store(1, Ordering::Relaxed);
-        drain::act(index)
     }
 
     /// The same owner, typed as a base class.
@@ -168,13 +186,13 @@ impl<W: Widget> Owned<W> {
     }
 }
 
-impl<W: Widget> Drop for Owned<W> {
+impl<W: Tracked> Drop for Owned<W> {
     fn drop(&mut self) {
-        reg().request_drop(index(self.0.raw()));
+        reg().request_drop(index(self.0.raw.get()));
     }
 }
 
-impl<W: Widget> fmt::Debug for Owned<W> {
+impl<W: Tracked> fmt::Debug for Owned<W> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple("Owned").field(&self.0.raw).finish()
     }

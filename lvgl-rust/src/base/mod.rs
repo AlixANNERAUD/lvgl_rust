@@ -8,7 +8,7 @@ pub(crate) mod ffi;
 
 pub(crate) mod drain;
 #[cfg(not(lvgl_rust_views_only))]
-mod handle;
+pub(crate) mod handle;
 #[cfg(all(not(lvgl_rust_views_only), not(lvgl_rust_docs)))]
 mod hook;
 mod objmut;
@@ -16,11 +16,11 @@ pub(crate) mod post;
 pub(crate) mod registry;
 mod session;
 pub(crate) mod structural;
-mod sync;
+pub(crate) mod sync;
 mod view;
 
 #[cfg(not(lvgl_rust_views_only))]
-pub use handle::{Handle, HandleCell, Owned};
+pub use handle::{Handle, HandleCell, Owned, Tracked};
 pub use objmut::ObjMut;
 pub use session::{DepthGuard, Lvgl, LvglAccess, Session, init, tick_inc};
 #[cfg(not(lvgl_rust_views_only))]
