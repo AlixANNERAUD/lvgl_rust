@@ -1,6 +1,7 @@
 # LVGL for Rust
 
 [![CI](https://github.com/xila-project/lvgl_rust/actions/workflows/ci.yml/badge.svg)](https://github.com/xila-project/lvgl_rust/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/xila-project/lvgl_rust/graph/badge.svg)](https://codecov.io/gh/xila-project/lvgl_rust)
 [![LVGL](https://img.shields.io/badge/LVGL-9.6.0-blue)](https://github.com/lvgl/lvgl)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 

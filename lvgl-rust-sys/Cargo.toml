@@ -11,6 +11,23 @@ repository.workspace = true
 readme = "README.md"
 keywords = ["lvgl", "gui", "embedded", "no-std", "ffi"]
 categories = ["external-ffi-bindings", "embedded", "gui", "no-std"]
+# Only what the build script reads: the LVGL and shadcn sources (without
+# their tests, demos and docs, which are far over crates.io's size limit),
+# the shims and the vendored configuration.
+include = [
+  "/build/**",
+  "/src/**",
+  "/shims/**",
+  "/conf/**",
+  "/lvgl/src/**",
+  "/lvgl/include/**",
+  "/lvgl/*.h",
+  "/lvgl/LICENCE.txt",
+  "/lvgl_theme_shadcn/src/**",
+  "/lvgl_theme_shadcn/include/**",
+  "/lvgl_theme_shadcn/LICENSE",
+  "/README.md",
+]
 
 [features]
 default = ["build-lvgl", "use-string-functions"]

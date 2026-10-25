@@ -234,7 +234,24 @@ checks:
 - `cargo check` with the minimum Rust version (`mise run msrv`) on the host
   and both cross targets; raise the version in the task and in the root
   `rust-version` together;
-- `cargo doc` in docs.rs mode (`DOCS_RS=1`, empty `DEP_LV_CONFIG_PATH`).
+- `cargo doc` in docs.rs mode (`DOCS_RS=1`, empty `DEP_LV_CONFIG_PATH`);
+- packaging (`mise run package`): the three crates packaged as crates.io
+  would and each built from its package. `lvgl_rust_sys` ships only what the
+  build script reads (its `include` list keeps it under crates.io's 10 MB
+  limit); a new input directory of the build script must be added there.
+
+Other workflows:
+
+- `coverage.yml`: `mise run coverage` (cargo-llvm-cov over the three crates,
+  integration tests excepted) uploaded to Codecov (`CODECOV_TOKEN`).
+- `release.yml`, on pushes to `main`: release-plz (`release-plz.toml`)
+  keeps a release PR up to date (versions and per-crate `CHANGELOG.md`
+  from the commit messages) and, once it is merged, publishes the crates
+  (`CARGO_REGISTRY_TOKEN`), tags them `<crate>-v<version>` and creates
+  GitHub releases for `lvgl_rust_sys` and `lvgl-rust`. Path dependencies
+  between the crates carry a version, which release-plz bumps.
+- `pr-title.yml`: pull request titles follow the commit convention below
+  (squash merges become changelog entries).
 
 Before pushing, run at least:
 
