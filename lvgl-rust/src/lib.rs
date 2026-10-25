@@ -25,6 +25,8 @@ mod config {
     include!(concat!(env!("OUT_DIR"), "/config.rs"));
 }
 
+#[cfg(feature = "allocator")]
+mod allocator;
 mod anim;
 mod base;
 mod button_map;
@@ -38,6 +40,13 @@ mod group;
 #[cfg(feature = "heap")]
 mod heap;
 mod image;
+#[cfg(any(feature = "heap", feature = "allocator"))]
+mod heap_align {
+    /// What every allocator LVGL uses guarantees: the builtin TLSF aligns
+    /// to a pointer (`lv_tlsf.c`), C `malloc` to at least that, and an
+    /// `LvglAllocator` must.
+    pub(crate) const HEAP_ALIGN: usize = core::mem::size_of::<usize>();
+}
 mod indev;
 mod manual;
 #[cfg(feature = "async")]
@@ -69,6 +78,8 @@ pub use generated::{DrawBuf, enums, functions, props, widgets};
 #[cfg(test)]
 mod tests;
 
+#[cfg(feature = "allocator")]
+pub use allocator::{LvglAllocator, SizedHeader};
 pub use anim::{Anim, AnimCtx};
 pub use base::*;
 pub use button_map::{ButtonMap, MapEntry};

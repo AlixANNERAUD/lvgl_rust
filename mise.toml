@@ -156,6 +156,18 @@ run = [
   "cargo test -p lvgl-rust --features async,heap --target \"$(rustc -vV | sed -n 's/^host: //p')\"",
 ]
 
+[tasks.test-allocator]
+description = "Lint and test lvgl-rust's allocator feature, on a configuration whose heap is the Rust allocator (LV_STDLIB_CUSTOM)"
+env.RUSTFLAGS = "-D warnings"
+env.DEP_LV_CONFIG_PATH = "{{config_root}}/target/allocator-conf"
+env.CARGO_TARGET_DIR = "target/allocator"
+run = [
+  "mkdir -p target/allocator-conf",
+  "sed 's/^#define LV_USE_STDLIB_MALLOC .*/#define LV_USE_STDLIB_MALLOC LV_STDLIB_CUSTOM/' lvgl-rust/conf/lv_conf.h > target/allocator-conf/lv_conf.h",
+  "cargo clippy -p lvgl-rust --features allocator,heap --all-targets",
+  "cargo test -p lvgl-rust --features allocator,heap --test allocator",
+]
+
 [tasks.miri]
 description = "Run the lvgl-rust core tests under Miri, against the Rust model of LVGL"
 tools = { rust = { version = "nightly", components = "miri,rust-src" } }

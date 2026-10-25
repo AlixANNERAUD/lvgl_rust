@@ -68,6 +68,14 @@ fn main() {
             .unwrap_or_else(|error| panic!("Cannot read {bindings}: {error}"));
         // rustfmt may be missing: compare the bindings without whitespace.
         let compact: String = bindings.chars().filter(|c| !c.is_whitespace()).collect();
+        if env::var_os("CARGO_FEATURE_ALLOCATOR").is_some()
+            && constant(&compact, "LV_USE_STDLIB_MALLOC") != constant(&compact, "LV_STDLIB_CUSTOM")
+        {
+            errors.push(
+                "the `allocator` feature needs `#define LV_USE_STDLIB_MALLOC LV_STDLIB_CUSTOM` in lv_conf.h"
+                    .to_owned(),
+            );
+        }
         if slots > 0 {
             errors.extend(check_obj_id(&compact));
         } else if constant(&compact, "LV_USE_OBJ_ID") == Some(1)

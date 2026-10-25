@@ -56,6 +56,10 @@ else stays reachable through `lvgl_rust::sys`.
 - **Closures (feature `heap`).** `obj.on_boxed(code, move |e| ...)` and
   `lv.timer_boxed(period, move |ctx| ...)` keep the closure on LVGL's own
   heap (a 4-byte header), freed with the object or the timer.
+- **Your allocator (feature `allocator`).** With
+  `LV_USE_STDLIB_MALLOC LV_STDLIB_CUSTOM`, `lvgl_allocator!(HEAP)` makes
+  LVGL allocate from a static implementing `LvglAllocator`;
+  `SizedHeader(GlobalAlloc)` adapts a Rust allocator.
 - **Small.** The handle registry is a static array of 8-byte slots on 32-bit
   targets (`LVGL_RUST_HANDLE_SLOTS`, default 32), plus a 24-byte header.
   `LVGL_RUST_HANDLE_SLOTS=0` keeps only views (8 bytes of state).

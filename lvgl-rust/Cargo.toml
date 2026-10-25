@@ -21,6 +21,8 @@ shadcn-theme = ["lvgl_rust_sys/shadcn-theme"]
 async = []
 # Closures and owned values on LVGL's heap (`on_boxed`, `timer_boxed`).
 heap = []
+# LVGL's heap from a Rust allocator (`LV_USE_STDLIB_MALLOC LV_STDLIB_CUSTOM`).
+allocator = []
 
 color_depth_1 = ["lvgl_rust_sys/color_depth_1"]
 color_depth_8 = ["lvgl_rust_sys/color_depth_8"]

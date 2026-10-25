@@ -8,10 +8,7 @@ use core::{
     ptr::{self, NonNull},
 };
 
-/// What every allocator LVGL uses guarantees: the builtin TLSF aligns to
-/// a pointer (`lv_tlsf.c`), C `malloc` to at least that, and an
-/// `LvglAllocator` must.
-pub(crate) const HEAP_ALIGN: usize = size_of::<usize>();
+pub(crate) use crate::heap_align::HEAP_ALIGN;
 
 /// The value's address in a block holding `H` then `T`.
 fn value_ptr<H, T>(block: NonNull<u8>) -> *mut T {
