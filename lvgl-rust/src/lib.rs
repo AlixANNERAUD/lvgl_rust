@@ -28,6 +28,8 @@ mod config {
 mod anim;
 mod base;
 mod button_map;
+#[cfg(not(lvgl_rust_views_only))]
+mod component;
 mod error;
 mod event;
 mod image;
@@ -62,6 +64,8 @@ mod tests;
 pub use anim::{Anim, AnimCtx};
 pub use base::*;
 pub use button_map::{ButtonMap, MapEntry};
+#[cfg(not(lvgl_rust_views_only))]
+pub use component::Component;
 pub use error::Error;
 #[cfg(not(lvgl_rust_views_only))]
 pub use event::EventSub;
