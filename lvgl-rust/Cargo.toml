@@ -16,8 +16,8 @@ exclude = ["/size-gate"]
 
 [features]
 default = ["use-string-functions"]
-use-string-functions = ["lvgl_rust_sys/use-string-functions"]
-shadcn-theme = ["lvgl_rust_sys/shadcn-theme"]
+use-string-functions = ["lvgl-rust-sys/use-string-functions"]
+shadcn-theme = ["lvgl-rust-sys/shadcn-theme"]
 # Event queues and `next_event` for async code (no executor dependency).
 async = []
 # Closures and owned values on LVGL's heap (`on_boxed`, `timer_boxed`).
@@ -27,15 +27,15 @@ allocator = []
 # `Label::set_text_fmt` and `Display for Error` (links `core::fmt`).
 fmt = []
 
-color_depth_1 = ["lvgl_rust_sys/color_depth_1"]
-color_depth_8 = ["lvgl_rust_sys/color_depth_8"]
-color_depth_16 = ["lvgl_rust_sys/color_depth_16"]
-color_depth_24 = ["lvgl_rust_sys/color_depth_24"]
-color_depth_32 = ["lvgl_rust_sys/color_depth_32"]
+color_depth_1 = ["lvgl-rust-sys/color_depth_1"]
+color_depth_8 = ["lvgl-rust-sys/color_depth_8"]
+color_depth_16 = ["lvgl-rust-sys/color_depth_16"]
+color_depth_24 = ["lvgl-rust-sys/color_depth_24"]
+color_depth_32 = ["lvgl-rust-sys/color_depth_32"]
 
 [dependencies]
 # The safe layer calls into the linked C library: `build-lvgl` is required.
-lvgl_rust_sys = { version = "0.1.0", path = "../lvgl-rust-sys", default-features = false, features = ["build-lvgl"] }
+lvgl-rust-sys = { version = "0.1.0", path = "../lvgl-rust-sys", default-features = false, features = ["build-lvgl"] }
 
 [build-dependencies]
 lvgl-rust-gen = { version = "0.1.0", path = "../lvgl-rust-gen" }

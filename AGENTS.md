@@ -7,7 +7,7 @@ Guidance for coding agents working on this repository. `CLAUDE.md` and
 
 A Cargo workspace with three crates:
 
-- `lvgl-rust-sys/` (package `lvgl_rust_sys`): a `-sys` crate. It compiles
+- `lvgl-rust-sys/` (package `lvgl-rust-sys`, crate `lvgl_rust_sys`): a `-sys` crate. It compiles
   [LVGL](https://github.com/lvgl/lvgl) from source with `cc`, generates raw
   `no_std` FFI bindings with bindgen, and exports the native build
   configuration to dependent build scripts. It exposes the C API as is.
@@ -15,13 +15,13 @@ A Cargo workspace with three crates:
 - `lvgl-rust-gen/`: the host-only generator used by `lvgl-rust`'s build
   script (in progress).
 
-The main consumer is the [Xila](https://github.com/xila-project) embedded OS,
-which runs on microcontrollers (ESP32, ...) as well as native and WebAssembly
-hosts. Xila depends on `lvgl_rust_sys` through git (Cargo finds the package by
-name inside the workspace) and uses `default-features = false`, `shadcn-theme`,
-`color_depth_16`/`color_depth_32`, its own `lv_conf.h` and, for now, the legacy
-`LVGL_FONTS_DIR` mode while it moves to an external font crate. Do not break
-these paths, and do not edit Xila from this repository.
+Downstream users run on microcontrollers (ESP32, ...) as well as native and
+WebAssembly hosts. Existing users depend on `lvgl-rust-sys` through git (Cargo
+finds the package by name inside the workspace; since the rename from
+`lvgl_rust_sys`, such a dependency needs `package = "lvgl-rust-sys"` to keep
+its key) and use `default-features = false`, `shadcn-theme`,
+`color_depth_16`/`color_depth_32`, their own `lv_conf.h` and the legacy
+`LVGL_FONTS_DIR` mode. Do not break these paths.
 
 ## Repository map
 
@@ -143,9 +143,9 @@ git submodule update --init --recursive
 # Nested builds run offline; their packages have their own lockfile.
 cargo fetch --manifest-path lvgl-rust-sys/examples/external-fonts/Cargo.toml
 cargo fetch --manifest-path lvgl-rust-sys/tests/fixtures/font_incremental/Cargo.toml
-cargo test -p lvgl_rust_sys -p lvgl-rust-gen               # full suite, a few minutes
-cargo test -p lvgl_rust_sys --lib --test build_config      # fast loop, seconds
-cargo test -p lvgl_rust_sys --lib --features shadcn-theme,color_depth_32
+cargo test -p lvgl-rust-sys -p lvgl-rust-gen               # full suite, a few minutes
+cargo test -p lvgl-rust-sys --lib --test build_config      # fast loop, seconds
+cargo test -p lvgl-rust-sys --lib --features shadcn-theme,color_depth_32
 ```
 
 With [mise](https://mise.jdx.dev) installed, `mise install` sets up the
@@ -202,7 +202,7 @@ Rules for integration tests:
 
 - Always start nested builds with `common::cargo()`. It sets `--offline`,
   `CARGO_TERM_COLOR=never` (CI forces colors, which breaks matching on
-  `Fresh lvgl_rust_sys`), the vendored config, and clears `LVGL_FONTS_DIR` and
+  `Fresh lvgl-rust-sys`), the vendored config, and clears `LVGL_FONTS_DIR` and
   `LVGL_CFLAGS` inherited from the outer environment.
 - Use `common::scratch_dir()` for fixtures and separate target directories, and
   remove them at the end of the test.
@@ -223,7 +223,7 @@ Caches are saved only on pushes to `main`; pull requests restore them. It
 checks:
 
 - `cargo fmt --check` for the workspace, the example and the fixture;
-- clippy on `lvgl_rust_sys` (default, `--all-features`,
+- clippy on `lvgl-rust-sys` (default, `--all-features`,
   `--no-default-features`) and `lvgl-rust-gen`;
 - `lvgl-rust`: clippy, tests, views-only mode, ASan, Miri and loom, plus a
   `wasm32-unknown-unknown` build and the size gate;
@@ -236,7 +236,7 @@ checks:
   `rust-version` together;
 - `cargo doc` in docs.rs mode (`DOCS_RS=1`, empty `DEP_LV_CONFIG_PATH`);
 - packaging (`mise run package`): the three crates packaged as crates.io
-  would and each built from its package. `lvgl_rust_sys` ships only what the
+  would and each built from its package. `lvgl-rust-sys` ships only what the
   build script reads (its `include` list keeps it under crates.io's 10 MB
   limit); a new input directory of the build script must be added there.
 
@@ -248,7 +248,7 @@ Other workflows:
   keeps a release PR up to date (versions and per-crate `CHANGELOG.md`
   from the commit messages) and, once it is merged, publishes the crates
   (`CARGO_REGISTRY_TOKEN`), tags them `<crate>-v<version>` and creates
-  GitHub releases for `lvgl_rust_sys` and `lvgl-rust`. Path dependencies
+  GitHub releases for `lvgl-rust-sys` and `lvgl-rust`. Path dependencies
   between the crates carry a version, which release-plz bumps.
 - `pr-title.yml`: pull request titles follow the commit convention below
   (squash merges become changelog entries).
@@ -257,9 +257,9 @@ Before pushing, run at least:
 
 ```sh
 cargo fmt --all --check
-RUSTFLAGS="-D warnings" cargo clippy -p lvgl_rust_sys -p lvgl-rust-gen --all-targets
-RUSTFLAGS="-D warnings" cargo clippy -p lvgl_rust_sys --all-targets --all-features
-RUSTFLAGS="-D warnings" cargo test -p lvgl_rust_sys --lib --test build_config
+RUSTFLAGS="-D warnings" cargo clippy -p lvgl-rust-sys -p lvgl-rust-gen --all-targets
+RUSTFLAGS="-D warnings" cargo clippy -p lvgl-rust-sys --all-targets --all-features
+RUSTFLAGS="-D warnings" cargo test -p lvgl-rust-sys --lib --test build_config
 ```
 
 or `mise run check`, which runs the same checks plus clippy for every feature

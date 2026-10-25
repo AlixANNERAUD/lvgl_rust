@@ -1,5 +1,5 @@
 //! Generates the safe LVGL wrappers of `lvgl-rust` from the bindings and
-//! headers of `lvgl_rust_sys`. Runs on the build host only.
+//! headers of `lvgl-rust-sys`. Runs on the build host only.
 //!
 //! 1. Parse `bindings.rs` ([`parse`]) and scan the headers ([`headers`]).
 //! 2. Load the reviewed tables for the bindings' LVGL version ([`tables`]).
@@ -7,7 +7,7 @@
 //! 4. Emit `gen.rs` ([`emit`]) and `coverage.txt`.
 //!
 //! A function without an `access.toml` entry is never emitted: it stays
-//! reachable through `lvgl_rust_sys`.
+//! reachable through `lvgl-rust-sys`.
 
 #[cfg(feature = "cli")]
 pub mod audit;

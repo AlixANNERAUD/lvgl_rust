@@ -177,7 +177,7 @@ version = "0.1.0"
 dependencies = [
  "loom",
  "lvgl-rust-gen",
- "lvgl_rust_sys",
+ "lvgl-rust-sys",
 ]
 
 [[package]]
@@ -201,7 +201,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "lvgl_rust_sys"
+name = "lvgl-rust-sys"
 version = "0.1.0"
 dependencies = [
  "bindgen",

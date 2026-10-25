@@ -1,5 +1,5 @@
 [package]
-name = "lvgl_rust_sys"
+name = "lvgl-rust-sys"
 version = "0.1.0"
 edition.workspace = true
 rust-version.workspace = true

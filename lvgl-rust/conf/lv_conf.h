@@ -139,7 +139,7 @@
  *  - LV_COLOR_FORMAT_ARGB8888
  *  - LV_COLOR_FORMAT_ARGB8888_PREMULTIPLIED
  */
-/* Overridable through the `color_depth_*` Cargo features of lvgl_rust_sys. */
+/* Overridable through the `color_depth_*` Cargo features of lvgl-rust-sys. */
 #ifndef LV_COLOR_FORMAT_DEFAULT
 #define LV_COLOR_FORMAT_DEFAULT LV_COLOR_FORMAT_RGB565
 #endif

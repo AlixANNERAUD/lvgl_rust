@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 """
 protect_breaking_commits = true
 sort_commits = "oldest"
+# Changelog entries name no downstream project ("migration notes for <name>").
+commit_preprocessors = [
+  { pattern = "migration notes for \\S+$", replace = "migration notes" },
+]
 commit_parsers = [
   { message = "^Merge pull request", skip = true },
   { message = "^chore: release", skip = true },
@@ -32,7 +36,7 @@ commit_parsers = [
 ]
 
 [[package]]
-name = "lvgl_rust_sys"
+name = "lvgl-rust-sys"
 changelog_path = "./lvgl-rust-sys/CHANGELOG.md"
 git_tag_enable = true
 git_tag_name = "{{ package }}-v{{ version }}"

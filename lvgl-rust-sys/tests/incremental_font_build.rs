@@ -74,7 +74,7 @@ fn font_only_edit_rebuilds_external_archive_without_rerunning_lvgl_or_bindgen() 
     append(&font_source, b"\n/* isolated font-only edit */\n");
     let second = stdout_and_stderr(&build(&target, &config, "font-only rebuild"));
     assert!(
-        second.contains("Fresh lvgl_rust_sys"),
+        second.contains("Fresh lvgl-rust-sys"),
         "LVGL package was not fresh after font-only edit:\n{second}"
     );
     assert_ne!(
@@ -92,7 +92,7 @@ fn font_only_edit_rebuilds_external_archive_without_rerunning_lvgl_or_bindgen() 
     );
     let control = stdout_and_stderr(&build(&target, &config, "configuration control build"));
     assert!(
-        control.contains("Compiling lvgl_rust_sys"),
+        control.contains("Compiling lvgl-rust-sys"),
         "lv_conf.h edit did not rebuild the LVGL package:\n{control}"
     );
     assert!(

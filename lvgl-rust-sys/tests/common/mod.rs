@@ -37,7 +37,7 @@ pub fn cargo(subcommand: &str, manifest: &Path, target_dir: &Path) -> Command {
         .arg(manifest)
         .arg("--target-dir")
         .arg(target_dir)
-        // Tests match plain status lines such as "Fresh lvgl_rust_sys".
+        // Tests match plain status lines such as "Fresh lvgl-rust-sys".
         .env("CARGO_TERM_COLOR", "never")
         .env("DEP_LV_CONFIG_PATH", crate_root().join("conf"))
         .env_remove("LVGL_FONTS_DIR")
@@ -64,14 +64,14 @@ pub fn run(command: &mut Command, what: &str) -> Output {
     output
 }
 
-/// `OUT_DIR` of the `lvgl_rust_sys` build script under `target_dir`.
+/// `OUT_DIR` of the `lvgl-rust-sys` build script under `target_dir`.
 pub fn lvgl_out_dir(target_dir: &Path) -> PathBuf {
     fs::read_dir(target_dir.join("debug/build"))
         .unwrap()
         .filter_map(Result::ok)
         .map(|entry| entry.path().join("out"))
         .find(|path| path.join("bindings.rs").exists())
-        .expect("lvgl_rust_sys build output directory")
+        .expect("lvgl-rust-sys build output directory")
 }
 
 /// Output of a binutils tool (`nm`, `objdump`, ...).
@@ -98,7 +98,7 @@ pub fn dependent_manifest(name: &str, features: &[&str], build_script: bool) -> 
         .join(", ");
     format!(
         "[package]\nname = {name:?}\nversion = \"0.1.0\"\nedition = \"2024\"\n{}\n\
-         [dependencies]\nlvgl_rust_sys = {{ path = {:?}, features = [{features}] }}\n",
+         [dependencies]\nlvgl-rust-sys = {{ path = {:?}, features = [{features}] }}\n",
         if build_script {
             "build = \"build.rs\"\n"
         } else {

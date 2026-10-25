@@ -1,7 +1,7 @@
 # lvgl-rust
 
 Safe, `no_std` Rust bindings to [LVGL](https://lvgl.io) 9, on top of
-[`lvgl_rust_sys`](../lvgl-rust-sys). Work in progress: the core (sessions,
+[`lvgl-rust-sys`](../lvgl-rust-sys). Work in progress: the core (sessions,
 views, handles, ownership, deferred deletion) is in place, and wrappers are
 generated at build time from your configuration's bindings and the reviewed
 tables of [`lvgl-rust-gen`](../lvgl-rust-gen). They cover the base object and
@@ -118,9 +118,9 @@ of the API together: drivers in statics, a clock bound to a subject, a
 launcher posting work, window components with a close button, a
 textarea and a keyboard, styles, a timer and an animation.
 
-## Migrating from `lvgl_rust_sys` (Xila)
+## Migrating from raw `lvgl-rust-sys` code
 
-The crate builds on `lvgl_rust_sys` and does not change it, so raw and
+The crate builds on `lvgl-rust-sys` and does not change it, so raw and
 safe code can live side by side while modules move over:
 
 1. In `lv_conf.h`, set `LV_USE_OBJ_ID 1` and `LV_USE_OBJ_ID_BUILTIN 0`
@@ -133,7 +133,8 @@ safe code can live side by side while modules move over:
    posted work then run at the next `enter` or `timer_handler`.
 4. Replace hand-written allocator exports with `lvgl_allocator!` (feature
    `allocator`, `LV_STDLIB_CUSTOM`).
-5. Windows become components (a root handle and part handles); closing
+5. Windows and dialogs become components (a root handle and part
+   handles); closing
    from a handler is `delete_later`, which replaces synchronous locks and
    unlocked `lv_obj_delete_async` in drops.
 6. Displays and input devices move to `Display::create` and
