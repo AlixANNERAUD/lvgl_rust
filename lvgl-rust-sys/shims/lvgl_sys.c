@@ -38,6 +38,21 @@ bool lvgl_sys_obj_events_traversing(const lv_obj_t * obj)
     return obj->spec_attr != NULL && obj->spec_attr->event_list.is_traversing;
 }
 
+lv_point_t lvgl_sys_hit_test_point(const lv_hit_test_info_t * info)
+{
+    return *info->point;
+}
+
+bool lvgl_sys_hit_test_result(const lv_hit_test_info_t * info)
+{
+    return info->res;
+}
+
+void lvgl_sys_hit_test_set_result(lv_hit_test_info_t * info, bool res)
+{
+    info->res = res;
+}
+
 #if LV_USE_KEYBOARD
 void lvgl_sys_keyboard_forget_textarea(lv_obj_t * keyboard)
 {
