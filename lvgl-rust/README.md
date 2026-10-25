@@ -31,6 +31,9 @@ else stays reachable through `lvgl_rust::sys`.
 - **Timers.** `lv.timer(period_ms, data, f)` returns an `Owned<Timer>`
   (dropping it deletes the timer); `Handle<Timer>` pauses, resumes and
   changes the period and repeat count. No allocation besides LVGL's timer.
+- **Animations.** `Anim::new(data).values(0, 255).duration(300).exec(f)`,
+  started with `ObjMut::animate`; LVGL copies it and deletes it with the
+  object.
 - **Small.** The handle registry is a static array of 8-byte slots on 32-bit
   targets (`LVGL_RUST_HANDLE_SLOTS`, default 32), plus a 24-byte header.
   `LVGL_RUST_HANDLE_SLOTS=0` keeps only views (8 bytes of state).

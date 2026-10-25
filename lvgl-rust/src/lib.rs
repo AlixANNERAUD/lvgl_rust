@@ -25,6 +25,7 @@ mod config {
     include!(concat!(env!("OUT_DIR"), "/config.rs"));
 }
 
+mod anim;
 mod base;
 mod button_map;
 mod error;
@@ -57,6 +58,7 @@ pub use generated::{enums, functions, props, widgets};
 #[cfg(test)]
 mod tests;
 
+pub use anim::{Anim, AnimCtx};
 pub use base::*;
 pub use button_map::{ButtonMap, MapEntry};
 pub use error::Error;

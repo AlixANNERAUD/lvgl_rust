@@ -412,7 +412,7 @@ pub enum AnimPath {
 }
 
 impl AnimPath {
-    const fn callback(self) -> sys::lv_anim_path_cb_t {
+    pub(crate) const fn callback(self) -> sys::lv_anim_path_cb_t {
         Some(match self {
             AnimPath::Linear => sys::lv_anim_path_linear,
             AnimPath::EaseIn => sys::lv_anim_path_ease_in,
