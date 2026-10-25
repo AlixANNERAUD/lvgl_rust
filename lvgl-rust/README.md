@@ -39,6 +39,13 @@ else stays reachable through `lvgl_rust::sys`.
   `label.bind_text`, observed with `observe`/`observe_obj`. Subjects
   initialise themselves on first use, so LVGL never sees one of the wrong
   type.
+- **Drivers in statics.** `Display::create(lv, &CELL, driver, w, h,
+  DrawBuffers::double(&BUF_A, &BUF_B), RenderMode::Partial)` with a `Flush`
+  driver, `Indev::create(lv, &CELL, reader, IndevKind::Pointer)` with a
+  `Read` driver: `DisplayCell`, `IndevCell` and `DrawBuf` (aligned to
+  `LV_DRAW_BUF_ALIGN`) are application statics, claimed while in use.
+  Flushes can complete from an interrupt (`FlushRequest::defer`), without
+  touching LVGL's own flag.
 - **Small.** The handle registry is a static array of 8-byte slots on 32-bit
   targets (`LVGL_RUST_HANDLE_SLOTS`, default 32), plus a 24-byte header.
   `LVGL_RUST_HANDLE_SLOTS=0` keeps only views (8 bytes of state).

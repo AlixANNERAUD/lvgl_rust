@@ -153,6 +153,7 @@ pub fn emit(classifier: &Classifier, plans: &BTreeMap<String, Plan>) -> String {
         }
     });
     let fonts = emit_fonts(classifier);
+    let draw_buf = emit_draw_buf(classifier);
     let composites = emit_composites(classifier);
 
     let file = quote! {
@@ -184,6 +185,7 @@ pub fn emit(classifier: &Classifier, plans: &BTreeMap<String, Plan>) -> String {
         #style_impl
         #prop_ids
         #fonts
+        #draw_buf
         #composites
     };
     let file: syn::File = syn::parse2(file).expect("generated code parses");
@@ -740,6 +742,25 @@ fn emit_prop(classifier: &Classifier, m: &Method) -> Option<TokenStream> {
             )
         }
     })
+}
+
+/// `DrawBuf`, aligned to `LV_DRAW_BUF_ALIGN` (a literal: `repr(align)`
+/// takes no constant expression).
+fn emit_draw_buf(classifier: &Classifier) -> TokenStream {
+    let Some(&align) = classifier.bindings.consts.get("LV_DRAW_BUF_ALIGN") else {
+        return quote!();
+    };
+    let align = proc_macro2::Literal::usize_unsuffixed(align.max(1) as usize);
+    quote! {
+        /// A draw buffer for a [`Display`](crate::Display): a `static`
+        /// aligned to `LV_DRAW_BUF_ALIGN`, claimed by the display that uses
+        /// it.
+        #[repr(C, align(#align))]
+        pub struct DrawBuf<const BYTES: usize> {
+            pub(crate) data: core::cell::UnsafeCell<[u8; BYTES]>,
+            pub(crate) claimed: core::cell::Cell<bool>,
+        }
+    }
 }
 
 /// The constant of a style property (`LV_STYLE_BG_COLOR`, ...).

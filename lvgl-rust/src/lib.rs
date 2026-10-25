@@ -30,9 +30,11 @@ mod base;
 mod button_map;
 #[cfg(not(lvgl_rust_views_only))]
 mod component;
+mod display;
 mod error;
 mod event;
 mod image;
+mod indev;
 mod manual;
 mod screen;
 mod style;
@@ -56,7 +58,7 @@ mod generated {
     include!(concat!(env!("OUT_DIR"), "/gen.rs"));
 }
 
-pub use generated::{enums, functions, props, widgets};
+pub use generated::{DrawBuf, enums, functions, props, widgets};
 
 #[cfg(test)]
 mod tests;
@@ -66,11 +68,13 @@ pub use base::*;
 pub use button_map::{ButtonMap, MapEntry};
 #[cfg(not(lvgl_rust_views_only))]
 pub use component::Component;
+pub use display::{Display, DisplayCell, DrawBuffers, Flush, FlushDone, FlushRequest, RenderMode};
 pub use error::Error;
 #[cfg(not(lvgl_rust_views_only))]
 pub use event::EventSub;
 pub use event::{Event, Handler, HandlerResult, UserData, handler_allowed};
 pub use image::{ImageColorkey, ImageData, ImageDsc, ImageSrc, PixelFormat};
+pub use indev::{Indev, IndevCell, IndevData, IndevKind, Read};
 pub use lvgl_rust_sys as sys;
 pub use screen::{ScreenAnim, ScreenLoadAnim};
 pub use style::{
