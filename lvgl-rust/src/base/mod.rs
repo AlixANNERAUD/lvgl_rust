@@ -12,6 +12,7 @@ mod handle;
 #[cfg(all(not(lvgl_rust_views_only), not(lvgl_rust_docs)))]
 mod hook;
 mod objmut;
+pub(crate) mod post;
 pub(crate) mod registry;
 mod session;
 pub(crate) mod structural;
@@ -25,6 +26,11 @@ pub use session::{DepthGuard, Lvgl, LvglAccess, Session, init, tick_inc};
 #[cfg(not(lvgl_rust_views_only))]
 pub use view::WidgetExt;
 pub use view::{IsA, Obj, Widget};
+
+/// The current callback depth (0 outside callbacks).
+pub(crate) fn callback_depth() -> u8 {
+    registry::reg().hdr.depth.get()
+}
 
 /// What the generated wrappers (`gen.rs`) use from the core.
 pub(crate) mod gen_support {

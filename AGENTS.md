@@ -356,6 +356,13 @@ reach a sink, and review the `access.toml` diff.
   or an `ObjMut`, never `&self` on a view. Deletions requested from shared
   code go through the registry (`delete_later`, `Owned::drop`) and run in the
   drain.
+- **Event handlers.** Rust handlers run inside the LVGL frame that sent the
+  event, with shared access. `handler_allowed` (`event.rs`) lists the codes
+  they may run for: only those whose send sites hold no memory a shared
+  call could free. In callbacks, registering on an object LVGL is sending
+  to is refused (`lvgl_sys_obj_events_traversing`), and views and handles
+  of objects under a deleting ancestor are refused (`in_deletion`). Add a
+  code only after checking its send sites.
 - **Registry atomics.** No read-modify-write anywhere (thumbv6m and
   riscv32imc have no compare-and-swap): code without a token only stores
   `req`, `any_req` and `ticks`. `Registry::request_drop` and `drain` pair

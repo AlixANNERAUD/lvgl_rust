@@ -4,7 +4,9 @@
 #
 #   gate.sh <target> <slots> <text budget in bytes>
 #
-# Checks: the registry static is 8·N + 24 bytes in .bss (8 bytes with N = 0);
+# Checks: the registry static is 8·N + 24 bytes in .bss (8 bytes with N = 0),
+# and the `post` queue 8·P + 4 bytes (none with P = 0,
+# LVGL_RUST_POST_SLOTS, default 4);
 # the crate has no .data; no core::fmt or panic code is linked; the OBJ_ID
 # hooks are defined with N > 0 and absent with N = 0; the crate's code fits
 # the budget. The C toolchain comes from the `size-gate` mise task.
@@ -51,9 +53,12 @@ reg_type=$(awk '{print $3}' <<<"$reg")
 data=$(awk '$3 ~ /^[dD]$/' <<<"$crate")
 [ -z "$data" ] || fail "crate data in .data: $data"
 
+post_slots=${LVGL_RUST_POST_SLOTS:-4}
+if [ "$post_slots" = 0 ]; then expected_post=0; else expected_post=$((8 * post_slots + 4)); fi
+expected_bss=$((expected_reg + expected_post))
 bss=0
 while read -r _ size _ _; do bss=$((bss + 16#$size)); done < <(awk '$3 ~ /^[bB]$/' <<<"$crate")
-[ "$bss" = "$expected_reg" ] || fail "crate .bss is $bss B, expected $expected_reg B"
+[ "$bss" = "$expected_bss" ] || fail "crate .bss is $bss B, expected $expected_bss B (registry $expected_reg, post queue $expected_post)"
 
 panics=$("$nm" -C "$elf" | grep -E 'core::fmt|core::panicking|unwrap_failed' || true)
 [ -z "$panics" ] || fail "formatting or panic code linked: $panics"

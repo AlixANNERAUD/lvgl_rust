@@ -298,7 +298,7 @@ impl Registry {
             let o = p.cast::<ffi::lv_obj_t>();
             // SAFETY: a LIVE object slot points to an allocated object (R).
             unsafe {
-                if self.hdr.depth.get() != 0 && ffi::obj_is_deleting(o) {
+                if self.hdr.depth.get() != 0 && super::view::in_deletion(o) {
                     return Err(Error::Dead);
                 }
                 if !class.is_null()

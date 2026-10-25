@@ -15,7 +15,8 @@
 //!
 //! Build variables: `LVGL_RUST_HANDLE_SLOTS` (registry size, default 32;
 //! `0` for views only, without handles) and `LVGL_RUST_MAX_CALLBACK_DEPTH`
-//! (default 16).
+//! (default 16) and `LVGL_RUST_POST_SLOTS` (entries of [`Lvgl::post`],
+//! default 4).
 
 #![no_std]
 
@@ -27,6 +28,7 @@ mod config {
 mod base;
 mod button_map;
 mod error;
+mod event;
 mod image;
 mod manual;
 mod screen;
@@ -56,6 +58,9 @@ mod tests;
 pub use base::*;
 pub use button_map::{ButtonMap, MapEntry};
 pub use error::Error;
+#[cfg(not(lvgl_rust_views_only))]
+pub use event::EventSub;
+pub use event::{Event, Handler, HandlerResult, UserData, handler_allowed};
 pub use image::{ImageColorkey, ImageData, ImageDsc, ImageSrc, PixelFormat};
 pub use lvgl_rust_sys as sys;
 pub use screen::{ScreenAnim, ScreenLoadAnim};

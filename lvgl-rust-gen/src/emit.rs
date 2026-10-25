@@ -40,6 +40,11 @@ pub fn emit(classifier: &Classifier, plans: &BTreeMap<String, Plan>) -> String {
         }
     }
 
+    for (c_type, t) in &classifier.tables.overrides.types {
+        if t.emit && classifier.is_enum(c_type) {
+            enums.insert(c_type.clone());
+        }
+    }
     let enum_items = enums.iter().map(|e| emit_enum(classifier, e));
     let widget_items = classes.iter().map(|c| emit_widget(classifier, c));
 

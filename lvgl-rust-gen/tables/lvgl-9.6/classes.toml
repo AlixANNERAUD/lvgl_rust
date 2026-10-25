@@ -33,6 +33,7 @@ manual = [
     # Shims the core uses; they assume the object's class.
     "lvgl_sys_menu_part",
     "lvgl_sys_obj_is_deleting",
+    "lvgl_sys_obj_events_traversing",
     "lv_deinit",
     "lv_timer_handler",
 ]

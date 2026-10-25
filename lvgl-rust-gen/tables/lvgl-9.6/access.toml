@@ -6419,6 +6419,9 @@ access = "shared"
 [fn.lvgl_sys_menu_part]
 access = "shared"
 
+[fn.lvgl_sys_obj_events_traversing]
+access = "shared"
+
 [fn.lvgl_sys_obj_is_deleting]
 access = "shared"
 

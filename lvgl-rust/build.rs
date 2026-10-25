@@ -15,6 +15,8 @@ const DEPTH_VAR: &str = "LVGL_RUST_MAX_CALLBACK_DEPTH";
 const DEFAULT_SLOTS: u32 = 32;
 const MAX_SLOTS: u32 = 32_768;
 const DEFAULT_DEPTH: u32 = 16;
+const POST_VAR: &str = "LVGL_RUST_POST_SLOTS";
+const DEFAULT_POST: u32 = 4;
 
 fn main() {
     println!("cargo::rustc-check-cfg=cfg(lvgl_rust_views_only)");
@@ -33,6 +35,13 @@ fn main() {
         Err(error) => {
             errors.push(error);
             DEFAULT_DEPTH
+        }
+    };
+    let post = match post_slots(env_var(POST_VAR).as_deref()) {
+        Ok(post) => post,
+        Err(error) => {
+            errors.push(error);
+            DEFAULT_POST
         }
     };
     if slots == 0 {
@@ -78,6 +87,7 @@ fn main() {
     let mut config = String::new();
     writeln!(config, "pub(crate) const HANDLE_SLOTS: usize = {slots};").unwrap();
     writeln!(config, "pub(crate) const MAX_CALLBACK_DEPTH: u8 = {depth};").unwrap();
+    writeln!(config, "pub(crate) const POST_SLOTS: usize = {post};").unwrap();
     for error in errors {
         writeln!(config, "compile_error!({error:?});").unwrap();
     }
@@ -129,6 +139,19 @@ fn handle_slots(raw: Option<&str>) -> Result<u32, String> {
         Ok(slots) if slots <= MAX_SLOTS => Ok(slots.next_power_of_two()),
         _ => Err(format!(
             "{SLOTS_VAR} must be an integer from 0 to {MAX_SLOTS}, got {raw:?}"
+        )),
+    }
+}
+
+/// `LVGL_RUST_POST_SLOTS`: 0 to 255 entries of `Lvgl::post`.
+fn post_slots(raw: Option<&str>) -> Result<u32, String> {
+    let Some(raw) = raw else {
+        return Ok(DEFAULT_POST);
+    };
+    match raw.trim().parse::<u32>() {
+        Ok(slots @ 0..=255) => Ok(slots),
+        _ => Err(format!(
+            "{POST_VAR} must be an integer from 0 to 255, got {raw:?}"
         )),
     }
 }

@@ -191,6 +191,10 @@ pub struct TypeOverride {
     /// Flags type: the newtype implements `BitOr`.
     #[serde(default)]
     pub flags: bool,
+    /// Emit the newtype even if no generated function uses it (for
+    /// hand-written APIs).
+    #[serde(default)]
+    pub emit: bool,
     #[serde(default)]
     pub why: Option<String>,
 }

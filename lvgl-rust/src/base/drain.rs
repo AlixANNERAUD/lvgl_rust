@@ -4,7 +4,9 @@
 //! [`Lvgl::timer_handler`](crate::Lvgl::timer_handler).
 
 #[cfg(lvgl_rust_views_only)]
-pub(crate) fn drain() {}
+pub(crate) fn drain() {
+    super::post::run_posted();
+}
 
 #[cfg(not(lvgl_rust_views_only))]
 pub(crate) use slots::*;
@@ -34,6 +36,7 @@ mod slots {
             }
         }
         apply_pending_load();
+        crate::base::post::run_posted();
     }
 
     /// Carries out the requests of one slot. Returns `Err(Busy)` when the

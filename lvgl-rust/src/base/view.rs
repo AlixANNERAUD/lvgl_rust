@@ -91,15 +91,35 @@ pub(crate) fn ptr_of<W: Widget>(w: &W) -> *mut lv_obj_t {
     (w as *const W).cast_mut().cast()
 }
 
+/// Whether `o` or one of its ancestors is being deleted. Only callbacks
+/// can see such objects: LVGL deletes the children of an object after
+/// marking it, and sends DELETE to each.
+///
+/// # Safety
+///
+/// `o` must be a live object, under the token.
+pub(crate) unsafe fn in_deletion(mut o: *mut lv_obj_t) -> bool {
+    while !o.is_null() {
+        // SAFETY: caller contract; ancestors of a live object are live.
+        unsafe {
+            if ffi::obj_is_deleting(o) {
+                return true;
+            }
+            o = ffi::obj_parent(o);
+        }
+    }
+    false
+}
+
 /// A view of a non-null object returned by an LVGL getter, unless the
-/// object is being deleted (possible only inside callbacks).
+/// object or an ancestor is being deleted (possible only inside callbacks).
 pub(crate) fn getter_view<'a>(p: *mut lv_obj_t) -> Option<&'a Obj> {
     if p.is_null() {
         return None;
     }
     // SAFETY: LVGL returned a live object; outside callbacks no deletion is
     // in progress.
-    if reg().hdr.depth.get() != 0 && unsafe { ffi::obj_is_deleting(p) } {
+    if reg().hdr.depth.get() != 0 && unsafe { in_deletion(p) } {
         return None;
     }
     // SAFETY: as above.
