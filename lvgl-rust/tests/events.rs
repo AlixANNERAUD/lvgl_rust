@@ -315,3 +315,72 @@ fn posted_work_runs_at_the_drain_with_exclusive_access() {
     lv.timer_handler();
     assert_eq!(lv.screen_active().unwrap().get_child_count(), children - 1);
 }
+
+#[test]
+fn handler_mask_follows_the_audit() {
+    use EventCode as C;
+    for code in [
+        C::CLICKED,
+        C::KEY,
+        C::VALUE_CHANGED,
+        C::DELETE,
+        C::STYLE_CHANGED,
+    ] {
+        assert!(handler_allowed(code), "{code:?}");
+    }
+    for code in [
+        C::DRAW_MAIN,
+        C::DRAW_TASK_ADDED,
+        C::GET_SELF_SIZE,
+        C::HIT_TEST,
+        C::CREATE,
+        C::INVALIDATE_AREA,
+        C::PREPROCESS,
+    ] {
+        assert!(!handler_allowed(code), "{code:?}");
+    }
+}
+
+#[test]
+fn safe_codes_are_sent_with_shared_access() {
+    use lvgl_rust::enums::{SafeEventCode, SendableEventCode};
+    let mut guard = guard();
+    let mut lv = session(&mut guard);
+    let object = Obj::create(lv.screen_active().unwrap()).unwrap();
+    CALLS.store(0, Relaxed);
+    object.on_fn(EventCode::REFRESH, count).unwrap();
+    assert_eq!(object.send_event(SafeEventCode::REFRESH), Ok(()));
+    assert_eq!(object.send_event(SafeEventCode::READY), Ok(()));
+    assert_eq!(CALLS.load(Relaxed), 1);
+    // Exclusive access sends safe codes too, and keeps the object.
+    let edit = lv.edit(last).unwrap();
+    let edit = edit
+        .send_event(SendableEventCode::from(SafeEventCode::REFRESH))
+        .unwrap();
+    let edit = edit.send_event(SendableEventCode::VALUE_CHANGED).unwrap();
+    edit.delete().unwrap();
+    assert_eq!(CALLS.load(Relaxed), 2);
+}
+
+#[test]
+fn deleting_codes_need_exclusive_access_and_report_the_deletion() {
+    use lvgl_rust::{enums::SendableEventCode, widgets::MsgBox};
+    let mut guard = guard();
+    let mut lv = session(&mut guard);
+    let screen = lv.screen_active().unwrap();
+    let children = screen.get_child_count();
+    let mbox = MsgBox::create(screen).unwrap();
+    // SAFETY: session held, live message box.
+    unsafe { sys::lv_msgbox_add_close_button(mbox.as_ptr()) };
+    // CLICKED on the close button deletes the message box, the button
+    // included (lv_msgbox.c:258, 313-321).
+    let close = lv
+        .edit(|lv| last(lv)?.downcast::<MsgBox>()?.get_header()?.child(-1))
+        .unwrap();
+    assert!(matches!(
+        close.send_event(SendableEventCode::CLICKED),
+        Err(Error::Dead)
+    ));
+    lv.timer_handler();
+    assert_eq!(lv.screen_active().unwrap().get_child_count(), children);
+}

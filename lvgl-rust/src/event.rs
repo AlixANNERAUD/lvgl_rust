@@ -7,7 +7,12 @@
 //! ([`Lvgl::post`]). Codes sent while LVGL holds pointers a shared call
 //! could free are never delivered (see [`handler_allowed`]).
 
-use crate::{Error, Lvgl, Obj, base::gen_support::getter_view, enums::EventCode, sys};
+use crate::{
+    Error, Lvgl, Obj, ObjMut, Widget,
+    base::gen_support::getter_view,
+    enums::{EventCode, HANDLER_SHARED, SafeEventCode, SendableEventCode},
+    sys,
+};
 use core::{ffi::c_void, marker::PhantomData, mem, ptr, ptr::NonNull};
 
 #[cfg(not(lvgl_rust_views_only))]
@@ -141,68 +146,57 @@ impl<'cb> Event<'cb> {
 
 /// Whether safe handlers may run for `code`.
 ///
-/// Only codes LVGL sends where no frame holds memory a shared call could
-/// free (a review of every send site, verified against the sources):
-/// input, value, state, scroll, child, screen, size, style and layout
-/// codes, `DELETE`, and codes registered with `lv_event_register_id`
-/// (only applications send them). Refused: query and draw codes, sent in
-/// the middle of layout or rendering (a queued label draw task keeps
-/// `label->text`, `lv_label.c:936`); `CREATE`, sent before the object is
-/// complete; display and input-device codes; flags.
+/// The codes are those `events.toml` gives shared handlers: the access
+/// audit found no frame that keeps memory a shared call could free across
+/// their sends (input, value, state, scroll, child, screen, size, style
+/// and layout codes, `DELETE`), plus codes registered with
+/// `lv_event_register_id` (only applications send them). Refused: query
+/// and draw codes, sent in the middle of layout or rendering (a queued
+/// label draw task keeps `label->text`, `lv_label.c:936`); `CREATE`, sent
+/// before the object is complete; display and input-device codes.
 pub fn handler_allowed(code: EventCode) -> bool {
     use EventCode as C;
-    let custom = code.bits() > C::LAST.bits() && code.bits() <= C::LAST_CUSTOM.bits();
-    custom
-        || matches!(
-            code,
-            C::PRESSED
-                | C::PRESSING
-                | C::PRESS_LOST
-                | C::SHORT_CLICKED
-                | C::SINGLE_CLICKED
-                | C::DOUBLE_CLICKED
-                | C::TRIPLE_CLICKED
-                | C::LONG_PRESSED
-                | C::LONG_PRESSED_REPEAT
-                | C::CLICKED
-                | C::RELEASED
-                | C::SCROLL_BEGIN
-                | C::SCROLL_THROW_BEGIN
-                | C::SCROLL_END
-                | C::SCROLL
-                | C::GESTURE
-                | C::GESTURE_UP
-                | C::GESTURE_DOWN
-                | C::GESTURE_LEFT
-                | C::GESTURE_RIGHT
-                | C::KEY
-                | C::ROTARY
-                | C::FOCUSED
-                | C::DEFOCUSED
-                | C::LEAVE
-                | C::INDEV_RESET
-                | C::HOVER_OVER
-                | C::HOVER_LEAVE
-                | C::VALUE_CHANGED
-                | C::INSERT
-                | C::REFRESH
-                | C::READY
-                | C::CANCEL
-                | C::STATE_CHANGED
-                | C::CHECKED
-                | C::UNCHECKED
-                | C::DELETE
-                | C::CHILD_CHANGED
-                | C::CHILD_CREATED
-                | C::CHILD_DELETED
-                | C::SCREEN_UNLOAD_START
-                | C::SCREEN_LOAD_START
-                | C::SCREEN_LOADED
-                | C::SCREEN_UNLOADED
-                | C::SIZE_CHANGED
-                | C::STYLE_CHANGED
-                | C::LAYOUT_CHANGED
-        )
+    let bits = code.bits();
+    let custom = bits > C::LAST.bits() && bits <= C::LAST_CUSTOM.bits();
+    let word = bits as usize / 64;
+    custom || (word < HANDLER_SHARED.len() && (HANDLER_SHARED[word] >> (bits % 64)) & 1 != 0)
+}
+
+impl Obj {
+    /// Sends `code` to this object with a NULL parameter
+    /// (`lv_obj_send_event`). Fails with [`Error::Dead`] if LVGL reports the
+    /// object deleted meanwhile.
+    ///
+    /// Only the audit makes codes (`events.toml`): there is no constructor.
+    ///
+    /// ```compile_fail
+    /// let _ = lvgl_rust::enums::SafeEventCode(10);
+    /// ```
+    pub fn send_event(&self, code: SafeEventCode) -> Result<(), Error> {
+        send(self.as_ptr(), code.0)
+    }
+}
+
+impl<'s, W: Widget> ObjMut<'s, W> {
+    /// Sends `code` to this object with a NULL parameter
+    /// (`lv_obj_send_event`). Its handlers may delete the object (a message
+    /// box's close button on `CLICKED`), so this consumes the access and
+    /// gives it back only if the object is still alive; [`Error::Dead`]
+    /// otherwise.
+    pub fn send_event(self, code: SendableEventCode) -> Result<Self, Error> {
+        send(self.as_raw(), code.0).map(|()| self)
+    }
+}
+
+fn send(obj: *mut sys::lv_obj_t, code: u32) -> Result<(), Error> {
+    // SAFETY: a live object under the token; the code reads no parameter
+    // (`events.toml`), and deleting codes come with exclusive access.
+    let res = unsafe { sys::lv_obj_send_event(obj, code as sys::lv_event_code_t, ptr::null_mut()) };
+    if res == sys::lv_result_t_LV_RESULT_OK {
+        Ok(())
+    } else {
+        Err(Error::Dead)
+    }
 }
 
 /// What a handler returns: `()` or `Result<(), Error>` (errors are
