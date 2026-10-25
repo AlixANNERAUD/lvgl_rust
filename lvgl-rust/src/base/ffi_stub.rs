@@ -273,3 +273,10 @@ pub(crate) fn leaves() -> &'static [super::structural::ClassRef] {
 pub(crate) unsafe fn timer_delete(_: *mut lvgl_rust_sys::lv_timer_t) {
     unreachable!("timers are not modelled")
 }
+
+/// Groups are created only through LVGL (`group.rs`): none exists under
+/// Miri or loom.
+#[cfg(not(lvgl_rust_views_only))]
+pub(crate) unsafe fn group_delete(_: *mut lvgl_rust_sys::lv_group_t) {
+    unreachable!("groups are not modelled")
+}

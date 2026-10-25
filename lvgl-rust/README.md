@@ -46,6 +46,9 @@ else stays reachable through `lvgl_rust::sys`.
   `LV_DRAW_BUF_ALIGN`) are application statics, claimed while in use.
   Flushes can complete from an interrupt (`FlushRequest::defer`), without
   touching LVGL's own flag.
+- **Focus groups.** `lv.create_group()` returns an `Owned<Group>`;
+  `Handle<Group>` adds objects and moves focus, `Indev::set_group` attaches
+  a keypad or encoder.
 - **Small.** The handle registry is a static array of 8-byte slots on 32-bit
   targets (`LVGL_RUST_HANDLE_SLOTS`, default 32), plus a 24-byte header.
   `LVGL_RUST_HANDLE_SLOTS=0` keeps only views (8 bytes of state).

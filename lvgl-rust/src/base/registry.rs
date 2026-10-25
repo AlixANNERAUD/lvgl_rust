@@ -50,14 +50,14 @@ pub(crate) mod meta {
 #[cfg(not(lvgl_rust_views_only))]
 use meta::*;
 
-/// What a slot tracks (the KIND bits of `meta`). Groups take the next
-/// value.
+/// What a slot tracks (the KIND bits of `meta`).
 #[cfg(not(lvgl_rust_views_only))]
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 #[repr(u8)]
 pub(crate) enum Kind {
     Obj = 0,
     Timer = 1,
+    Group = 2,
 }
 
 #[cfg(not(lvgl_rust_views_only))]
@@ -116,6 +116,11 @@ impl Slot {
     /// Whether the slot tracks (or tracked) a timer.
     pub(crate) fn is_timer(&self) -> bool {
         self.meta.get() & KIND == Kind::Timer.bits()
+    }
+
+    /// Whether the slot tracks (or tracked) a group.
+    pub(crate) fn is_group(&self) -> bool {
+        self.meta.get() & KIND == Kind::Group.bits()
     }
 
     pub(crate) fn is_live(&self, kind: Kind) -> bool {
@@ -363,16 +368,16 @@ impl Registry {
     /// Releases a TEMP slot whose object stays alive.
     pub(crate) fn release(&self, index: usize) {
         let slot = self.slot(index);
-        if slot.state() == LIVE && !slot.is_timer() {
+        if slot.state() == LIVE && !slot.is_timer() && !slot.is_group() {
             // SAFETY: a LIVE object slot points to an allocated object (R).
             unsafe { ffi::obj_set_id(slot.ptr.get().cast(), 0) };
         }
         self.free(index);
     }
 
-    /// A timer of the slot was deleted: the slot stays DEAD while an
-    /// `Owned` refers to it, and is freed otherwise.
-    pub(crate) fn timer_deleted(&self, index: usize) {
+    /// The timer or group of the slot was deleted: the slot stays DEAD
+    /// while an `Owned` refers to it, and is freed otherwise.
+    pub(crate) fn resource_deleted(&self, index: usize) {
         let slot = self.slot(index);
         if slot.has(OWNED) {
             slot.meta

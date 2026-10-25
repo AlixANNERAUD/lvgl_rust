@@ -45,8 +45,8 @@ mod slots {
     pub(crate) fn act(index: usize) -> Result<(), Error> {
         let reg = reg();
         let slot = reg.slot(index);
-        if slot.is_timer() {
-            act_timer(index);
+        if slot.is_timer() || slot.is_group() {
+            act_resource(index);
             return Ok(());
         }
         let dropped = slot.has(OWNED) && slot.req.load(Ordering::Relaxed) != 0;
@@ -111,9 +111,9 @@ mod slots {
         Ok(())
     }
 
-    /// Deletes a timer whose `Owned` was dropped or that asked to be deleted
-    /// (`TimerCtx::delete_later`).
-    fn act_timer(index: usize) {
+    /// Deletes a timer or a group whose `Owned` was dropped or that asked
+    /// to be deleted (`TimerCtx::delete_later`).
+    fn act_resource(index: usize) {
         let reg = reg();
         let slot = reg.slot(index);
         let dropped = slot.has(OWNED) && slot.req.load(Ordering::Relaxed) != 0;
@@ -121,14 +121,20 @@ mod slots {
             return;
         }
         if slot.state() == LIVE {
-            // SAFETY: token held, depth 0; a LIVE timer slot points to a
-            // timer the crate created and nothing else deletes.
-            unsafe { ffi::timer_delete(slot.ptr().cast()) };
+            // SAFETY: token held, depth 0; a LIVE slot points to a timer or
+            // a group the crate created and nothing else deletes.
+            unsafe {
+                if slot.is_timer() {
+                    ffi::timer_delete(slot.ptr().cast());
+                } else {
+                    ffi::group_delete(slot.ptr().cast());
+                }
+            }
         }
         if dropped {
             reg.free(index);
         } else {
-            reg.timer_deleted(index);
+            reg.resource_deleted(index);
         }
     }
 

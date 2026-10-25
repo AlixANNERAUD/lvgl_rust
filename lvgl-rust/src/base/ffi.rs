@@ -47,6 +47,11 @@ pub(crate) unsafe fn obj_move_to_index(obj: *mut lv_obj_t, index: i32) {
 }
 
 #[cfg(not(lvgl_rust_views_only))]
+pub(crate) unsafe fn group_delete(group: *mut sys::lv_group_t) {
+    unsafe { sys::lv_group_delete(group) }
+}
+
+#[cfg(not(lvgl_rust_views_only))]
 pub(crate) unsafe fn timer_delete(timer: *mut sys::lv_timer_t) {
     unsafe { sys::lv_timer_delete(timer) }
 }

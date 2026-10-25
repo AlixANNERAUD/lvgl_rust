@@ -65,6 +65,7 @@ pub fn emit(classifier: &Classifier, plans: &BTreeMap<String, Plan>) -> String {
         "delete",
         "clean",
         "move_to_index",
+        "remove_from_group",
         "set_parent",
         "set_parent_to",
         "load_screen",

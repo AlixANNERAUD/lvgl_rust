@@ -33,6 +33,8 @@ mod component;
 mod display;
 mod error;
 mod event;
+#[cfg(not(lvgl_rust_views_only))]
+mod group;
 mod image;
 mod indev;
 mod manual;
@@ -73,6 +75,8 @@ pub use error::Error;
 #[cfg(not(lvgl_rust_views_only))]
 pub use event::EventSub;
 pub use event::{Event, Handler, HandlerResult, UserData, handler_allowed};
+#[cfg(not(lvgl_rust_views_only))]
+pub use group::Group;
 pub use image::{ImageColorkey, ImageData, ImageDsc, ImageSrc, PixelFormat};
 pub use indev::{Indev, IndevCell, IndevData, IndevKind, Read};
 pub use lvgl_rust_sys as sys;
