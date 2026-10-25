@@ -154,7 +154,15 @@ run = [
   "mkdir -p target/asan-conf",
   "sed 's/^#define LV_USE_STDLIB_MALLOC .*/#define LV_USE_STDLIB_MALLOC LV_STDLIB_CLIB/' lvgl-rust/conf/lv_conf.h > target/asan-conf/lv_conf.h",
   "cargo test -p lvgl-rust --features async,heap,fmt --target \"$(rustc -vV | sed -n 's/^host: //p')\"",
+  "cargo run -q -p lvgl-rust --example desktop --target \"$(rustc -vV | sed -n 's/^host: //p')\"",
 ]
+
+[tasks.example]
+description = "Run the desktop example of lvgl-rust (a scripted Xila-like desktop on the host)"
+env.RUSTFLAGS = "-D warnings"
+env.DEP_LV_CONFIG_PATH = "{{config_root}}/lvgl-rust/conf"
+env.CARGO_TARGET_DIR = "target/safe"
+run = "cargo run -q -p lvgl-rust --example desktop"
 
 [tasks.test-allocator]
 description = "Lint and test lvgl-rust's allocator feature, on a configuration whose heap is the Rust allocator (LV_STDLIB_CUSTOM)"

@@ -112,3 +112,33 @@ loop {
     // ...
 }
 ```
+
+The desktop example (`mise run example`, `examples/desktop.rs`) puts most
+of the API together: drivers in statics, a clock bound to a subject, a
+launcher posting work, window components with a close button, a
+textarea and a keyboard, styles, a timer and an animation.
+
+## Migrating from `lvgl_rust_sys` (Xila)
+
+The crate builds on `lvgl_rust_sys` and does not change it, so raw and
+safe code can live side by side while modules move over:
+
+1. In `lv_conf.h`, set `LV_USE_OBJ_ID 1` and `LV_USE_OBJ_ID_BUILTIN 0`
+   (`LV_OBJ_ID_AUTO_ASSIGN` stays 1): the crate defines the five OBJ_ID
+   functions, so the application must not. Cost: 4 bytes per object.
+2. Make the lock return a guard type of its own and implement `LvglAccess`
+   only on it (not on a `MutexGuard` shared with other mutexes).
+3. The graphics task runs `Lvgl::enter(&mut guard)?.timer_handler()`.
+   Raw `lv_timer_handler` stays valid meanwhile; deferred deletions and
+   posted work then run at the next `enter` or `timer_handler`.
+4. Replace hand-written allocator exports with `lvgl_allocator!` (feature
+   `allocator`, `LV_STDLIB_CUSTOM`).
+5. Windows become components (a root handle and part handles); closing
+   from a handler is `delete_later`, which replaces synchronous locks and
+   unlocked `lv_obj_delete_async` in drops.
+6. Displays and input devices move to `Display::create` and
+   `Indev::create` with drivers in statics.
+7. Modules migrate one by one with `as_ptr()` and `Obj::from_raw`; raw C
+   callbacks that call safe code take `Lvgl::enter_callback()` first. What
+   stays raw is listed in `$OUT_DIR/coverage.txt`.
+
