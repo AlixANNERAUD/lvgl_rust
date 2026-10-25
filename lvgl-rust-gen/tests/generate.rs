@@ -24,6 +24,12 @@ pub type _lv_style_id_t = core::ffi::c_uint;
 pub const _lv_style_id_t_LV_STYLE_BG_COLOR: _lv_style_id_t = 73;
 pub const _lv_style_id_t_LV_STYLE_RADIUS: _lv_style_id_t = 12;
 pub const _lv_style_id_t_LV_STYLE_TEXT_FONT: _lv_style_id_t = 90;
+pub type lv_event_code_t = core::ffi::c_uint;
+pub const lv_event_code_t_LV_EVENT_CLICKED: lv_event_code_t = 10;
+pub const lv_event_code_t_LV_EVENT_KEY: lv_event_code_t = 21;
+pub const lv_event_code_t_LV_EVENT_DRAW_MAIN: lv_event_code_t = 33;
+pub const lv_event_code_t_LV_EVENT_VALUE_CHANGED: lv_event_code_t = 39;
+pub const lv_event_code_t_LV_EVENT_SCREEN_LOADED: lv_event_code_t = 70;
 pub type lv_anim_enable_t = bool;
 pub type lv_align_t = core::ffi::c_uint;
 pub const lv_align_t_LV_ALIGN_CENTER: lv_align_t = 9;
@@ -262,6 +268,43 @@ params.src = { kind = "retained", rust = "ImageSrc" }
 params.value = { kind = "retained", rust = "ImageSrc" }
 "#;
 
+const EVENTS: &str = r#"
+[code.LV_EVENT_CLICKED]
+value = 10
+handler = "shared"
+deleting = true
+param = []
+sendable = "exclusive"
+
+[code.LV_EVENT_KEY]
+value = 21
+handler = "shared"
+deleting = false
+param = ["lv_event_get_param"]
+sendable = "no"
+
+[code.LV_EVENT_DRAW_MAIN]
+value = 33
+handler = "restricted"
+deleting = false
+param = ["lv_event_get_layer"]
+sendable = "no"
+
+[code.LV_EVENT_VALUE_CHANGED]
+value = 39
+handler = "shared"
+deleting = false
+param = []
+sendable = "shared"
+
+[code.LV_EVENT_SCREEN_LOADED]
+value = 70
+handler = "shared"
+deleting = false
+param = []
+sendable = "shared"
+"#;
+
 fn inputs() -> (Bindings, Headers) {
     let bindings = Bindings::parse(BINDINGS).unwrap();
     let mut headers = Headers::default();
@@ -270,7 +313,9 @@ fn inputs() -> (Bindings, Headers) {
 }
 
 fn load(access: &str, classes: &str, overrides: &str) -> Result<Tables, lvgl_rust_gen::Error> {
-    Tables::parse(access, classes, RELATIONS, &[overrides], &[])
+    let mut tables = Tables::parse(access, classes, RELATIONS, &[overrides], &[])?;
+    tables.parse_events(EVENTS)?;
+    Ok(tables)
 }
 
 fn check_golden(name: &str, actual: &str) {
@@ -411,6 +456,69 @@ fn table_errors_always_fail() {
         error.to_string().contains("either `param` or `raw = true`"),
         "{error}"
     );
+}
+
+#[test]
+fn event_tables_are_checked_against_the_bindings() {
+    let (bindings, headers) = inputs();
+    let output = generate_from(
+        &bindings,
+        &headers,
+        &load(ACCESS, CLASSES, OVERRIDES).unwrap(),
+        true,
+    )
+    .unwrap();
+    // CLICKED (10), KEY (21), VALUE_CHANGED (39) in the first word,
+    // SCREEN_LOADED (70) in the second; DRAW_MAIN is restricted.
+    let mask = (1u64 << 10) | (1 << 21) | (1 << 39);
+    assert!(
+        output.code.contains(&format!(
+            "HANDLER_SHARED: [u64; 2] = [{mask}, {}]",
+            1u64 << 6
+        )),
+        "{}",
+        output.code
+    );
+    let cases = [
+        (
+            "value = 10",
+            "value = 11",
+            "has value 11 but the bindings say 10",
+        ),
+        (
+            "sendable = \"shared\"\n\n[code.LV_EVENT_SCREEN_LOADED]",
+            "sendable = \"bogus\"\n\n[code.LV_EVENT_SCREEN_LOADED]",
+            "cannot be sendable \"bogus\"",
+        ),
+        (
+            "param = [\"lv_event_get_param\"]\nsendable = \"no\"",
+            "param = [\"lv_event_get_param\"]\nsendable = \"shared\"",
+            "[code.LV_EVENT_KEY] cannot be sendable \"shared\"",
+        ),
+        (
+            "handler = \"restricted\"",
+            "handler = \"maybe\"",
+            "handler \"maybe\"",
+        ),
+    ];
+    for (from, to, expected) in cases {
+        let mut tables = Tables::parse(ACCESS, CLASSES, RELATIONS, &[OVERRIDES], &[]).unwrap();
+        assert!(EVENTS.contains(from), "{from}");
+        tables.parse_events(&EVENTS.replacen(from, to, 1)).unwrap();
+        let error = generate_from(&bindings, &headers, &tables, false).unwrap_err();
+        assert!(error.to_string().contains(expected), "{error}");
+    }
+    // A code this configuration does not have is stale.
+    let mut tables = load(ACCESS, CLASSES, OVERRIDES).unwrap();
+    tables
+        .parse_events(&format!(
+            "{EVENTS}\n[code.LV_EVENT_GONE]\nvalue = 90\nhandler = \"shared\"\ndeleting = false\nsendable = \"shared\"\n"
+        ))
+        .unwrap();
+    let output = generate_from(&bindings, &headers, &tables, false).unwrap();
+    assert!(output.warnings.iter().any(|w| w.contains("LV_EVENT_GONE")));
+    assert!(!output.code.contains("GONE"));
+    assert!(generate_from(&bindings, &headers, &tables, true).is_err());
 }
 
 #[test]
