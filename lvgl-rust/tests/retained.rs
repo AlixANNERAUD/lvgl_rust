@@ -205,3 +205,67 @@ fn styles_point_to_static_data() {
     lv.edit(last).unwrap().delete().unwrap();
     lv.style(&DYNAMIC).reset();
 }
+
+#[test]
+fn an_open_dropdown_list_follows_its_options() {
+    use lvgl_rust::widgets::{Dropdown, Label};
+    let mut guard = guard();
+    let mut lv = session(&mut guard);
+    let index = Dropdown::create(lv.screen_active().unwrap())
+        .unwrap()
+        .get_index();
+    fn dropdown(lv: &Lvgl, index: i32) -> Option<&Dropdown> {
+        lv.screen_active()?.child(index)?.downcast()
+    }
+    dropdown(&lv, index).unwrap().set_options(c"a\nb");
+    lv.edit(|lv| dropdown(lv, index)).unwrap().open();
+    let check = |lv: &Lvgl, expected: &core::ffi::CStr| {
+        let dd = dropdown(lv, index).unwrap();
+        let label = dd
+            .get_list()
+            .unwrap()
+            .child(0)
+            .unwrap()
+            .downcast::<Label>()
+            .unwrap();
+        let mut buf = [0u8; 64];
+        assert_eq!(label.get_text_into(&mut buf), Ok(Some(expected)));
+    };
+    check(&lv, c"a\nb");
+    // The old options are freed: the list label must not keep them.
+    dropdown(&lv, index)
+        .unwrap()
+        .set_options(c"a much longer list\nthat reallocates\nc");
+    check(&lv, c"a much longer list\nthat reallocates\nc");
+    // SAFETY: session held; lays out and draws the open list.
+    unsafe { sys::lv_refr_now(core::ptr::null_mut()) };
+    dropdown(&lv, index).unwrap().clear_options();
+    check(&lv, c"");
+    dropdown(&lv, index).unwrap().set_options_static(c"x\ny");
+    check(&lv, c"x\ny");
+    // SAFETY: as above.
+    unsafe { sys::lv_refr_now(core::ptr::null_mut()) };
+    lv.edit(|lv| dropdown(lv, index)).unwrap().delete().unwrap();
+}
+
+#[test]
+fn textarea_labels_and_degenerate_scales_are_refused() {
+    use lvgl_rust::widgets::{Label, Scale, TextArea};
+    let mut guard = guard();
+    let mut lv = session(&mut guard);
+    let textarea = TextArea::create(lv.screen_active().unwrap()).unwrap();
+    let label = textarea.get_label().unwrap().downcast::<Label>().unwrap();
+    // The textarea edits this text in place: static text would be written.
+    assert_eq!(label.set_text_static(Some(c"x")), Err(Error::Internal));
+    let other = Label::create(lv.screen_active().unwrap()).unwrap();
+    other.set_text_static(Some(c"fine")).unwrap();
+    let scale = Scale::create(lv.screen_active().unwrap()).unwrap();
+    assert_eq!(scale.set_range(5, 5), Err(Error::InvalidArg));
+    scale.set_range(0, 10).unwrap();
+    assert_eq!(scale.set_min_value(10), Err(Error::InvalidArg));
+    assert_eq!(scale.set_max_value(0), Err(Error::InvalidArg));
+    scale.set_max_value(20).unwrap();
+    for _ in 0..3 {
+        lv.edit(last).unwrap().delete().unwrap();
+    }
+}

@@ -42,7 +42,7 @@ fn labels_take_copied_and_static_text() {
     } // freed: LVGL keeps its own copy
     let mut buf = [0u8; 16];
     assert_eq!(label.get_text_into(&mut buf), Ok(Some(c"temporary")));
-    label.set_text_static(Some(c"static"));
+    label.set_text_static(Some(c"static")).unwrap();
     label.set_long_mode(LabelLongMode::DOTS);
     assert_eq!(label.get_long_mode(), LabelLongMode::DOTS);
     drop(lv);
@@ -220,7 +220,7 @@ fn labels_take_str_and_numbers() {
         Err(lvgl_rust::Error::InvalidArg)
     );
     // Replaces static text too.
-    label.set_text_static(Some(c"static"));
+    label.set_text_static(Some(c"static")).unwrap();
     label.set_text_str("dynamic").unwrap();
     assert_eq!(text(label), "dynamic");
     label.set_text_i32(i32::MIN);

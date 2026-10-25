@@ -28,6 +28,7 @@ mod base;
 mod button_map;
 mod error;
 mod image;
+mod manual;
 mod screen;
 mod style;
 mod text;

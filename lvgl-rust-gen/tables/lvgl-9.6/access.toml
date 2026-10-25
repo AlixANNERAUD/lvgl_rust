@@ -565,7 +565,8 @@ access = "shared"
 access = "shared"
 
 [fn.lv_bin_decoder_init]
-access = "shared"
+access = "raw"
+why = "registers another binary decoder (lv_bin_decoder.c): part of lv_init"
 
 [fn.lv_bin_decoder_open]
 access = "shared"
@@ -1391,7 +1392,8 @@ access = "shared"
 access = "shared"
 
 [fn.lv_draw_deinit]
-access = "shared"
+access = "raw"
+why = "frees the draw units while objects and draw tasks use them (lv_draw.c)"
 
 [fn.lv_draw_dispatch]
 access = "shared"
@@ -1445,7 +1447,8 @@ access = "shared"
 access = "shared"
 
 [fn.lv_draw_init]
-access = "shared"
+access = "raw"
+why = "re-initialises the draw units while objects and draw tasks use them (lv_draw.c)"
 
 [fn.lv_draw_label]
 access = "shared"
@@ -1762,7 +1765,8 @@ access = "shared"
 access = "shared"
 
 [fn.lv_flex_init]
-access = "shared"
+access = "raw"
+why = "registers the flex layout again (lv_flex.c): part of lv_init"
 
 [fn.lv_font_get_bitmap_fmt_txt]
 access = "shared"
@@ -1873,7 +1877,8 @@ access = "shared"
 access = "shared"
 
 [fn.lv_fs_remove_drive]
-access = "shared"
+access = "raw"
+why = "removes a driver that open files and image sources may still use (lv_fs.c)"
 
 [fn.lv_fs_seek]
 access = "shared"
@@ -1912,7 +1917,8 @@ access = "shared"
 access = "shared"
 
 [fn.lv_grid_init]
-access = "shared"
+access = "raw"
+why = "registers the grid layout again (lv_grid.c): part of lv_init"
 
 [fn.lv_group_add_obj]
 access = "exclusive"
@@ -2655,10 +2661,12 @@ access = "shared"
 access = "shared"
 
 [fn.lv_mem_deinit]
-access = "shared"
+access = "raw"
+why = "frees LVGL's heap pool under every live object (lv_mem.c)"
 
 [fn.lv_mem_init]
-access = "shared"
+access = "raw"
+why = "initialises LVGL's heap pool (lv_mem.c): LVGL's lifecycle belongs to lvgl_rust::init"
 
 [fn.lv_mem_monitor]
 access = "shared"
@@ -2972,8 +2980,8 @@ access = "shared"
 access = "shared"
 
 [fn.lv_obj_class_init_obj]
-access = "exclusive"
-why = "lv_obj_class_init_obj -> lv_group_add_obj -> lv_group_remove_obj"
+access = "raw"
+why = "runs a class constructor again on an initialised object (lv_obj_class.c): only for objects made with lv_obj_class_create_obj"
 
 [fn.lv_obj_clean]
 access = "exclusive"
@@ -5134,10 +5142,12 @@ access = "shared"
 access = "shared"
 
 [fn.lv_span_stack_deinit]
-access = "shared"
+access = "raw"
+why = "frees the global snippet stack (lv_span.c) without clearing it: span drawing uses it afterwards"
 
 [fn.lv_span_stack_init]
-access = "shared"
+access = "raw"
+why = "replaces the global snippet stack (lv_span.c) without freeing it"
 
 [fn.lv_spangroup_add_span]
 access = "shared"
@@ -6179,7 +6189,8 @@ access = "shared"
 access = "shared"
 
 [fn.lv_theme_default_deinit]
-access = "shared"
+access = "raw"
+why = "frees theme_def (lv_theme_default.c) while objects and their theme keep pointers to it"
 
 [fn.lv_theme_default_get]
 access = "shared"
@@ -6216,7 +6227,8 @@ access = "shared"
 access = "shared"
 
 [fn.lv_theme_mono_deinit]
-access = "shared"
+access = "raw"
+why = "frees the mono theme (lv_theme_mono.c) while objects keep pointers to it"
 
 [fn.lv_theme_mono_get]
 access = "shared"
@@ -6238,7 +6250,8 @@ access = "shared"
 access = "shared"
 
 [fn.lv_theme_simple_deinit]
-access = "shared"
+access = "raw"
+why = "frees the simple theme (lv_theme_simple.c) while objects keep pointers to it"
 
 [fn.lv_theme_simple_get]
 access = "shared"

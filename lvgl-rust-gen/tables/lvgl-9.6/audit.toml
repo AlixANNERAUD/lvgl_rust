@@ -53,6 +53,63 @@ lv_indev_add_event_cb = [1, 2]
 lv_event_add = [1, 2]
 
 # Hand decisions, with the reason. They override the graph.
+# LVGL's own lifecycle and global state: never from safe code.
+[exceptions.lv_mem_init]
+access = "raw"
+why = "initialises LVGL's heap pool (lv_mem.c): LVGL's lifecycle belongs to lvgl_rust::init"
+
+[exceptions.lv_mem_deinit]
+access = "raw"
+why = "frees LVGL's heap pool under every live object (lv_mem.c)"
+
+[exceptions.lv_draw_init]
+access = "raw"
+why = "re-initialises the draw units while objects and draw tasks use them (lv_draw.c)"
+
+[exceptions.lv_draw_deinit]
+access = "raw"
+why = "frees the draw units while objects and draw tasks use them (lv_draw.c)"
+
+[exceptions.lv_bin_decoder_init]
+access = "raw"
+why = "registers another binary decoder (lv_bin_decoder.c): part of lv_init"
+
+[exceptions.lv_flex_init]
+access = "raw"
+why = "registers the flex layout again (lv_flex.c): part of lv_init"
+
+[exceptions.lv_grid_init]
+access = "raw"
+why = "registers the grid layout again (lv_grid.c): part of lv_init"
+
+[exceptions.lv_span_stack_init]
+access = "raw"
+why = "replaces the global snippet stack (lv_span.c) without freeing it"
+
+[exceptions.lv_span_stack_deinit]
+access = "raw"
+why = "frees the global snippet stack (lv_span.c) without clearing it: span drawing uses it afterwards"
+
+[exceptions.lv_theme_default_deinit]
+access = "raw"
+why = "frees theme_def (lv_theme_default.c) while objects and their theme keep pointers to it"
+
+[exceptions.lv_theme_simple_deinit]
+access = "raw"
+why = "frees the simple theme (lv_theme_simple.c) while objects keep pointers to it"
+
+[exceptions.lv_theme_mono_deinit]
+access = "raw"
+why = "frees the mono theme (lv_theme_mono.c) while objects keep pointers to it"
+
+[exceptions.lv_fs_remove_drive]
+access = "raw"
+why = "removes a driver that open files and image sources may still use (lv_fs.c)"
+
+[exceptions.lv_obj_class_init_obj]
+access = "raw"
+why = "runs a class constructor again on an initialised object (lv_obj_class.c): only for objects made with lv_obj_class_create_obj"
+
 [exceptions.lv_color_make]
 access = "pure"
 why = "computes a value"

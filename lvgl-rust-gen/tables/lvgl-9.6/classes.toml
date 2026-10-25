@@ -19,6 +19,17 @@ manual = [
     "lv_obj_move_to_index",
     # Copies one entry per button: length-checked (button_map.rs).
     "lv_buttonmatrix_set_ctrl_map",
+    # The open list's label shows the options as static text: re-pointed
+    # after every change (manual.rs).
+    "lv_dropdown_set_options",
+    "lv_dropdown_set_options_static",
+    "lv_dropdown_clear_options",
+    # A textarea edits its label's text in place (manual.rs).
+    "lv_label_set_text_static",
+    # The needle divides by max - min (lv_scale.c:329, 384) (manual.rs).
+    "lv_scale_set_range",
+    "lv_scale_set_min_value",
+    "lv_scale_set_max_value",
     # Shims the core uses; they assume the object's class.
     "lvgl_sys_menu_part",
     "lvgl_sys_obj_is_deleting",
