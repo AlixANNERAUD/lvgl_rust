@@ -28,3 +28,24 @@ pub enum Error {
     /// A buffer is too small.
     TooSmall,
 }
+
+#[cfg(feature = "fmt")]
+impl core::fmt::Display for Error {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(match self {
+            Error::Dead => "the object was deleted",
+            Error::RegistryFull => "no registry slot is left",
+            Error::OutOfMemory => "LVGL could not allocate memory",
+            Error::InvalidArg => "invalid argument",
+            Error::Busy => "LVGL still uses it; retried later",
+            Error::Internal => "LVGL keeps pointers to it: refused",
+            Error::Reentrant => "LVGL is already initialized, or a session or callback is active",
+            Error::NotInitialized => "LVGL is not initialized",
+            Error::AlreadyOwned => "already owned",
+            Error::TooSmall => "buffer too small",
+        })
+    }
+}
+
+#[cfg(feature = "fmt")]
+impl core::error::Error for Error {}

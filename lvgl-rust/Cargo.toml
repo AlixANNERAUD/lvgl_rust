@@ -23,6 +23,8 @@ async = []
 heap = []
 # LVGL's heap from a Rust allocator (`LV_USE_STDLIB_MALLOC LV_STDLIB_CUSTOM`).
 allocator = []
+# `Label::set_text_fmt` and `Display for Error` (links `core::fmt`).
+fmt = []
 
 color_depth_1 = ["lvgl_rust_sys/color_depth_1"]
 color_depth_8 = ["lvgl_rust_sys/color_depth_8"]

@@ -281,3 +281,32 @@ fn composites_free_their_parts_when_deleted() {
     lv.timer_handler();
     assert_eq!(lv.screen_active().unwrap().get_child_count(), children - 1);
 }
+
+#[cfg(feature = "fmt")]
+#[test]
+fn labels_take_formatted_text() {
+    let mut guard = guard();
+    let mut lv = session(&mut guard);
+    let label = Label::create(lv.screen_active().unwrap()).unwrap();
+    let value = 3.5f32;
+    label
+        .set_text_fmt(format_args!("{} élans, {value:.2} — {:>8}|", 42, "日本"))
+        .unwrap();
+    let mut buf = [0u8; 64];
+    let text = label
+        .get_text_into(&mut buf)
+        .unwrap()
+        .unwrap()
+        .to_str()
+        .unwrap();
+    assert_eq!(text, "42 élans, 3.50 —       日本|");
+    assert_eq!(
+        label.set_text_fmt(format_args!("a{}b", '\0')),
+        Err(lvgl_rust::Error::InvalidArg)
+    );
+    assert_eq!(lvgl_rust::Error::Dead.to_string(), "the object was deleted");
+    lv.edit(|lv| lv.screen_active()?.child(-1))
+        .unwrap()
+        .delete()
+        .unwrap();
+}

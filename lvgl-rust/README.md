@@ -60,6 +60,9 @@ else stays reachable through `lvgl_rust::sys`.
   `LV_USE_STDLIB_MALLOC LV_STDLIB_CUSTOM`, `lvgl_allocator!(HEAP)` makes
   LVGL allocate from a static implementing `LvglAllocator`;
   `SizedHeader(GlobalAlloc)` adapts a Rust allocator.
+- **Formatting (feature `fmt`).** `label.set_text_fmt(format_args!(...))`
+  streams into the label in 32-byte chunks; `Error` implements `Display`.
+  Without it, `set_text_i32`/`u32` avoid `core::fmt`.
 - **Small.** The handle registry is a static array of 8-byte slots on 32-bit
   targets (`LVGL_RUST_HANDLE_SLOTS`, default 32), plus a 24-byte header.
   `LVGL_RUST_HANDLE_SLOTS=0` keeps only views (8 bytes of state).

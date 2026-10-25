@@ -68,34 +68,22 @@ mod label {
             if text.as_bytes().contains(&0) {
                 return Err(Error::InvalidArg);
             }
-            let p = self.as_ptr();
-            // SAFETY: shared access; LVGL copies the strings.
-            unsafe { sys::lv_label_set_text(p, c"".as_ptr()) };
-            if !has_text(p) {
-                return Err(empty(p));
+            let mut appender = Appender::start(self.as_ptr())?;
+            appender.push(text)?;
+            appender.flush()
+        }
+
+        /// Sets the text to formatted output (`format_args!`), appended in
+        /// chunks like [`set_text_str`](Label::set_text_str): no buffer
+        /// beyond 32 bytes of stack. Fails with [`Error::InvalidArg`] on a
+        /// NUL in the output, and with [`Error::OutOfMemory`].
+        #[cfg(feature = "fmt")]
+        pub fn set_text_fmt(&self, args: core::fmt::Arguments<'_>) -> Result<(), Error> {
+            let mut appender = Appender::start(self.as_ptr())?;
+            if core::fmt::write(&mut appender, args).is_err() {
+                return Err(appender.error.unwrap_or(Error::InvalidArg));
             }
-            let mut rest = text;
-            while !rest.is_empty() {
-                // Back off to a character boundary (at most 3 bytes).
-                let mut n = rest.len().min(CHUNK - 1);
-                while !rest.is_char_boundary(n) {
-                    n -= 1;
-                }
-                let Some((chunk, tail)) = rest.split_at_checked(n) else {
-                    return Err(Error::InvalidArg); // unreachable: a boundary
-                };
-                let mut buf = [0u8; CHUNK];
-                if let Some(dst) = buf.get_mut(..n) {
-                    dst.copy_from_slice(chunk.as_bytes());
-                }
-                // SAFETY: as above; `buf` is NUL-terminated.
-                unsafe { sys::lv_label_ins_text(p, sys::LV_LABEL_POS_LAST, buf.as_ptr().cast()) };
-                if !has_text(p) {
-                    return Err(empty(p));
-                }
-                rest = tail;
-            }
-            Ok(())
+            appender.flush()
         }
 
         /// Sets the text to a signed number, without `core::fmt`.
@@ -121,6 +109,93 @@ mod label {
                     empty(self.as_ptr());
                 }
             }
+        }
+    }
+
+    /// Appends text to a label in NUL-terminated chunks cut at character
+    /// boundaries, because LVGL inserts at a character index.
+    struct Appender {
+        p: *mut sys::lv_obj_t,
+        buf: [u8; CHUNK],
+        len: usize,
+        /// Why a formatted write stopped (`set_text_fmt`).
+        #[cfg(feature = "fmt")]
+        error: Option<Error>,
+    }
+
+    impl Appender {
+        /// Empties the label (`lv_label_ins_text` does nothing on static
+        /// text, `lv_label.c:727-728`).
+        fn start(p: *mut sys::lv_obj_t) -> Result<Self, Error> {
+            // SAFETY: shared access, a live label; LVGL copies the string.
+            unsafe { sys::lv_label_set_text(p, c"".as_ptr()) };
+            if !has_text(p) {
+                return Err(empty(p));
+            }
+            Ok(Self {
+                p,
+                buf: [0; CHUNK],
+                len: 0,
+                #[cfg(feature = "fmt")]
+                error: None,
+            })
+        }
+
+        fn push(&mut self, mut text: &str) -> Result<(), Error> {
+            if text.as_bytes().contains(&0) {
+                return Err(Error::InvalidArg);
+            }
+            while !text.is_empty() {
+                let space = CHUNK - 1 - self.len;
+                // Back off to a character boundary (at most 3 bytes).
+                let mut n = space.min(text.len());
+                while !text.is_char_boundary(n) {
+                    n -= 1;
+                }
+                if n == 0 {
+                    self.flush()?;
+                    continue;
+                }
+                let Some((chunk, tail)) = text.split_at_checked(n) else {
+                    return Err(Error::InvalidArg); // unreachable: a boundary
+                };
+                if let Some(dst) = self.buf.get_mut(self.len..self.len + n) {
+                    dst.copy_from_slice(chunk.as_bytes());
+                }
+                self.len += n;
+                text = tail;
+            }
+            Ok(())
+        }
+
+        /// Inserts the buffered chunk.
+        fn flush(&mut self) -> Result<(), Error> {
+            if self.len == 0 {
+                return Ok(());
+            }
+            if let Some(nul) = self.buf.get_mut(self.len) {
+                *nul = 0;
+            }
+            self.len = 0;
+            // SAFETY: as in `start`; `buf` is NUL-terminated.
+            unsafe {
+                sys::lv_label_ins_text(self.p, sys::LV_LABEL_POS_LAST, self.buf.as_ptr().cast())
+            };
+            if has_text(self.p) {
+                Ok(())
+            } else {
+                Err(empty(self.p))
+            }
+        }
+    }
+
+    #[cfg(feature = "fmt")]
+    impl core::fmt::Write for Appender {
+        fn write_str(&mut self, s: &str) -> core::fmt::Result {
+            self.push(s).map_err(|error| {
+                self.error = Some(error);
+                core::fmt::Error
+            })
         }
     }
 
