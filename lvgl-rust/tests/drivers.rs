@@ -17,10 +17,13 @@ struct Guard(#[allow(dead_code)] MutexGuard<'static, ()>);
 // SAFETY: a guard of the mutex serializing every LVGL call of this process.
 unsafe impl LvglAccess for Guard {}
 
-/// 240 × 160 at 32 bits per pixel at most: 20 lines.
+/// 240 × 160 at 32 bits per pixel at most.
 const LINE: usize = 240 * 4;
-static BUF_A: DrawBuf<{ LINE * 20 }> = DrawBuf::new();
-static BUF_B: DrawBuf<{ LINE * 20 }> = DrawBuf::new();
+// The whole screen at any color depth, so each refresh is one flush: the
+// deferred flush below completes only after `run` returns, and LVGL would
+// wait for it before flushing a second area of the same refresh.
+static BUF_A: DrawBuf<{ LINE * 160 }> = DrawBuf::new();
+static BUF_B: DrawBuf<{ LINE * 160 }> = DrawBuf::new();
 static TINY: DrawBuf<8> = DrawBuf::new();
 
 static FLUSHES: AtomicU32 = AtomicU32::new(0);

@@ -231,7 +231,11 @@ checks:
 - the full test suite with default features, plus library and build-config
   tests for `shadcn-theme`, `color_depth_32`, `color_depth_8` and without string
   functions;
-- cross builds for `wasm32-unknown-unknown` and `riscv32imc-unknown-none-elf`;
+- cross builds for `wasm32-unknown-unknown` and `riscv32imc-unknown-none-elf`,
+  and `lvgl-rust` firmware for Cortex-M4/M7 and Cortex-M33 (`mise run
+  cross-arm`: thumbv7em and thumbv8m.main, with handles and views only);
+- `lvgl-rust` with 16-bit color, and with 32-bit color and the shadcn
+  theme (`mise run test-matrix`);
 - `cargo check` with the minimum Rust version (`mise run msrv`) on the host
   and both cross targets; raise the version in the task and in the root
   `rust-version` together;

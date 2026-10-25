@@ -178,6 +178,12 @@ impl<'a> FlushRequest<'a> {
 
     /// The buffer stays busy until the returned [`FlushDone`] is ready
     /// (or dropped), from any thread or interrupt.
+    ///
+    /// LVGL may need the buffer again before `timer_handler` returns: to
+    /// flush the next area of the same refresh, or to render into it with
+    /// a single buffer. It then waits (spinning) on its own thread for the
+    /// completion, so complete from an interrupt or another thread (DMA
+    /// done), never later on the thread that runs `timer_handler`.
     pub fn defer(mut self) -> FlushDone {
         self.deferred = true;
         FlushDone(NonNull::from(self.flushing))
