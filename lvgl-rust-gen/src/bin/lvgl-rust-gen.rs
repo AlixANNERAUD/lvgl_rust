@@ -394,7 +394,7 @@ fn bump(check: bool, bindings: Option<PathBuf>) -> Result<(), String> {
     }
 }
 
-/// Builds `lvgl_rust_sys` with `lvgl-rust/conf` and returns its bindings.
+/// Builds `lvgl-rust-sys` with `lvgl-rust/conf` and returns its bindings.
 fn build_bindings(workspace: &Path) -> Result<PathBuf, String> {
     let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_owned());
     let output = Command::new(cargo)
@@ -402,7 +402,7 @@ fn build_bindings(workspace: &Path) -> Result<PathBuf, String> {
             "build",
             "-q",
             "-p",
-            "lvgl_rust_sys",
+            "lvgl-rust-sys",
             "--message-format=json",
         ])
         .env("DEP_LV_CONFIG_PATH", workspace.join("lvgl-rust/conf"))
@@ -412,7 +412,7 @@ fn build_bindings(workspace: &Path) -> Result<PathBuf, String> {
         .map_err(|e| format!("cargo: {e}"))?;
     if !output.status.success() {
         return Err(format!(
-            "building lvgl_rust_sys failed:\n{}",
+            "building lvgl-rust-sys failed:\n{}",
             String::from_utf8_lossy(&output.stderr)
         ));
     }
@@ -424,7 +424,7 @@ fn build_bindings(workspace: &Path) -> Result<PathBuf, String> {
             let end = start + l[start..].find('"')?;
             Some(PathBuf::from(&l[start..end]).join("bindings.rs"))
         })
-        .ok_or_else(|| "no build script output for lvgl_rust_sys".to_owned())
+        .ok_or_else(|| "no build script output for lvgl-rust-sys".to_owned())
 }
 
 fn lvgl_version(lvgl: &Path) -> Result<(u32, u32), String> {

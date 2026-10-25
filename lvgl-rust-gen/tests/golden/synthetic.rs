@@ -634,6 +634,7 @@ impl crate::Font {
 /// Most parts of a composite widget.
 pub(crate) const MAX_PARTS: usize = 1usize;
 /// Composite widgets: their internal parts (`classes.toml`).
+#[cfg_attr(miri, allow(dead_code))]
 pub(crate) static COMPOSITES: &[crate::base::structural::Composite] = &[
     crate::base::structural::Composite {
         class: core::ptr::addr_of!(crate ::sys::lv_textarea_class),
@@ -644,7 +645,9 @@ pub(crate) static COMPOSITES: &[crate::base::structural::Composite] = &[
 ];
 /// Widgets that create no child and keep no pointer to their
 /// children.
+#[cfg_attr(miri, allow(dead_code))]
 pub(crate) static LEAVES: &[crate::base::structural::ClassRef] = &[];
+#[cfg_attr(miri, allow(dead_code))]
 fn textarea_parts(
     o: *mut crate::sys::lv_obj_t,
     out: &mut [*mut crate::sys::lv_obj_t; MAX_PARTS],

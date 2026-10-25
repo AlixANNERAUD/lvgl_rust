@@ -1,6 +1,6 @@
-# lvgl_rust_sys — Rust FFI bindings for LVGL 9
+# lvgl-rust-sys — Rust FFI bindings for LVGL 9
 
-[![CI](https://github.com/xila-project/lvgl_rust/actions/workflows/ci.yml/badge.svg)](https://github.com/xila-project/lvgl_rust/actions/workflows/ci.yml)
+[![CI](https://github.com/AlixANNERAUD/lvgl_rust/actions/workflows/ci.yml/badge.svg)](https://github.com/AlixANNERAUD/lvgl_rust/actions/workflows/ci.yml)
 [![LVGL](https://img.shields.io/badge/LVGL-9.6.0-blue)](https://github.com/lvgl/lvgl)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](../LICENSE)
 [![no_std](https://img.shields.io/badge/no__std-yes-orange)](#)
@@ -23,8 +23,8 @@ bindings are generated with bindgen for your exact configuration.
 - 📦 **LVGL 9.6.0** vendored as a Git submodule.
 
 > This is a `-sys` crate: it exposes the raw C API (`lv_obj_create`,
-> `lv_label_set_text`, ...). It is the foundation of the
-> [Xila](https://github.com/xila-project) operating system's graphics stack.
+> `lv_label_set_text`, ...). For a safe, idiomatic API on top of it, use
+> [`lvgl-rust`](../lvgl-rust).
 
 ## Quick start
 
@@ -32,7 +32,7 @@ Add the crate (it is consumed from Git):
 
 ```toml
 [dependencies]
-lvgl_rust_sys = { git = "https://github.com/xila-project/lvgl_rust" }
+lvgl-rust-sys = { git = "https://github.com/AlixANNERAUD/lvgl_rust" }
 ```
 
 Point the build at the directory that contains your `lv_conf.h`, for example in
@@ -200,9 +200,9 @@ git submodule update --init --recursive
 # Nested builds run offline.
 cargo fetch --manifest-path lvgl-rust-sys/examples/external-fonts/Cargo.toml
 cargo fetch --manifest-path lvgl-rust-sys/tests/fixtures/font_incremental/Cargo.toml
-cargo test -p lvgl_rust_sys            # uses conf/ via the root .cargo/config.toml
-cargo test -p lvgl_rust_sys --features shadcn-theme,color_depth_32
-cargo clippy -p lvgl_rust_sys --all-targets --all-features
+cargo test -p lvgl-rust-sys            # uses conf/ via the root .cargo/config.toml
+cargo test -p lvgl-rust-sys --features shadcn-theme,color_depth_32
+cargo clippy -p lvgl-rust-sys --all-targets --all-features
 ```
 
 The repository also ships a [mise](https://mise.jdx.dev) configuration that

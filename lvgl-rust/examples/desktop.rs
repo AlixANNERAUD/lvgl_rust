@@ -1,4 +1,4 @@
-//! A small desktop in the spirit of Xila, on the host: a framebuffer
+//! A small desktop shell on the host: a framebuffer
 //! display, a scripted pointer, a top bar with a clock bound to a subject,
 //! a launcher that opens windows (components with a close button, a
 //! textarea and a keyboard), constant and mutable styles, a timer and an

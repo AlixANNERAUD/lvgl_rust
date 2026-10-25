@@ -1,4 +1,4 @@
-//! Checks that the `lvgl_rust_sys` build can host the safe layer, writes the
+//! Checks that the `lvgl-rust-sys` build can host the safe layer, writes the
 //! build-time configuration (`$OUT_DIR/config.rs`) and generates the
 //! wrappers (`$OUT_DIR/gen.rs`, `$OUT_DIR/coverage.txt`) from this build's
 //! bindings.
@@ -50,14 +50,14 @@ fn main() {
     // For dependents' build scripts: `DEP_LVGL_RUST_HANDLE_SLOTS`.
     println!("cargo::metadata=HANDLE_SLOTS={slots}");
 
-    // docs.rs builds `lvgl_rust_sys` with its own configuration (OBJ_ID off)
+    // docs.rs builds `lvgl-rust-sys` with its own configuration (OBJ_ID off)
     // and links nothing: document the API, skip the checks.
     if env_var("DOCS_RS").is_some() {
         println!("cargo::rustc-cfg=lvgl_rust_docs");
     } else {
         if env_var("DEP_LVGL_RUST_SYS_LINKED").as_deref() != Some("1") {
             errors.push(
-                "lvgl-rust needs the C library: enable the `build-lvgl` feature of lvgl_rust_sys"
+                "lvgl-rust needs the C library: enable the `build-lvgl` feature of lvgl-rust-sys"
                     .to_owned(),
             );
         }

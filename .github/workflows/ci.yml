@@ -32,13 +32,13 @@ jobs:
         include:
           - name: default
             key: default
-            args: -p lvgl_rust_sys -p lvgl-rust-gen --all-targets
+            args: -p lvgl-rust-sys -p lvgl-rust-gen --all-targets
           - name: all features
             key: all-features
-            args: -p lvgl_rust_sys --all-targets --all-features
+            args: -p lvgl-rust-sys --all-targets --all-features
           - name: bindgen only
             key: bindgen-only
-            args: -p lvgl_rust_sys --all-targets --no-default-features
+            args: -p lvgl-rust-sys --all-targets --no-default-features
     steps:
       - uses: actions/checkout@v4
         with:
@@ -59,20 +59,20 @@ jobs:
           # Full suite, including the integration tests that build fixture crates.
           - name: default
             key: default
-            args: -p lvgl_rust_sys -p lvgl-rust-gen
+            args: -p lvgl-rust-sys -p lvgl-rust-gen
           # Feature variants: library and build-script unit tests only.
           - name: shadcn theme
             key: shadcn-theme
-            args: -p lvgl_rust_sys --lib --test build_config --features shadcn-theme
+            args: -p lvgl-rust-sys --lib --test build_config --features shadcn-theme
           - name: color depth 32
             key: color-depth-32
-            args: -p lvgl_rust_sys --lib --test build_config --features color_depth_32
+            args: -p lvgl-rust-sys --lib --test build_config --features color_depth_32
           - name: color depth 8
             key: color-depth-8
-            args: -p lvgl_rust_sys --lib --test build_config --features color_depth_8
+            args: -p lvgl-rust-sys --lib --test build_config --features color_depth_8
           - name: no string functions
             key: no-string-functions
-            args: -p lvgl_rust_sys --lib --test build_config --no-default-features --features build-lvgl
+            args: -p lvgl-rust-sys --lib --test build_config --no-default-features --features build-lvgl
     steps:
       - uses: actions/checkout@v4
         with:

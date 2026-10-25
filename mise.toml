@@ -46,66 +46,72 @@ run = [
 ]
 
 [tasks.fmt]
-description = "Check formatting of the workspace, the example and the fixture"
+description = "Check formatting of the workspace, the example, the fixture and the social banner program"
 run = [
   "cargo fmt --all --check",
   "cargo fmt --check --manifest-path lvgl-rust-sys/examples/external-fonts/Cargo.toml",
   "cargo fmt --check --manifest-path lvgl-rust-sys/tests/fixtures/font_incremental/Cargo.toml",
+  "cargo fmt --check --manifest-path assets/social-banner/screen/Cargo.toml",
 ]
 
 [tasks.clippy]
 env = { RUSTFLAGS = "-D warnings" }
-description = "Run clippy on lvgl_rust_sys (default, all and no default features) and lvgl-rust-gen"
+description = "Run clippy on lvgl-rust-sys (default, all and no default features) and lvgl-rust-gen"
 run = [
-  "cargo clippy -p lvgl_rust_sys -p lvgl-rust-gen --all-targets",
-  "cargo clippy -p lvgl_rust_sys --all-targets --all-features",
-  "cargo clippy -p lvgl_rust_sys --all-targets --no-default-features",
+  "cargo clippy -p lvgl-rust-sys -p lvgl-rust-gen --all-targets",
+  "cargo clippy -p lvgl-rust-sys --all-targets --all-features",
+  "cargo clippy -p lvgl-rust-sys --all-targets --no-default-features",
 ]
 
 [tasks.test-fast]
 env = { RUSTFLAGS = "-D warnings" }
 description = "Library and build-config tests (seconds)"
-run = "cargo test -p lvgl_rust_sys --lib --test build_config"
+run = "cargo test -p lvgl-rust-sys --lib --test build_config"
 
 [tasks.test]
 env = { RUSTFLAGS = "-D warnings" }
 description = "Full test suite, including the slow integration tests"
 depends = ["fetch"]
-run = "cargo test -p lvgl_rust_sys -p lvgl-rust-gen"
+run = "cargo test -p lvgl-rust-sys -p lvgl-rust-gen"
 
 [tasks.package]
 description = "Package the three crates as crates.io would, and build each one from its package"
 env.DEP_LV_CONFIG_PATH = "{{config_root}}/lvgl-rust/conf"
 env.CARGO_TARGET_DIR = "target/package"
-run = "cargo package -p lvgl_rust_sys -p lvgl-rust-gen -p lvgl-rust"
+run = "cargo package -p lvgl-rust-sys -p lvgl-rust-gen -p lvgl-rust"
 
 [tasks.coverage]
 description = "Coverage of the Rust code of the three crates, written to coverage.lcov"
-# lvgl_rust_sys runs with its own configuration and lvgl-rust with the OBJ_ID
+# lvgl-rust-sys runs with its own configuration and lvgl-rust with the OBJ_ID
 # one, so the report merges three runs. The slow integration tests are left
 # out: they only drive nested builds. mbx's build-script wrapper is turned
 # off: llvm-cov reads every binary of the target directory and cannot parse it.
 env.MBX_BUILD_SCRIPT_EXECUTION = "false"
 run = [
   "cargo llvm-cov clean --workspace",
-  "cargo llvm-cov --no-report -p lvgl_rust_sys --lib --test build_config",
+  "cargo llvm-cov --no-report -p lvgl-rust-sys --lib --test build_config",
   "cargo llvm-cov --no-report -p lvgl-rust-gen",
   "DEP_LV_CONFIG_PATH={{config_root}}/lvgl-rust/conf cargo llvm-cov --no-report -p lvgl-rust --features async,heap,fmt",
   "cargo llvm-cov report --lcov --output-path coverage.lcov",
 ]
 
+[tasks.social-banner]
+description = "Render assets/social-banner/social-banner.png, the GitHub social preview (real LVGL output; downloads its fonts)"
+tools = { "cargo:resvg" = "0.49.0" }
+run = "sh assets/social-banner/render.sh"
+
 [tasks.cross-wasm32]
 env = { RUSTFLAGS = "-D warnings" }
-description = "Build lvgl_rust_sys and lvgl-rust for wasm32-unknown-unknown (no C library; needs clang)"
+description = "Build lvgl-rust-sys and lvgl-rust for wasm32-unknown-unknown (no C library; needs clang)"
 run = [
-  "cargo build -p lvgl_rust_sys --target wasm32-unknown-unknown",
+  "cargo build -p lvgl-rust-sys --target wasm32-unknown-unknown",
   "DEP_LV_CONFIG_PATH={{config_root}}/lvgl-rust/conf CARGO_TARGET_DIR=target/safe-wasm32 cargo build -p lvgl-rust --target wasm32-unknown-unknown",
 ]
 
 [tasks.cross-riscv32]
-description = "Build lvgl_rust_sys for riscv32imc-unknown-none-elf (C toolchain from `mise bootstrap packages apply`)"
+description = "Build lvgl-rust-sys for riscv32imc-unknown-none-elf (C toolchain from `mise bootstrap packages apply`)"
 env.RUSTFLAGS = "-D warnings"
-run = "cargo build -p lvgl_rust_sys --target riscv32imc-unknown-none-elf"
+run = "cargo build -p lvgl-rust-sys --target riscv32imc-unknown-none-elf"
 
 [tasks.size-gate]
 description = "Check lvgl-rust's footprint in thumbv6m and riscv32imc firmware (see lvgl-rust/size-gate/gate.sh)"
@@ -132,13 +138,13 @@ env.DEP_LV_CONFIG_PATH = "{{config_root}}/lvgl-rust/conf"
 run = [
   "rustc --version",
   "cargo check --workspace --all-targets",
-  "cargo check -p lvgl_rust_sys -p lvgl-rust --target wasm32-unknown-unknown",
-  "cargo check -p lvgl_rust_sys -p lvgl-rust --target riscv32imc-unknown-none-elf",
+  "cargo check -p lvgl-rust-sys -p lvgl-rust --target wasm32-unknown-unknown",
+  "cargo check -p lvgl-rust-sys -p lvgl-rust --target riscv32imc-unknown-none-elf",
 ]
 
-# lvgl-rust builds lvgl_rust_sys with its own configuration (OBJ_ID hooks
+# lvgl-rust builds lvgl-rust-sys with its own configuration (OBJ_ID hooks
 # enabled), so its tasks set `DEP_LV_CONFIG_PATH` and use their own target
-# directory instead of invalidating the lvgl_rust_sys build.
+# directory instead of invalidating the lvgl-rust-sys build.
 [tasks.clippy-safe]
 description = "Run clippy on lvgl-rust"
 env.RUSTFLAGS = "-D warnings"
@@ -181,7 +187,7 @@ run = [
 ]
 
 [tasks.example]
-description = "Run the desktop example of lvgl-rust (a scripted Xila-like desktop on the host)"
+description = "Run the desktop example of lvgl-rust (a scripted desktop shell on the host)"
 env.RUSTFLAGS = "-D warnings"
 env.DEP_LV_CONFIG_PATH = "{{config_root}}/lvgl-rust/conf"
 env.CARGO_TARGET_DIR = "target/safe"
@@ -243,7 +249,7 @@ run = [
 description = "Build the documentation as docs.rs does"
 env = { DOCS_RS = "1", DEP_LV_CONFIG_PATH = "", RUSTDOCFLAGS = "-D warnings" }
 run = [
-  "cargo doc --no-deps -p lvgl_rust_sys --no-default-features",
+  "cargo doc --no-deps -p lvgl-rust-sys --no-default-features",
   "cargo doc --no-deps -p lvgl-rust",
 ]
 
