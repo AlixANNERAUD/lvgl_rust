@@ -6,7 +6,11 @@ rust-version.workspace = true
 description = "Build-time generator of the safe LVGL bindings used by lvgl-rust"
 license.workspace = true
 repository.workspace = true
-publish = false
+readme = "README.md"
+keywords = ["lvgl", "codegen", "bindings"]
+categories = ["development-tools::build-utils"]
+# Only the generator and its tables: `lvgl-rust`'s build script needs both.
+include = ["/src/**", "/tables/**", "/README.md"]
 
 [features]
 # The `lvgl-rust-gen audit` maintainer tool (needs clang).

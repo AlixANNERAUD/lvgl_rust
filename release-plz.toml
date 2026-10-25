@@ -1,0 +1,61 @@
+[workspace]
+release_always = false
+semver_check = true
+dependencies_update = false
+pr_name = "{% if version %}chore: release v{{ version }}{% else %}chore: release{% endif %}"
+git_release_body = "{{ changelog }}"
+
+[changelog]
+header = """
+# Changelog
+
+All notable changes to this project are documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+"""
+protect_breaking_commits = true
+sort_commits = "oldest"
+commit_parsers = [
+  { message = "^Merge pull request", skip = true },
+  { message = "^chore: release", skip = true },
+  { message = "^feat", group = "Added" },
+  { message = "^fix", group = "Fixed" },
+  { message = "^perf", group = "Performance" },
+  { message = "^refactor", group = "Changed" },
+  { message = "^docs?", group = "Documentation" },
+  { message = "^deprecated", group = "Deprecated" },
+  { message = "^security", group = "Security" },
+  { message = "^revert", group = "Reverted" },
+  { message = "^(chore|ci|build|conf|test|style)", group = "Miscellaneous" },
+  { message = "^.*", group = "Other" },
+]
+
+[[package]]
+name = "lvgl_rust_sys"
+changelog_path = "./lvgl-rust-sys/CHANGELOG.md"
+git_tag_enable = true
+git_tag_name = "{{ package }}-v{{ version }}"
+git_release_enable = true
+git_release_name = "{{ package }} v{{ version }}"
+
+[[package]]
+name = "lvgl-rust"
+changelog_path = "./lvgl-rust/CHANGELOG.md"
+git_tag_enable = true
+git_tag_name = "{{ package }}-v{{ version }}"
+git_release_enable = true
+git_release_name = "{{ package }} v{{ version }}"
+
+# Released with lvgl-rust (its build dependency); no GitHub release of its own.
+[[package]]
+name = "lvgl-rust-gen"
+changelog_path = "./lvgl-rust-gen/CHANGELOG.md"
+git_tag_enable = true
+git_tag_name = "{{ package }}-v{{ version }}"
+git_release_enable = false
+
+[[package]]
+name = "lvgl-rust-size-gate"
+release = false
+publish = false

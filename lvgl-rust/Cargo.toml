@@ -12,6 +12,7 @@ categories = ["embedded", "gui", "no-std"]
 # Only one copy may define LVGL's OBJ_ID hook symbols.
 links = "lvgl_rust"
 build = "build.rs"
+exclude = ["/size-gate"]
 
 [features]
 default = ["use-string-functions"]
@@ -34,10 +35,10 @@ color_depth_32 = ["lvgl_rust_sys/color_depth_32"]
 
 [dependencies]
 # The safe layer calls into the linked C library: `build-lvgl` is required.
-lvgl_rust_sys = { path = "../lvgl-rust-sys", default-features = false, features = ["build-lvgl"] }
+lvgl_rust_sys = { version = "0.1.0", path = "../lvgl-rust-sys", default-features = false, features = ["build-lvgl"] }
 
 [build-dependencies]
-lvgl-rust-gen = { path = "../lvgl-rust-gen" }
+lvgl-rust-gen = { version = "0.1.0", path = "../lvgl-rust-gen" }
 
 # Model checking of the cross-thread request protocol (`RUSTFLAGS="--cfg loom"`).
 [target.'cfg(loom)'.dependencies]

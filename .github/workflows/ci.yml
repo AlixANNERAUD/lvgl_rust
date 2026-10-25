@@ -172,3 +172,17 @@ jobs:
           cache-key-suffix: docs
       # docs.rs has no DEP_LV_CONFIG_PATH: the vendored configuration must be used.
       - run: mise run doc
+
+  package:
+    name: Package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: jdx/mise-action@v4
+      - uses: jdx/mr-boxington-action@v1
+        with:
+          cache-key-suffix: package
+      # Builds each crate from its packaged sources, as crates.io would.
+      - run: mise run package

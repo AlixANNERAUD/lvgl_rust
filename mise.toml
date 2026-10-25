@@ -7,8 +7,10 @@ min_version = "2026.9.2"
 # `targets` are the cross targets built in CI (`cross-*` tasks).
 # `mr_boxington` routes Cargo through mbx, a shared build cache: LVGL's C
 # objects and the build script output are restored instead of recompiled.
-rust = { version = "stable", components = "rustfmt,clippy", targets = "wasm32-unknown-unknown,riscv32imc-unknown-none-elf,thumbv6m-none-eabi", mr_boxington = true }
+rust = { version = "stable", components = "rustfmt,clippy,llvm-tools", targets = "wasm32-unknown-unknown,riscv32imc-unknown-none-elf,thumbv6m-none-eabi", mr_boxington = true }
 mr-boxington = "latest"
+# Coverage (`mise run coverage`).
+"aqua:taiki-e/cargo-llvm-cov" = "latest"
 
 # C toolchains for the embedded cross builds (`mise bootstrap packages apply`).
 [bootstrap.packages]
@@ -70,6 +72,27 @@ env = { RUSTFLAGS = "-D warnings" }
 description = "Full test suite, including the slow integration tests"
 depends = ["fetch"]
 run = "cargo test -p lvgl_rust_sys -p lvgl-rust-gen"
+
+[tasks.package]
+description = "Package the three crates as crates.io would, and build each one from its package"
+env.DEP_LV_CONFIG_PATH = "{{config_root}}/lvgl-rust/conf"
+env.CARGO_TARGET_DIR = "target/package"
+run = "cargo package -p lvgl_rust_sys -p lvgl-rust-gen -p lvgl-rust"
+
+[tasks.coverage]
+description = "Coverage of the Rust code of the three crates, written to coverage.lcov"
+# lvgl_rust_sys runs with its own configuration and lvgl-rust with the OBJ_ID
+# one, so the report merges three runs. The slow integration tests are left
+# out: they only drive nested builds. mbx's build-script wrapper is turned
+# off: llvm-cov reads every binary of the target directory and cannot parse it.
+env.MBX_BUILD_SCRIPT_EXECUTION = "false"
+run = [
+  "cargo llvm-cov clean --workspace",
+  "cargo llvm-cov --no-report -p lvgl_rust_sys --lib --test build_config",
+  "cargo llvm-cov --no-report -p lvgl-rust-gen",
+  "DEP_LV_CONFIG_PATH={{config_root}}/lvgl-rust/conf cargo llvm-cov --no-report -p lvgl-rust --features async,heap,fmt",
+  "cargo llvm-cov report --lcov --output-path coverage.lcov",
+]
 
 [tasks.cross-wasm32]
 env = { RUSTFLAGS = "-D warnings" }

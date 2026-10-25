@@ -216,6 +216,8 @@ mise install
 mise tasks             # list the tasks
 mise run check         # fmt, clippy and the fast tests, as before a push
 mise run test          # full suite
+mise run coverage      # lcov report of the three crates (coverage.lcov)
+mise run package       # package and build the crates as crates.io would
 ```
 
 - `build/main.rs` drives `cc`, bindgen and the exported metadata from a single
