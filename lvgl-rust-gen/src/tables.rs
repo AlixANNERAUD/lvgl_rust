@@ -139,16 +139,19 @@ pub struct ParamOverride {
     pub rust: Option<String>,
 }
 
-/// Types of `lvgl-rust` for retained parameters (`rust = "..."`), and
-/// whether they are passed by value (`true`) or as `&'static` (`false`).
-/// Each has a `const fn as_ptr`.
-pub const RETAINED_TYPES: &[(&str, bool)] = &[
-    ("ImageSrc", true),
-    ("ImageColorkey", false),
-    ("ButtonMap", false),
-    ("GradDsc", false),
-    ("TransitionDsc", false),
-    ("ColorFilter", false),
+/// Types of `lvgl-rust` for retained parameters (`rust = "..."`): whether
+/// they are passed by value (`true`) or as `&'static` (`false`), and
+/// whether LVGL may write to them (interior mutability: subjects). Each has
+/// an `as_ptr` (`const fn` for read-only ones, used in constant styles).
+pub const RETAINED_TYPES: &[(&str, bool, bool)] = &[
+    ("ImageSrc", true, false),
+    ("ImageColorkey", false, false),
+    ("ButtonMap", false, false),
+    ("GradDsc", false, false),
+    ("TransitionDsc", false, false),
+    ("ColorFilter", false, false),
+    ("IntSubject", false, true),
+    ("ColorSubject", false, true),
 ];
 
 #[derive(Debug, Deserialize)]
@@ -361,7 +364,7 @@ impl Tables {
             for (param, o) in &entry.params {
                 match (&o.rust, o.kind) {
                     (Some(rust), ParamKind::Retained) => {
-                        if !RETAINED_TYPES.iter().any(|(t, _)| t == rust) {
+                        if !RETAINED_TYPES.iter().any(|(t, ..)| t == rust) {
                             diags.error(format!(
                                 "overrides: [fn.{name}] `{param}`: unknown rust type `{rust}`"
                             ));

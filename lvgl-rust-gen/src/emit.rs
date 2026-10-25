@@ -419,6 +419,16 @@ fn emit_method(classifier: &Classifier, m: &Method) -> TokenStream {
                 quote!(crate::enums::#ty(unsafe { #call } as u32)),
             )
         }
+        RetPlan::Observer => (
+            quote!(-> Result<(), crate::Error>),
+            quote! {
+                if unsafe { #call }.is_null() {
+                    Err(crate::Error::OutOfMemory)
+                } else {
+                    Ok(())
+                }
+            },
+        ),
         RetPlan::Font => (
             quote!(-> Option<&crate::Font>),
             quote!(crate::base::gen_support::font(unsafe { #call })),

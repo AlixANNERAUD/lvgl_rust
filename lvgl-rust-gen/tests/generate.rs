@@ -18,6 +18,9 @@ pub type lv_obj_t = _lv_obj_t;
 pub type lv_opa_t = u8;
 #[repr(C)] pub struct lv_style_t { pub values_and_props: *mut core::ffi::c_void, pub has_group: u32, pub prop_cnt: u8 }
 #[repr(C)] pub struct lv_font_t { pub line_height: i32 }
+#[repr(C)] pub struct lv_subject_t { pub type_: u32 }
+#[repr(C)] pub struct _lv_observer_t { _unused: [u8; 0] }
+pub type lv_observer_t = _lv_observer_t;
 pub type lv_style_prop_t = u8;
 pub type lv_style_selector_t = u32;
 pub type _lv_style_id_t = core::ffi::c_uint;
@@ -74,6 +77,7 @@ unsafe extern "C" {
     pub fn lv_bar_select(obj: *mut lv_obj_t, sel_opt: u32);
     pub fn lv_slider_create(parent: *mut lv_obj_t) -> *mut lv_obj_t;
     pub fn lv_slider_get_value(obj: *const lv_obj_t) -> i32;
+    pub fn lv_slider_bind_value(obj: *mut lv_obj_t, subject: *mut lv_subject_t) -> *mut lv_observer_t;
     pub fn lv_label_create(parent: *mut lv_obj_t) -> *mut lv_obj_t;
     pub fn lv_label_set_text(obj: *mut lv_obj_t, text: *const core::ffi::c_char);
     pub fn lv_label_set_text_static(obj: *mut lv_obj_t, text: *const core::ffi::c_char);
@@ -155,6 +159,8 @@ access = "exclusive"
 access = "shared"
 [fn.lv_slider_get_value]
 access = "shared"
+[fn.lv_slider_bind_value]
+access = "exclusive"
 [fn.lv_label_create]
 access = "shared"
 [fn.lv_label_set_text]
@@ -258,6 +264,8 @@ params.sel_opt = { kind = "checked" }
 params.coords = { kind = "out" }
 [fn.lv_image_set_src]
 params.src = { kind = "retained", rust = "ImageSrc" }
+[fn.lv_slider_bind_value]
+params.subject = { kind = "retained", rust = "IntSubject" }
 [fn.lv_style_set_bg_image_src]
 params.value = { kind = "retained", rust = "ImageSrc" }
 "#;

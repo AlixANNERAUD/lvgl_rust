@@ -97,6 +97,9 @@ pub enum RetPlan {
     View(Option<String>),
     /// A font, borrowed like a view.
     Font,
+    /// An observer LVGL attached to the object (`lv_observer_t *`), removed
+    /// with it: only success is reported, NULL being a failure.
+    Observer,
     /// A string inside the object (`returns = "borrowed_internal"`): a
     /// shared setter could free it, so views copy it out (`x_into`) and only
     /// `ObjMut` borrows it.
@@ -231,12 +234,12 @@ impl<'a> Classifier<'a> {
                 let param_override = overrides.and_then(|o| o.params.get(&p.name));
                 let kind = param_override.map(|o| o.kind);
                 if let Some(rust) = param_override.and_then(|o| o.rust.as_ref()) {
+                    let (by_value, writable) = RETAINED_TYPES
+                        .iter()
+                        .find(|(t, ..)| t == rust)
+                        .map_or((false, false), |&(_, v, w)| (v, w));
                     match &p.ty {
-                        CType::Ptr { mutable: false, .. } => {
-                            let by_value = RETAINED_TYPES
-                                .iter()
-                                .find(|(t, _)| t == rust)
-                                .is_some_and(|(_, v)| *v);
+                        CType::Ptr { mutable, .. } if !*mutable || writable => {
                             params.push(ParamPlan::Retained {
                                 name: rust_ident(&p.name),
                                 ty: rust.clone(),
@@ -487,6 +490,9 @@ impl<'a> Classifier<'a> {
                 mutable: false,
                 pointee,
             } if pointee.named() == Some("lv_font_t") => Ok(RetPlan::Font),
+            CType::Ptr { pointee, .. } if pointee.named() == Some("lv_observer_t") => {
+                Ok(RetPlan::Observer)
+            }
             CType::Ptr { pointee, .. } if pointee.named() == Some("lv_obj_t") => match returns {
                 Some(Returns::View { view }) => {
                     if self.classes.iter().any(|c| c == view) {

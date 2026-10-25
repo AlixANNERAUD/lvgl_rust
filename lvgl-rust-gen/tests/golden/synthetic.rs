@@ -470,6 +470,25 @@ impl<W: crate::Widget> crate::ObjMut<'_, W> {
         }
     }
 }
+impl crate::ObjMut<'_, crate::widgets::Slider> {
+    /// `lv_slider_bind_value`.
+    #[inline]
+    #[allow(clippy::unnecessary_cast, clippy::too_many_arguments)]
+    pub fn bind_value(
+        &mut self,
+        subject: &'static crate::IntSubject,
+    ) -> Result<(), crate::Error> {
+        if unsafe {
+            crate::sys::lv_slider_bind_value(self.as_raw(), subject.as_ptr().cast())
+        }
+            .is_null()
+        {
+            Err(crate::Error::OutOfMemory)
+        } else {
+            Ok(())
+        }
+    }
+}
 impl crate::Lvgl {
     /// `lv_font_get_line_height`.
     #[inline]

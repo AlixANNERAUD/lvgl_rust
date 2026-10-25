@@ -34,6 +34,11 @@ else stays reachable through `lvgl_rust::sys`.
 - **Animations.** `Anim::new(data).values(0, 255).duration(300).exec(f)`,
   started with `ObjMut::animate`; LVGL copies it and deletes it with the
   object.
+- **Subjects.** `static VOLUME: IntSubject = IntSubject::new(50);` (also
+  `ColorSubject`), bound with `slider.bind_value(&VOLUME)`, `bind_checked`,
+  `label.bind_text`, observed with `observe`/`observe_obj`. Subjects
+  initialise themselves on first use, so LVGL never sees one of the wrong
+  type.
 - **Small.** The handle registry is a static array of 8-byte slots on 32-bit
   targets (`LVGL_RUST_HANDLE_SLOTS`, default 32), plus a 24-byte header.
   `LVGL_RUST_HANDLE_SLOTS=0` keeps only views (8 bytes of state).

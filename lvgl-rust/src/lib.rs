@@ -34,6 +34,7 @@ mod image;
 mod manual;
 mod screen;
 mod style;
+mod subject;
 mod text;
 #[cfg(not(lvgl_rust_views_only))]
 mod timer;
@@ -72,5 +73,6 @@ pub use style::{
     AnimPath, ColorFilter, ConstProp, ConstStyle, Font, GradDir, GradDsc, Selector, Style,
     StyleMut, StyleProp, StyleRef, TransitionDsc, color,
 };
+pub use subject::{ColorSubject, IntSubject, ObserverCtx};
 #[cfg(not(lvgl_rust_views_only))]
 pub use timer::{Timer, TimerCtx};
