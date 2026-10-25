@@ -982,6 +982,7 @@ fn emit_composites(classifier: &Classifier) -> TokenStream {
         {
             let indices = 0..count;
             functions.push(quote! {
+                #[cfg_attr(miri, allow(dead_code))]
                 fn #parts_fn(o: *mut crate::sys::lv_obj_t, out: &mut [*mut crate::sys::lv_obj_t; MAX_PARTS]) -> usize {
                     // SAFETY: `o` is a live object of this class (checked by
                     // the caller with `lv_obj_has_class`), under the token.
@@ -1009,9 +1010,12 @@ fn emit_composites(classifier: &Classifier) -> TokenStream {
         /// Most parts of a composite widget.
         pub(crate) const MAX_PARTS: usize = #max_parts;
         /// Composite widgets: their internal parts (`classes.toml`).
+        // Under Miri, `ffi_stub.rs` models the class checks without these.
+        #[cfg_attr(miri, allow(dead_code))]
         pub(crate) static COMPOSITES: &[crate::base::structural::Composite] = &[#(#entries),*];
         /// Widgets that create no child and keep no pointer to their
         /// children.
+        #[cfg_attr(miri, allow(dead_code))]
         pub(crate) static LEAVES: &[crate::base::structural::ClassRef] = &[#(#leaves),*];
         #(#functions)*
     }

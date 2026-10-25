@@ -31,7 +31,7 @@ jobs:
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          slug: xila-project/lvgl_rust
+          slug: AlixANNERAUD/lvgl_rust
           disable_search: true
           plugins: noop
           files: coverage.lcov
