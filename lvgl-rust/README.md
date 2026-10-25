@@ -53,6 +53,9 @@ else stays reachable through `lvgl_rust::sys`.
   events into a `StaticQueue` through a `capture` function;
   `next_event(lock, &rx).await` takes your async lock, returns the next
   event with the guard, or waits. No executor dependency, no atomics.
+- **Closures (feature `heap`).** `obj.on_boxed(code, move |e| ...)` and
+  `lv.timer_boxed(period, move |ctx| ...)` keep the closure on LVGL's own
+  heap (a 4-byte header), freed with the object or the timer.
 - **Small.** The handle registry is a static array of 8-byte slots on 32-bit
   targets (`LVGL_RUST_HANDLE_SLOTS`, default 32), plus a 24-byte header.
   `LVGL_RUST_HANDLE_SLOTS=0` keeps only views (8 bytes of state).

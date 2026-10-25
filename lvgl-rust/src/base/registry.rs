@@ -46,6 +46,10 @@ pub(crate) mod meta {
     pub(crate) const KIND: u8 = 0b11 << 4;
     pub(crate) const P_DELETE: u8 = 1 << 6;
     pub(crate) const P_CLEAN: u8 = 1 << 7;
+    /// Timers never get cleaned: on a timer slot, `P_CLEAN` marks a
+    /// `timer_boxed` closure for the drain to free.
+    #[cfg(feature = "heap")]
+    pub(crate) const TIMER_BOXED: u8 = P_CLEAN;
 }
 #[cfg(not(lvgl_rust_views_only))]
 use meta::*;

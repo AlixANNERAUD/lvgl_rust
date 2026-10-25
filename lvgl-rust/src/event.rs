@@ -487,3 +487,81 @@ impl Obj {
         Ok(EventSub { object, dsc, cb })
     }
 }
+
+/// Header of an [`Obj::on_boxed`] closure: its code, the frames running it,
+/// and whether its object was deleted meanwhile. 4 bytes.
+#[cfg(feature = "heap")]
+struct BoxedHandler {
+    code: u16,
+    busy: u8,
+    doomed: bool,
+}
+
+#[cfg(feature = "heap")]
+unsafe extern "C" fn boxed_trampoline<F, R>(e: *mut sys::lv_event_t)
+where
+    F: Fn(&Event<'_>) -> R + Send + 'static,
+    R: HandlerResult,
+{
+    use crate::heap::LvBox;
+    // SAFETY: the user data of this descriptor is its box (`on_boxed`); it
+    // is reached through raw pointers only, never a reference held while
+    // user code runs.
+    unsafe {
+        let block = sys::lv_event_get_user_data(e);
+        let header = LvBox::<BoxedHandler, F>::header(block);
+        let code = sys::lv_event_get_code(e) as u32;
+        let wanted = (*header).code as u32;
+        if wanted == EventCode::ALL.bits() || wanted == code {
+            (*header).busy += 1;
+            let f = LvBox::<BoxedHandler, F>::value(block);
+            dispatch(e, &mut |event| {
+                let _ = (*f)(event);
+            });
+            (*header).busy -= 1;
+        }
+        // DELETE never bubbles: this is the box's own object. The
+        // outermost frame frees it.
+        if code == EventCode::DELETE.bits() {
+            (*header).doomed = true;
+        }
+        if (*header).doomed && (*header).busy == 0 {
+            LvBox::<BoxedHandler, F>::free(block);
+        }
+    }
+}
+
+#[cfg(feature = "heap")]
+impl Obj {
+    /// Calls the closure `f` for every `code` event of this object. `f` and
+    /// what it captures live on LVGL's heap until the object is deleted
+    /// (header of 4 bytes).
+    pub fn on_boxed<F, R>(&self, code: EventCode, f: F) -> Result<(), Error>
+    where
+        F: Fn(&Event<'_>) -> R + Send + 'static,
+        R: HandlerResult,
+    {
+        use crate::heap::LvBox;
+        if code != EventCode::ALL && !handler_allowed(code) {
+            return Err(Error::InvalidArg);
+        }
+        let header = BoxedHandler {
+            code: code.bits() as u16,
+            busy: 0,
+            doomed: false,
+        };
+        let block = LvBox::new(header, f)
+            .map_err(|_| Error::OutOfMemory)?
+            .into_raw();
+        // Every code reaches the trampoline, DELETE included, which frees
+        // the box.
+        match self.add_handler(EventCode::ALL, boxed_trampoline::<F, R>, block) {
+            Ok(_) => Ok(()),
+            Err(error) => {
+                // SAFETY: not registered: nothing else has the block.
+                unsafe { LvBox::<BoxedHandler, F>::free(block) };
+                Err(error)
+            }
+        }
+    }
+}

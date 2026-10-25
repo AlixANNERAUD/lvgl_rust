@@ -175,3 +175,75 @@ impl Handle<Timer> {
         self.with(lv, |t| unsafe { sys::lv_timer_reset(t) })
     }
 }
+
+/// Header of a [`Lvgl::timer_boxed`] closure: how to drop it (the drain
+/// frees boxes of any closure type).
+#[cfg(feature = "heap")]
+pub(crate) struct BoxedTimer {
+    pub(crate) free: unsafe fn(*mut core::ffi::c_void),
+}
+
+#[cfg(feature = "heap")]
+unsafe extern "C" fn boxed_trampoline<F>(t: *mut sys::lv_timer_t)
+where
+    F: Fn(&TimerCtx<'_>) + Send + 'static,
+{
+    let Some(timer) = NonNull::new(t) else { return };
+    // SAFETY: as in `trampoline`.
+    let Some(_depth) = (unsafe { Lvgl::enter_callback() }) else {
+        return;
+    };
+    // SAFETY: the user data is the timer's box (`timer_boxed`), freed only
+    // by the drain, at depth 0, after deleting the timer.
+    let f = crate::heap::LvBox::<BoxedTimer, F>::value(unsafe { sys::lv_timer_get_user_data(t) });
+    unsafe {
+        (*f)(&TimerCtx {
+            timer,
+            _p: PhantomData,
+        })
+    };
+}
+
+#[cfg(feature = "heap")]
+impl Lvgl {
+    /// Like [`timer`](Lvgl::timer) with a closure: `f` and what it captures
+    /// live on LVGL's heap until the timer is deleted.
+    pub fn timer_boxed<F>(&self, period_ms: u32, f: F) -> Result<Owned<Timer>, Error>
+    where
+        F: Fn(&TimerCtx<'_>) + Send + 'static,
+    {
+        use crate::heap::LvBox;
+        let header = BoxedTimer {
+            free: LvBox::<BoxedTimer, F>::free,
+        };
+        let block = LvBox::new(header, f)
+            .map_err(|_| Error::OutOfMemory)?
+            .into_raw();
+        // SAFETY: shared access; the box outlives the timer (freed by the
+        // drain after deleting it).
+        let t = unsafe { sys::lv_timer_create(Some(boxed_trampoline::<F>), period_ms, block) };
+        if t.is_null() {
+            // SAFETY: not handed to LVGL.
+            unsafe { LvBox::<BoxedTimer, F>::free(block) };
+            return Err(Error::OutOfMemory);
+        }
+        // SAFETY: as in `timer`.
+        unsafe { sys::lv_timer_set_auto_delete(t, false) };
+        let reg = reg();
+        match reg.mint(t.cast(), Kind::Timer) {
+            Ok(minted) => {
+                reg.slot(minted.index).set(OWNED | TIMER_BOXED);
+                // SAFETY: as in `timer`.
+                Ok(unsafe { Owned::from_raw(minted.raw) })
+            }
+            Err(error) => {
+                // SAFETY: not handed out yet.
+                unsafe {
+                    sys::lv_timer_delete(t);
+                    LvBox::<BoxedTimer, F>::free(block);
+                }
+                Err(error)
+            }
+        }
+    }
+}

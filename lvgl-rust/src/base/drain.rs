@@ -125,7 +125,17 @@ mod slots {
             // a group the crate created and nothing else deletes.
             unsafe {
                 if slot.is_timer() {
+                    #[cfg(feature = "heap")]
+                    let boxed = slot
+                        .has(TIMER_BOXED)
+                        .then(|| ffi::timer_user_data(slot.ptr().cast()));
                     ffi::timer_delete(slot.ptr().cast());
+                    // The closure goes after its timer.
+                    #[cfg(feature = "heap")]
+                    if let Some(block) = boxed {
+                        let header = block.cast::<crate::timer::BoxedTimer>();
+                        ((*header).free)(block);
+                    }
                 } else {
                     ffi::group_delete(slot.ptr().cast());
                 }

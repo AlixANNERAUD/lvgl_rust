@@ -121,14 +121,14 @@ description = "Run clippy on lvgl-rust"
 env.RUSTFLAGS = "-D warnings"
 env.DEP_LV_CONFIG_PATH = "{{config_root}}/lvgl-rust/conf"
 env.CARGO_TARGET_DIR = "target/safe"
-run = "cargo clippy -p lvgl-rust -p lvgl-rust-size-gate --all-targets --features lvgl-rust/async"
+run = "cargo clippy -p lvgl-rust -p lvgl-rust-size-gate --all-targets --features lvgl-rust/async,lvgl-rust/heap"
 
 [tasks.test-safe]
 description = "Test lvgl-rust against LVGL"
 env.RUSTFLAGS = "-D warnings"
 env.DEP_LV_CONFIG_PATH = "{{config_root}}/lvgl-rust/conf"
 env.CARGO_TARGET_DIR = "target/safe"
-run = "cargo test -p lvgl-rust --features async"
+run = "cargo test -p lvgl-rust --features async,heap"
 
 [tasks.test-views-only]
 description = "Lint and test lvgl-rust without handles, on a config that keeps LVGL's own OBJ_ID support"
@@ -153,7 +153,7 @@ env.ASAN_OPTIONS = "detect_leaks=0"
 run = [
   "mkdir -p target/asan-conf",
   "sed 's/^#define LV_USE_STDLIB_MALLOC .*/#define LV_USE_STDLIB_MALLOC LV_STDLIB_CLIB/' lvgl-rust/conf/lv_conf.h > target/asan-conf/lv_conf.h",
-  "cargo test -p lvgl-rust --target \"$(rustc -vV | sed -n 's/^host: //p')\"",
+  "cargo test -p lvgl-rust --features async,heap --target \"$(rustc -vV | sed -n 's/^host: //p')\"",
 ]
 
 [tasks.miri]

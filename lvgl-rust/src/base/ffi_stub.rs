@@ -280,3 +280,8 @@ pub(crate) unsafe fn timer_delete(_: *mut lvgl_rust_sys::lv_timer_t) {
 pub(crate) unsafe fn group_delete(_: *mut lvgl_rust_sys::lv_group_t) {
     unreachable!("groups are not modelled")
 }
+
+#[cfg(all(feature = "heap", not(lvgl_rust_views_only)))]
+pub(crate) unsafe fn timer_user_data(_: *mut lvgl_rust_sys::lv_timer_t) -> *mut core::ffi::c_void {
+    unreachable!("timers are not modelled")
+}

@@ -35,6 +35,8 @@ mod error;
 mod event;
 #[cfg(not(lvgl_rust_views_only))]
 mod group;
+#[cfg(feature = "heap")]
+mod heap;
 mod image;
 mod indev;
 mod manual;

@@ -51,6 +51,11 @@ pub(crate) unsafe fn group_delete(group: *mut sys::lv_group_t) {
     unsafe { sys::lv_group_delete(group) }
 }
 
+#[cfg(all(feature = "heap", not(lvgl_rust_views_only)))]
+pub(crate) unsafe fn timer_user_data(timer: *mut sys::lv_timer_t) -> *mut core::ffi::c_void {
+    unsafe { sys::lv_timer_get_user_data(timer) }
+}
+
 #[cfg(not(lvgl_rust_views_only))]
 pub(crate) unsafe fn timer_delete(timer: *mut sys::lv_timer_t) {
     unsafe { sys::lv_timer_delete(timer) }
