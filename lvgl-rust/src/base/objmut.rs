@@ -78,6 +78,14 @@ impl<W: Widget> ObjMut<'_, W> {
         structural::clean(self.as_raw())
     }
 
+    /// Moves the object to `index` among its siblings (negative: from the
+    /// end; out of range: no change). Refused where moving it to another
+    /// parent would be ([`Error::Internal`]): widgets find some children
+    /// by index.
+    pub fn move_to_index(&mut self, index: i32) -> Result<(), Error> {
+        structural::move_to_index(self.as_raw(), index)
+    }
+
     /// Moves the object under `parent`. Refuses a cycle
     /// ([`Error::InvalidArg`]) and display layers ([`Error::Internal`]).
     #[cfg(not(lvgl_rust_views_only))]

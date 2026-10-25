@@ -10,3 +10,7 @@ why = "widgets/roller/lv_roller.c:198 clamps with a plain ternary against option
 [fn.lv_roller_set_selected_str]
 params.sel_opt = { kind = "copied_str" }
 why = "widgets/roller/lv_roller.c:221: `sel_opt` is only read through lv_strncmp during the call and is never stored. NULL is rejected by LV_CHECK_ARG at :207."
+
+[fn.lv_roller_get_options]
+returns = "borrowed_internal"
+why = "lv_roller.c:276-281 returns the text of the roller's own label."

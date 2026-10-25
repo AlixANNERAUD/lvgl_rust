@@ -11,6 +11,8 @@
 
 #[cfg(feature = "cli")]
 pub mod audit;
+#[cfg(feature = "cli")]
+pub mod bump;
 pub mod classify;
 pub mod emit;
 pub mod headers;

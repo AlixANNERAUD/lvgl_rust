@@ -21,3 +21,7 @@ why = "lv_label.c:265 stores the value in label->sel_end. It is used only in com
 [fn.lv_label_set_text_selection_start]
 params.index = { kind = "checked" }
 why = "lv_label.c:251 stores the value in label->sel_start. It is used only in comparisons (lv_label.c:955, lv_draw_label.c:346-349, 411, 541-542, lv_textarea.c:679, 738), never to index memory, so any value is harmless."
+
+[fn.lv_label_get_text]
+returns = "borrowed_internal"
+why = "lv_label.c:290-295 returns label->text, owned by the label (or the static text it was given); valid until the next text change."

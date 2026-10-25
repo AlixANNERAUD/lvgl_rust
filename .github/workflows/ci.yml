@@ -106,7 +106,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        task: [clippy-safe, test-safe, test-views-only, test-asan, miri, loom]
+        task: [clippy-safe, test-safe, test-views-only, test-asan, test-allocator, example, miri, loom]
     steps:
       - uses: actions/checkout@v4
         with:

@@ -46,17 +46,22 @@ pub(crate) mod meta {
     pub(crate) const KIND: u8 = 0b11 << 4;
     pub(crate) const P_DELETE: u8 = 1 << 6;
     pub(crate) const P_CLEAN: u8 = 1 << 7;
+    /// Timers never get cleaned: on a timer slot, `P_CLEAN` marks a
+    /// `timer_boxed` closure for the drain to free.
+    #[cfg(feature = "heap")]
+    pub(crate) const TIMER_BOXED: u8 = P_CLEAN;
 }
 #[cfg(not(lvgl_rust_views_only))]
 use meta::*;
 
-/// What a slot tracks (the KIND bits of `meta`). Timers and groups take the
-/// next values.
+/// What a slot tracks (the KIND bits of `meta`).
 #[cfg(not(lvgl_rust_views_only))]
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 #[repr(u8)]
 pub(crate) enum Kind {
     Obj = 0,
+    Timer = 1,
+    Group = 2,
 }
 
 #[cfg(not(lvgl_rust_views_only))]
@@ -112,7 +117,17 @@ impl Slot {
         self.meta.set(self.meta.get() & !bits)
     }
 
-    fn is_live(&self, kind: Kind) -> bool {
+    /// Whether the slot tracks (or tracked) a timer.
+    pub(crate) fn is_timer(&self) -> bool {
+        self.meta.get() & KIND == Kind::Timer.bits()
+    }
+
+    /// Whether the slot tracks (or tracked) a group.
+    pub(crate) fn is_group(&self) -> bool {
+        self.meta.get() & KIND == Kind::Group.bits()
+    }
+
+    pub(crate) fn is_live(&self, kind: Kind) -> bool {
         self.meta.get() & (STATE | KIND) == LIVE | kind.bits()
     }
 
@@ -298,7 +313,7 @@ impl Registry {
             let o = p.cast::<ffi::lv_obj_t>();
             // SAFETY: a LIVE object slot points to an allocated object (R).
             unsafe {
-                if self.hdr.depth.get() != 0 && ffi::obj_is_deleting(o) {
+                if self.hdr.depth.get() != 0 && super::view::in_deletion(o) {
                     return Err(Error::Dead);
                 }
                 if !class.is_null()
@@ -357,11 +372,37 @@ impl Registry {
     /// Releases a TEMP slot whose object stays alive.
     pub(crate) fn release(&self, index: usize) {
         let slot = self.slot(index);
-        if slot.state() == LIVE {
+        if slot.state() == LIVE && !slot.is_timer() && !slot.is_group() {
             // SAFETY: a LIVE object slot points to an allocated object (R).
             unsafe { ffi::obj_set_id(slot.ptr.get().cast(), 0) };
         }
         self.free(index);
+    }
+
+    /// The timer or group of the slot was deleted: the slot stays DEAD
+    /// while an `Owned` refers to it, and is freed otherwise.
+    pub(crate) fn resource_deleted(&self, index: usize) {
+        let slot = self.slot(index);
+        if slot.has(OWNED) {
+            slot.meta
+                .set((slot.meta.get() & !(STATE | P_DELETE | P_CLEAN)) | DEAD);
+        } else {
+            self.free(index);
+        }
+    }
+
+    /// The slot of a live timer, by its pointer (timers have no id): a scan
+    /// up to the high-water mark, only when a timer callback asks.
+    pub(crate) fn find_timer(&self, p: *mut c_void) -> Option<usize> {
+        (0..self.high_water_mark()).find(|&i| {
+            let slot = self.slot(i);
+            slot.ptr.get() == p && slot.is_live(Kind::Timer)
+        })
+    }
+
+    /// The raw handle of a slot.
+    pub(crate) fn handle_raw(&self, index: usize) -> u32 {
+        self.raw(index)
     }
 
     /// The OBJ_ID free hook: `o` is being destroyed and `id` is its id.

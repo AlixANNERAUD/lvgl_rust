@@ -2,3 +2,7 @@
 [fn.lv_image_get_pivot]
 params.pivot = { kind = "out" }
 why = "widgets/image/lv_image.c:533-534 only writes pivot->x and pivot->y from img fields, never reads them, and does not store the pointer. NULL is rejected by LV_CHECK_ARG at :529."
+
+[fn.lv_image_set_src]
+params.src = { kind = "retained", rust = "ImageSrc" }
+why = "lv_image.c:148-260: lv_image_src_get_type reads the first byte (lv_draw_image.c:206-233); an image descriptor is kept (line 208), a path or symbol copied (line 220). ImageSrc checks the first byte and is 'static, which covers both."

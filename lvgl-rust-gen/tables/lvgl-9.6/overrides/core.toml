@@ -98,3 +98,7 @@ why = "misc/lv_area.c:571-573 reads p->x/p->y by value only."
 [fn.lv_dpx]
 params.n = { kind = "checked" }
 why = "display/lv_display.c:1518 LV_DPX(n) is pure arithmetic (include/lvgl/display/lv_display.h:815-816) and never indexes memory. Very large n only gives a meaningless value (possible signed overflow in the arithmetic)."
+
+[type.lv_event_code_t]
+emit = true
+why = "event handlers and sending take an EventCode (event.rs)"

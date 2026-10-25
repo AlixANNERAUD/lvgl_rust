@@ -68,6 +68,93 @@ pub enum Stored {
     Param(usize),
 }
 
+/// A value as the held-region analysis sees it (see `held.rs`). At `-O0`
+/// every C variable lives in an `alloca`, so values are mostly reads of
+/// locals, field addresses and loads from fields.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Val {
+    Unknown,
+    /// The function's parameter.
+    Param(usize),
+    /// The address of a global (`@g`).
+    Global(String),
+    /// The address of an `alloca`.
+    Local(String),
+    /// A value read from an `alloca`: any value stored in it.
+    Var(String),
+    /// The address of an embedded field path (`T.k` steps) inside the
+    /// memory the base points to.
+    Field(Box<Val>, Vec<String>),
+    /// A pointer loaded from an address that is not a local.
+    Load(Box<Val>),
+    /// The contents of a struct copied from this address
+    /// (`llvm.memcpy`): stored in the destination local.
+    Copy(Box<Val>),
+    /// The result of call site `n`.
+    Ret(usize),
+    /// `null`.
+    Null,
+}
+
+/// What an instruction does to locals, in order, for liveness.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Ev {
+    /// The whole local is overwritten.
+    Store(String),
+    /// The local is read.
+    Load(String),
+    /// Its address is used (field access, argument, ...).
+    Use(String),
+    /// Call site `n` runs.
+    Call(usize),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SiteKind {
+    /// `Function::calls[n]`.
+    Call(usize),
+    /// `Function::indirect[n]`.
+    Indirect(usize),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Site {
+    pub kind: SiteKind,
+    pub args: Vec<Val>,
+    /// Instruction number in the function.
+    pub order: usize,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Alloca {
+    /// Holds a pointer or an aggregate (structs, arrays): could keep one.
+    pub pointer: bool,
+    /// Values stored in it, whole or into its fields.
+    pub stores: Vec<Val>,
+    /// Struct types of the `getelementptr`s on values read from it.
+    pub types: std::collections::BTreeSet<String>,
+    /// Its address is stored somewhere: live until the function returns.
+    pub escaped: bool,
+}
+
+/// The per-instruction facts of a function, for the held-region analysis.
+#[derive(Clone, Debug, Default)]
+pub struct Held {
+    /// Successors of each block (block 0 is the entry).
+    pub succ: Vec<Vec<usize>>,
+    /// Events of each block, in order.
+    pub events: Vec<Vec<Ev>>,
+    pub sites: Vec<Site>,
+    pub allocas: BTreeMap<String, Alloca>,
+    /// Struct types of the `getelementptr`s on each parameter.
+    pub param_types: BTreeMap<usize, std::collections::BTreeSet<String>>,
+    /// Pointer stores to addresses that are not locals: `(address, value,
+    /// instruction number)`.
+    pub stores: Vec<(Val, Val, usize)>,
+    /// Values returned (`ret ptr`).
+    pub returns: Vec<Val>,
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct Function {
     /// Normalised signature: return type and parameter types.
@@ -82,6 +169,7 @@ pub struct Function {
     pub event_params: Vec<usize>,
     /// The translation unit (`widgets/dropdown/lv_dropdown`).
     pub unit: String,
+    pub held: Held,
 }
 
 /// A branch condition on the event code.
@@ -143,23 +231,17 @@ pub fn compile(sources: &[PathBuf], options: &CompileOptions) -> Result<Vec<Path
     results.into_iter().map(|(_, r)| r).collect()
 }
 
-fn compile_one(source: &Path, index: usize, options: &CompileOptions) -> Result<PathBuf, String> {
-    let stem = source.file_stem().unwrap().to_string_lossy();
-    let out = options.out_dir.join(format!("{index:04}-{stem}.ll"));
+/// clang with the audit's fixed target, include paths and definitions.
+fn clang(options: &CompileOptions) -> Command {
     let mut command = Command::new(options.clang);
     // A fixed target: the IR, and so the audit, are the same on any host.
-    command
-        .args([
-            "-S",
-            "-emit-llvm",
-            "-O0",
-            "-w",
-            "--target=x86_64-unknown-none-elf",
-            "-ffreestanding",
-            "-nostdlibinc",
-            "-o",
-        ])
-        .arg(&out);
+    command.args([
+        "-O0",
+        "-w",
+        "--target=x86_64-unknown-none-elf",
+        "-ffreestanding",
+        "-nostdlibinc",
+    ]);
     for dir in &options.include_dirs {
         command.arg(format!("-I{}", dir.display()));
     }
@@ -170,6 +252,114 @@ fn compile_one(source: &Path, index: usize, options: &CompileOptions) -> Result<
     // guard get an empty stand-in: the code using it is compiled out.
     let stubs = options.out_dir.join("stubs");
     command.arg(format!("-I{}", stubs.display()));
+    command
+}
+
+/// The constants of `lv_event_code_t` in this configuration, in order,
+/// with their values.
+///
+/// Read from clang rather than from the header text, so `#if` conditions
+/// of the configuration (`LV_USE_TRANSLATION`) and implicit values are
+/// exactly what LVGL is compiled with: clang lists the enumerators that
+/// exist (an AST dump filtered on `LV_EVENT_`), then a generated C file
+/// compiled to IR gives their values. Call after [`compile`] (it creates
+/// the header stand-ins).
+pub fn event_codes(options: &CompileOptions) -> Result<Vec<(String, i64)>, String> {
+    let dir = &options.out_dir;
+    let probe = dir.join("event_codes.c");
+    fs::write(&probe, "#include \"lvgl.h\"\n").map_err(|e| e.to_string())?;
+    let output = clang(options)
+        .args(["-fsyntax-only", "-Xclang", "-ast-dump", "-Xclang"])
+        .arg("-ast-dump-filter=LV_EVENT_")
+        .arg(&probe)
+        .output()
+        .map_err(|e| format!("cannot run {}: {e}", options.clang))?;
+    if !output.status.success() {
+        return Err(format!(
+            "listing lv_event_code_t failed:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+    let mut names: Vec<String> = Vec::new();
+    for line in String::from_utf8_lossy(&output.stdout).lines() {
+        let Some(rest) = line.trim_start().strip_prefix("EnumConstantDecl ") else {
+            continue;
+        };
+        if !rest.contains("lv_event.h") {
+            continue;
+        }
+        if let Some(name) = rest
+            .split_whitespace()
+            .find(|w| w.starts_with("LV_EVENT_"))
+            .filter(|n| !names.iter().any(|m| m == n))
+        {
+            names.push(name.to_owned());
+        }
+    }
+    if names.is_empty() {
+        return Err("no lv_event_code_t constants found".into());
+    }
+    let values_c = dir.join("event_codes_values.c");
+    let values_ll = dir.join("event_codes_values.ll");
+    fs::write(
+        &values_c,
+        format!(
+            "#include \"lvgl.h\"\nconst long long lvgl_audit_event_codes[] = {{ {} }};\n",
+            names.join(", ")
+        ),
+    )
+    .map_err(|e| e.to_string())?;
+    let output = clang(options)
+        .args(["-S", "-emit-llvm", "-o"])
+        .arg(&values_ll)
+        .arg(&values_c)
+        .output()
+        .map_err(|e| format!("cannot run {}: {e}", options.clang))?;
+    if !output.status.success() {
+        return Err(format!(
+            "reading lv_event_code_t values failed:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+    let ir = fs::read_to_string(&values_ll).map_err(|e| e.to_string())?;
+    let values = parse_code_values(&ir)?;
+    if values.len() != names.len() {
+        return Err(format!(
+            "{} lv_event_code_t names but {} values",
+            names.len(),
+            values.len()
+        ));
+    }
+    Ok(names.into_iter().zip(values).collect())
+}
+
+/// The elements of `@lvgl_audit_event_codes = ... [N x i64] [i64 0, ...]`.
+fn parse_code_values(ir: &str) -> Result<Vec<i64>, String> {
+    let line = ir
+        .lines()
+        .find(|l| l.starts_with("@lvgl_audit_event_codes "))
+        .ok_or("no @lvgl_audit_event_codes in the IR")?;
+    let init = line
+        .rfind("] [")
+        .map(|i| &line[i + 2..])
+        .ok_or("unexpected @lvgl_audit_event_codes initializer")?;
+    split_args(balanced(init))
+        .iter()
+        .map(|e| {
+            e.rsplit(' ')
+                .next()
+                .and_then(|v| v.parse().ok())
+                .ok_or_else(|| format!("bad event code value {e:?}"))
+        })
+        .collect()
+}
+
+fn compile_one(source: &Path, index: usize, options: &CompileOptions) -> Result<PathBuf, String> {
+    let stem = source.file_stem().unwrap().to_string_lossy();
+    let out = options.out_dir.join(format!("{index:04}-{stem}.ll"));
+    let stubs = options.out_dir.join("stubs");
+    let mut command = clang(options);
+    command.args(["-S", "-emit-llvm", "-o"]).arg(&out);
     command.arg(source);
     for _ in 0..16 {
         let output = command
@@ -246,6 +436,10 @@ struct Reader<'a> {
     blocks: Vec<(String, Block)>,
     /// An open `switch` on the code, until its closing `]`.
     switch: Option<bool>,
+    /// Held-region values of registers.
+    vals: HashMap<String, Val>,
+    held: Held,
+    order: usize,
 }
 
 impl Module {
@@ -305,9 +499,16 @@ impl Module {
                         locals: HashMap::new(),
                         blocks: vec![("".to_owned(), Block::default())],
                         switch: None,
+                        vals: HashMap::new(),
+                        held: Held {
+                            events: vec![Vec::new()],
+                            ..Held::default()
+                        },
+                        order: 0,
                     };
                     for (i, param) in param_names(line).into_iter().enumerate() {
-                        reader.values.insert(param, Origin::Param(i));
+                        reader.values.insert(param.clone(), Origin::Param(i));
+                        reader.vals.insert(param, Val::Param(i));
                     }
                     let f = Function {
                         signature: signature_of_define(line),
@@ -470,9 +671,40 @@ impl Reader<'_> {
         for indirect in &mut f.indirect {
             indirect.codes = codes_of(indirect.block);
         }
+        let mut held = self.held;
+        held.succ = self
+            .blocks
+            .iter()
+            .map(|(_, b)| {
+                let mut out: Vec<usize> = b
+                    .succ
+                    .iter()
+                    .map(|(l, _)| l)
+                    .chain(b.cases.iter().map(|(l, _)| l))
+                    .chain(&b.default)
+                    .filter_map(|l| index.get(l.as_str()).copied())
+                    .collect();
+                out.sort();
+                out.dedup();
+                out
+            })
+            .collect();
+        held.events.resize(self.blocks.len(), Vec::new());
+        f.held = held;
     }
 
     fn instruction(&mut self, line: &str, f: &mut Function) {
+        let before = (f.calls.len(), f.indirect.len(), self.switch.is_some());
+        self.graph_instruction(line, f);
+        if block_label(line).is_some() {
+            self.held.events.push(Vec::new());
+        } else if !before.2 {
+            self.order += 1;
+            self.held_instruction(line, f, (before.0, before.1));
+        }
+    }
+
+    fn graph_instruction(&mut self, line: &str, f: &mut Function) {
         // Labels open blocks; the previous block falls through only via its
         // terminator, which names its successors.
         if let Some(label) = block_label(line) {
@@ -746,6 +978,240 @@ impl Reader<'_> {
         }
     }
 
+    fn event(&mut self, event: Ev) {
+        self.held.events.last_mut().unwrap().push(event);
+    }
+
+    /// The local a value is the address of, or a field address inside.
+    fn local_of(val: &Val) -> Option<&str> {
+        match val {
+            Val::Local(a) => Some(a),
+            Val::Field(base, _) => match &**base {
+                Val::Local(a) => Some(a),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
+    /// Records the facts of one instruction for the held-region analysis.
+    fn held_instruction(&mut self, line: &str, f: &Function, before: (usize, usize)) {
+        let (def, inst) = match line.split_once(" = ") {
+            Some((def, inst)) if def.starts_with('%') => (Some(def.to_owned()), inst.trim()),
+            _ => (None, line),
+        };
+        let mut result = Val::Unknown;
+        if let Some(rest) = inst.strip_prefix("alloca ") {
+            if let Some(def) = def {
+                let ty = rest.trim_start();
+                let pointer = ty.starts_with("ptr")
+                    || ty.starts_with('%')
+                    || ty.starts_with('[')
+                    || ty.starts_with('{')
+                    || ty.starts_with('<');
+                self.held.allocas.insert(
+                    def.clone(),
+                    Alloca {
+                        pointer,
+                        ..Alloca::default()
+                    },
+                );
+                self.vals.insert(def.clone(), Val::Local(def));
+            }
+            return;
+        } else if let Some(rest) = inst.strip_prefix("load ") {
+            let operands = split_args(rest);
+            let pointer = operands.first().is_some_and(|t| t.trim() == "ptr");
+            let base = operands.get(1).map_or(Val::Unknown, |o| self.val(o));
+            result = match &base {
+                Val::Local(a) => {
+                    let a = a.clone();
+                    self.event(Ev::Load(a.clone()));
+                    if pointer { Val::Var(a) } else { Val::Unknown }
+                }
+                _ if pointer => Val::Load(Box::new(base)),
+                _ => Val::Unknown,
+            };
+        } else if let Some(rest) = inst.strip_prefix("store ") {
+            let operands = split_args(rest);
+            if operands.len() < 2 {
+                return;
+            }
+            let pointer = operands[0].trim_start().starts_with("ptr ");
+            let value = self.val(operands[0]);
+            let address = self.val(operands[1]);
+            if let Some(b) = Self::local_of(&value).map(str::to_owned)
+                && let Some(alloca) = self.held.allocas.get_mut(&b)
+            {
+                alloca.escaped = true;
+            }
+            match &address {
+                Val::Local(a) => {
+                    let a = a.clone();
+                    self.event(Ev::Store(a.clone()));
+                    if let Some(alloca) = self.held.allocas.get_mut(&a) {
+                        alloca.stores.push(value);
+                    }
+                }
+                Val::Field(b, _) if matches!(**b, Val::Local(_)) => {
+                    if let Val::Local(a) = &**b
+                        && let Some(alloca) = self.held.allocas.get_mut(a)
+                    {
+                        alloca.stores.push(value);
+                    }
+                }
+                _ if pointer => self.held.stores.push((address, value, self.order)),
+                _ => {}
+            }
+            return;
+        } else if inst.starts_with("getelementptr ") {
+            result = self.held_gep(gep_operands(inst));
+        } else if let Some(at) = find_call(inst) {
+            let after = &inst[at..];
+            let Some(open) = callee_paren(after) else {
+                return;
+            };
+            let callee = after[..open].rsplit(' ').next().unwrap_or("");
+            let args: Vec<Val> = split_args(balanced(&after[open..]))
+                .iter()
+                .map(|a| self.val(a))
+                .collect();
+            let name = callee.strip_prefix('@').map(unquote).unwrap_or("");
+            if name.starts_with("llvm.memcpy") || name.starts_with("llvm.memmove") {
+                if let (Some(dst), Some(src)) = (args.first(), args.get(1)) {
+                    if let Some(b) = Self::local_of(src).map(str::to_owned) {
+                        self.event(Ev::Use(b));
+                    }
+                    let copy = Val::Copy(Box::new(src.clone()));
+                    match dst {
+                        Val::Local(a) => {
+                            self.event(Ev::Store(a.clone()));
+                            if let Some(alloca) = self.held.allocas.get_mut(a) {
+                                alloca.stores.push(copy);
+                            }
+                        }
+                        Val::Field(b, _) if matches!(**b, Val::Local(_)) => {
+                            if let Val::Local(a) = &**b {
+                                self.event(Ev::Use(a.clone()));
+                                if let Some(alloca) = self.held.allocas.get_mut(a) {
+                                    alloca.stores.push(copy);
+                                }
+                            }
+                        }
+                        _ => self.held.stores.push((dst.clone(), copy, self.order)),
+                    }
+                }
+                return;
+            }
+            for arg in &args {
+                if let Some(a) = Self::local_of(arg).map(str::to_owned) {
+                    self.event(Ev::Use(a));
+                }
+            }
+            let kind = if f.calls.len() > before.0 {
+                SiteKind::Call(before.0)
+            } else if f.indirect.len() > before.1 {
+                SiteKind::Indirect(before.1)
+            } else {
+                return; // other intrinsics
+            };
+            let n = self.held.sites.len();
+            self.held.sites.push(Site {
+                kind,
+                args,
+                order: self.order,
+            });
+            self.event(Ev::Call(n));
+            result = Val::Ret(n);
+        } else if let Some(rest) = inst.strip_prefix("ret ptr ") {
+            let v = self.val(rest);
+            self.held.returns.push(v);
+            return;
+        } else {
+            // Anything else that names a local uses its address.
+            let locals: Vec<String> = inst
+                .split(|c: char| !(c.is_ascii_alphanumeric() || matches!(c, '%' | '_' | '.')))
+                .filter(|t| t.starts_with('%') && self.held.allocas.contains_key(*t))
+                .map(str::to_owned)
+                .collect();
+            for a in locals {
+                self.event(Ev::Use(a));
+            }
+        }
+        if let Some(def) = def {
+            self.vals.insert(def, result);
+        }
+    }
+
+    /// The value of a `getelementptr` (its operands: type, base, indices).
+    fn held_gep(&mut self, operands: &str) -> Val {
+        let parts = split_args(operands);
+        let (Some(ty), Some(base)) = (parts.first(), parts.get(1)) else {
+            return Val::Unknown;
+        };
+        let base = self.val(base);
+        if let Some(a) = Self::local_of(&base).map(str::to_owned) {
+            self.event(Ev::Use(a));
+        }
+        let Some(strukt) = ty.trim().strip_prefix("%struct.").map(struct_name) else {
+            // Pointer arithmetic on bytes or scalars: the same memory.
+            return base;
+        };
+        match &base {
+            Val::Var(a) => {
+                if let Some(alloca) = self.held.allocas.get_mut(a) {
+                    alloca.types.insert(strukt.clone());
+                }
+            }
+            Val::Param(k) => {
+                self.held
+                    .param_types
+                    .entry(*k)
+                    .or_default()
+                    .insert(strukt.clone());
+            }
+            _ => {}
+        }
+        let steps = gep_steps(&strukt, &parts[2..], self.types);
+        if steps.is_empty() {
+            return base; // an element of an array of structs: the same memory
+        }
+        match base {
+            Val::Field(b, mut path) => {
+                path.extend(steps);
+                Val::Field(b, path)
+            }
+            base => Val::Field(Box::new(base), steps),
+        }
+    }
+
+    /// The held-region value of an operand.
+    fn val(&mut self, text: &str) -> Val {
+        let text = text.trim();
+        if let Some(i) = text.find("getelementptr") {
+            let expr = &text[i..];
+            if let Some(open) = expr.find('(') {
+                let inner = balanced(&expr[open..]).to_owned();
+                return self.held_gep(&inner);
+            }
+        }
+        let value = text.rsplit(' ').next().unwrap_or("");
+        if let Some(name) = value.strip_prefix('@') {
+            let name = unquote(name);
+            if name.starts_with(".str") || name.starts_with("llvm.") {
+                return Val::Unknown;
+            }
+            return Val::Global((self.qualify)(name));
+        }
+        if value.starts_with('%') {
+            return self.vals.get(value).cloned().unwrap_or(Val::Unknown);
+        }
+        if value == "null" {
+            return Val::Null;
+        }
+        Val::Unknown
+    }
+
     fn arg(&self, text: &str) -> Arg {
         match self.operand(text) {
             Origin::Function(g) => Arg::Function(g),
@@ -864,6 +1330,53 @@ fn gep_expr(operands: &str, types: &HashMap<String, Vec<String>>) -> Origin {
         i += 1;
     }
     Origin::Unknown
+}
+
+/// The operands of a `getelementptr` instruction (after its keywords).
+fn gep_operands(inst: &str) -> &str {
+    let mut rest = inst.trim_start_matches("getelementptr").trim_start();
+    for keyword in ["inbounds", "nuw", "nusw"] {
+        rest = rest.trim_start_matches(keyword).trim_start();
+    }
+    rest
+}
+
+/// The embedded field steps (`T.k`) of a struct GEP's indices (after the
+/// base). The first index is pointer arithmetic (an element of an array of
+/// `T`, the same memory) and gives no step; an embedded array's element
+/// index gives none either (an element of the same object).
+fn gep_steps(strukt: &str, indices: &[&str], types: &HashMap<String, Vec<String>>) -> Vec<String> {
+    let indices: Vec<Option<i64>> = indices
+        .iter()
+        .skip(1)
+        .map(|i| i.rsplit(' ').next().and_then(|v| v.parse().ok()))
+        .collect();
+    let mut steps = Vec::new();
+    let mut current = strukt.to_owned();
+    let mut i = 0;
+    while i < indices.len() {
+        let Some(field) = indices[i] else {
+            steps.push(format!("{current}.*"));
+            break;
+        };
+        steps.push(format!("{current}.{field}"));
+        let Some(member) = types.get(&current).and_then(|m| m.get(field as usize)) else {
+            break;
+        };
+        let mut member = member.trim();
+        if member.starts_with('[') {
+            member = balanced(member)
+                .split_once(" x ")
+                .map_or("", |(_, t)| t.trim());
+            i += 1; // the element index
+        }
+        match member.strip_prefix("%struct.") {
+            Some(inner) => current = struct_name(inner),
+            None => break,
+        }
+        i += 1;
+    }
+    steps
 }
 
 /// `_lv_anim_t` for `_lv_anim_t.123` (LLVM renames clashing types).

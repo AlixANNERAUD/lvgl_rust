@@ -70,6 +70,77 @@ pub struct AuditConfig {
     /// Functions to omit from the table.
     #[serde(default)]
     pub ignore: Vec<String>,
+    /// The function safe code sends object events with (`lv_obj_send_event`).
+    #[serde(default)]
+    pub object_sender: Option<String>,
+    /// Functions that return or dereference the event parameter: a handler
+    /// that calls one under a code reads that code's parameter.
+    #[serde(default)]
+    pub param_getters: Vec<String>,
+    /// Getters that check the parameter for NULL before reading it: calls
+    /// to them are not reads (and are not followed).
+    #[serde(default)]
+    pub param_checked_getters: Vec<String>,
+    /// Event codes whose handlers run where only queries make sense (draw
+    /// and query codes): a hold across them restricts their handlers
+    /// instead of making the freeing function exclusive.
+    #[serde(default)]
+    pub blockable_codes: Vec<String>,
+    /// Hand decisions on event codes, with a reason.
+    #[serde(default)]
+    pub event_policy: BTreeMap<String, EventPolicy>,
+    /// The functions that release memory, with the index of the pointer
+    /// argument they free (`lv_free = 0`, `lv_realloc = 0`).
+    #[serde(default)]
+    pub free_primitives: BTreeMap<String, usize>,
+    /// Functions that return fresh memory (`lv_malloc`): freeing what they
+    /// returned, before it is published, cannot invalidate a hold.
+    #[serde(default)]
+    pub alloc_primitives: Vec<String>,
+    /// Functions that free memory they allocated only on paths where it
+    /// was not published (the analysis does not follow paths), with the
+    /// reason.
+    #[serde(default)]
+    pub unpublished: BTreeMap<String, String>,
+    /// Holds that a runtime check of the crate makes harmless.
+    #[serde(default)]
+    pub guarded: BTreeMap<String, Guarded>,
+}
+
+/// A hold made harmless by a runtime check (`[guarded.<name>]`): hazards
+/// on these regions through these freers are not counted.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Guarded {
+    /// Regions as the analysis prints them (`Copy(_lv_event_list_t.0/*)`),
+    /// `*` matching anything.
+    pub regions: Vec<String>,
+    /// The freeing functions the check covers (empty: any).
+    #[serde(default)]
+    pub freers: Vec<String>,
+    /// The frames whose holds the check covers (empty: any).
+    #[serde(default)]
+    pub holders: Vec<String>,
+    /// Functions through which the free must happen (its witness chain
+    /// names one of them; empty: any).
+    #[serde(default)]
+    pub via: Vec<String>,
+    /// The check, where it lives.
+    pub check: String,
+    pub why: String,
+}
+
+/// A hand decision on an event code (`[event_policy.LV_EVENT_X]`).
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EventPolicy {
+    /// `"shared"`, `"restricted"` or `"none"`.
+    #[serde(default)]
+    pub handler: Option<String>,
+    /// `"no"` to forbid sending the code from safe code.
+    #[serde(default)]
+    pub sendable: Option<String>,
+    pub why: String,
 }
 
 /// `lv_anim_delete(var, exec_cb)` runs the `deleted_cb` of the animations
@@ -112,15 +183,15 @@ pub enum Edge {
 
 /// An edge, with what it does to the event code being dispatched.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-struct Out {
-    to: String,
-    kind: Edge,
+pub(crate) struct Out {
+    pub(crate) to: String,
+    pub(crate) kind: Edge,
     /// Taken only for these codes (`None`: any).
-    guard: Option<Vec<i64>>,
+    pub(crate) guard: Option<Vec<i64>>,
     /// Starts dispatching this code.
-    sets: Option<i64>,
+    pub(crate) sets: Option<i64>,
     /// Forwards the event being dispatched (its code stays known).
-    carry: bool,
+    pub(crate) carry: bool,
     /// A deleted callback, run only when the `exec_cb` being deleted is one
     /// of these (`*`: any).
     execs: Option<Vec<String>>,
@@ -150,8 +221,17 @@ fn widget_of(unit: &str) -> Option<&str> {
     unit.strip_prefix("widgets/")?.split('/').next()
 }
 
+/// The edges of each call site of a function: `(calls, indirect)`.
+pub(crate) type SiteOuts = (Vec<Vec<Out>>, Vec<Vec<Out>>);
+
 pub struct Graph {
-    edges: BTreeMap<String, Vec<Out>>,
+    pub(crate) edges: BTreeMap<String, Vec<Out>>,
+    /// The edges of each call site: `(calls, indirect)` of every function,
+    /// indexed like `Function::calls` and `Function::indirect`.
+    pub(crate) site_outs: BTreeMap<String, SiteOuts>,
+    /// Functions stored in each of `caller_slots` (their indirect calls
+    /// have no edges: the installers call them).
+    pub(crate) caller_slot_funcs: BTreeMap<String, BTreeSet<String>>,
     slots: BTreeMap<String, BTreeSet<String>>,
     sinks: BTreeSet<String>,
     deleting: BTreeSet<String>,
@@ -252,6 +332,19 @@ impl Graph {
         // be called through those slots; the others escape, and unresolved
         // indirect calls may reach them.
         let mut escaped: BTreeSet<String> = BTreeSet::new();
+        let mut caller_slot_funcs: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+        for f in module.functions.values() {
+            for (slot, stored) in &f.stores {
+                if let Stored::Function(g) = stored
+                    && config.caller_slots.contains_key(slot)
+                {
+                    caller_slot_funcs
+                        .entry(slot.clone())
+                        .or_default()
+                        .insert(g.clone());
+                }
+            }
+        }
         let mut flow_edges: Vec<(String, String)> = Vec::new();
         let caller_slot = |slot: &str| config.caller_slots.get(slot).copied();
         let mut caller_edges: Vec<(String, String, Edge)> = Vec::new();
@@ -297,6 +390,12 @@ impl Graph {
                             }
                             for slot in param_slots.get(&key).into_iter().flatten() {
                                 note_anim(name, slot, g);
+                                if caller_slot(slot).is_some() {
+                                    caller_slot_funcs
+                                        .entry(slot.clone())
+                                        .or_default()
+                                        .insert(g.clone());
+                                }
                                 match caller_slot(slot) {
                                     Some(CallerSlot::Immediate) => {
                                         caller_edges.push((name.clone(), g.clone(), Edge::Indirect))
@@ -482,14 +581,18 @@ impl Graph {
         };
 
         let mut edges: BTreeMap<String, Vec<Out>> = BTreeMap::new();
+        let mut site_outs: BTreeMap<String, SiteOuts> = BTreeMap::new();
         for (name, f) in &module.functions {
             let out = edges.entry(name.clone()).or_default();
+            let sites = site_outs.entry(name.clone()).or_default();
             let dispatch = config.event_dispatch.contains(name);
             let sender = config.send.contains_key(name);
             let in_machinery = machinery(name);
             let sender_widget = widget_of(&f.unit);
             for call in &f.calls {
+                let start = out.len();
                 if call.callee == "lv_event_get_code" {
+                    sites.0.push(Vec::new());
                     continue;
                 }
                 let carry = in_machinery || forwards(name, &call.args, &call.callee, &event_params);
@@ -562,6 +665,7 @@ impl Graph {
                         }
                     }
                 }
+                sites.0.push(out[start..].to_vec());
             }
             for r in &f.refs {
                 out.push(Out::new(r.clone(), Edge::Schedule));
@@ -575,20 +679,23 @@ impl Graph {
                     out.push(Out::new(g.clone(), kind));
                 }
             }
-            if !dispatch {
+            if dispatch {
+                sites.1 = vec![Vec::new(); f.indirect.len()];
+            } else {
                 for indirect in &f.indirect {
+                    let start = out.len();
                     // A slot no LVGL code writes holds NULL or a callback
                     // installed through `sys`, which is that code's
                     // obligation: no edge.
                     let targets: Vec<String> = match &indirect.target {
-                        Target::Slot(slot) if caller_slot(slot).is_some() => continue,
+                        Target::Slot(slot) if caller_slot(slot).is_some() => Vec::new(),
                         Target::Slot(slot) => slot_funcs
                             .get(slot)
                             .into_iter()
                             .flatten()
                             .cloned()
                             .collect(),
-                        Target::Param(_) => continue, // via the callers' flows
+                        Target::Param(_) => Vec::new(), // via the callers' flows
                         Target::Unknown => by_signature
                             .get(indirect.signature.as_str())
                             .into_iter()
@@ -616,6 +723,7 @@ impl Graph {
                         }
                         out.push(e);
                     }
+                    sites.1.push(out[start..].to_vec());
                 }
             }
         }
@@ -659,6 +767,8 @@ impl Graph {
         }
         Ok(Graph {
             edges,
+            site_outs,
+            caller_slot_funcs,
             slots: slot_funcs,
             sinks,
             deleting,
@@ -818,6 +928,92 @@ impl Graph {
             }
         }
         codes
+    }
+
+    /// Handlers registered for `code` or for every code.
+    pub fn handlers_of(&self, code: i64) -> impl Iterator<Item = &str> {
+        self.handlers
+            .iter()
+            .filter(move |(_, codes)| codes.contains(&None) || codes.contains(&Some(code)))
+            .map(|(h, _)| h.as_str())
+    }
+
+    /// The functions that run when safe code sends `code` to an object
+    /// through `sender`: the sender's own body (class event callbacks,
+    /// bubbling) and every handler registered for the code.
+    fn send_roots(&self, sender: &str, code: i64) -> Vec<String> {
+        let mut roots = vec![format!("{sender}#body")];
+        roots.extend(self.handlers_of(code).map(str::to_owned));
+        roots
+    }
+
+    /// A path to a sink when `code` is sent through `sender`, if any.
+    pub fn send_deletes(&self, sender: &str, code: i64) -> Option<Vec<String>> {
+        let kinds = [Edge::Call, Edge::Indirect, Edge::Send];
+        self.send_roots(sender, code)
+            .iter()
+            .find_map(|root| self.search(root, Some(code), &kinds, &self.sinks))
+    }
+
+    /// Whether code that runs for `code` sent through `sender` reads the
+    /// event parameter: a call to one of `getters` from a function that has
+    /// the event (reached through edges that forward it), in a block that
+    /// can run for `code`. Returns the getters reached and a witness.
+    pub fn param_reads(
+        &self,
+        module: &Module,
+        sender: &str,
+        code: i64,
+        getters: &[String],
+        checked: &[String],
+    ) -> Option<(BTreeSet<String>, Vec<String>)> {
+        let mut found: BTreeSet<String> = BTreeSet::new();
+        let mut witness: Option<Vec<String>> = None;
+        let mut previous: BTreeMap<&str, &str> = BTreeMap::new();
+        let roots = self.send_roots(sender, code);
+        let mut seen: BTreeSet<&str> = roots.iter().map(String::as_str).collect();
+        let mut queue: VecDeque<&str> = roots.iter().map(String::as_str).collect();
+        while let Some(node) = queue.pop_front() {
+            if getters.iter().chain(checked).any(|g| g == node) {
+                continue; // the call itself was counted (or is checked)
+            }
+            let function = module
+                .functions
+                .get(node.strip_suffix("#body").unwrap_or(node));
+            for call in function.into_iter().flat_map(|f| &f.calls) {
+                if getters.contains(&call.callee)
+                    && call.codes.as_ref().is_none_or(|c| c.contains(&code))
+                {
+                    found.insert(call.callee.clone());
+                    if witness.is_none() {
+                        let mut path = vec![call.callee.clone(), node.to_owned()];
+                        let mut at = node;
+                        while let Some(p) = previous.get(at) {
+                            path.push((*p).to_owned());
+                            at = p;
+                        }
+                        path.reverse();
+                        witness = Some(path);
+                    }
+                }
+            }
+            // Only edges that forward this event: nested sends make new
+            // events, whose parameters their senders provide.
+            for out in self.edges.get(node).into_iter().flatten() {
+                if !matches!(out.kind, Edge::Call | Edge::Indirect)
+                    || !out.carry
+                    || out.sets.is_some()
+                    || out.guard.as_ref().is_some_and(|g| !g.contains(&code))
+                {
+                    continue;
+                }
+                if seen.insert(&out.to) {
+                    previous.insert(&out.to, node);
+                    queue.push_back(&out.to);
+                }
+            }
+        }
+        witness.map(|w| (found, w))
     }
 
     /// Functions of a slot that reach a sink, with the witness, for review.

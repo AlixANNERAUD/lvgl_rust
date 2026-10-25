@@ -4,7 +4,9 @@
 //! [`Lvgl::timer_handler`](crate::Lvgl::timer_handler).
 
 #[cfg(lvgl_rust_views_only)]
-pub(crate) fn drain() {}
+pub(crate) fn drain() {
+    super::post::run_posted();
+}
 
 #[cfg(not(lvgl_rust_views_only))]
 pub(crate) use slots::*;
@@ -34,6 +36,7 @@ mod slots {
             }
         }
         apply_pending_load();
+        crate::base::post::run_posted();
     }
 
     /// Carries out the requests of one slot. Returns `Err(Busy)` when the
@@ -42,6 +45,10 @@ mod slots {
     pub(crate) fn act(index: usize) -> Result<(), Error> {
         let reg = reg();
         let slot = reg.slot(index);
+        if slot.is_timer() || slot.is_group() {
+            act_resource(index);
+            return Ok(());
+        }
         let dropped = slot.has(OWNED) && slot.req.load(Ordering::Relaxed) != 0;
         let delete = dropped || slot.has(P_DELETE);
         if !delete && !slot.has(P_CLEAN) {
@@ -102,6 +109,43 @@ mod slots {
             release_temp(index);
         }
         Ok(())
+    }
+
+    /// Deletes a timer or a group whose `Owned` was dropped or that asked
+    /// to be deleted (`TimerCtx::delete_later`).
+    fn act_resource(index: usize) {
+        let reg = reg();
+        let slot = reg.slot(index);
+        let dropped = slot.has(OWNED) && slot.req.load(Ordering::Relaxed) != 0;
+        if !dropped && !slot.has(P_DELETE) {
+            return;
+        }
+        if slot.state() == LIVE {
+            // SAFETY: token held, depth 0; a LIVE slot points to a timer or
+            // a group the crate created and nothing else deletes.
+            unsafe {
+                if slot.is_timer() {
+                    #[cfg(feature = "heap")]
+                    let boxed = slot
+                        .has(TIMER_BOXED)
+                        .then(|| ffi::timer_user_data(slot.ptr().cast()));
+                    ffi::timer_delete(slot.ptr().cast());
+                    // The closure goes after its timer.
+                    #[cfg(feature = "heap")]
+                    if let Some(block) = boxed {
+                        let header = block.cast::<crate::timer::BoxedTimer>();
+                        ((*header).free)(block);
+                    }
+                } else {
+                    ffi::group_delete(slot.ptr().cast());
+                }
+            }
+        }
+        if dropped {
+            reg.free(index);
+        } else {
+            reg.resource_deleted(index);
+        }
     }
 
     /// Releases a TEMP slot once its request completed.

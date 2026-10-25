@@ -121,14 +121,14 @@ description = "Run clippy on lvgl-rust"
 env.RUSTFLAGS = "-D warnings"
 env.DEP_LV_CONFIG_PATH = "{{config_root}}/lvgl-rust/conf"
 env.CARGO_TARGET_DIR = "target/safe"
-run = "cargo clippy -p lvgl-rust -p lvgl-rust-size-gate --all-targets"
+run = "cargo clippy -p lvgl-rust -p lvgl-rust-size-gate --all-targets --features lvgl-rust/async,lvgl-rust/heap,lvgl-rust/fmt"
 
 [tasks.test-safe]
 description = "Test lvgl-rust against LVGL"
 env.RUSTFLAGS = "-D warnings"
 env.DEP_LV_CONFIG_PATH = "{{config_root}}/lvgl-rust/conf"
 env.CARGO_TARGET_DIR = "target/safe"
-run = "cargo test -p lvgl-rust"
+run = "cargo test -p lvgl-rust --features async,heap,fmt"
 
 [tasks.test-views-only]
 description = "Lint and test lvgl-rust without handles, on a config that keeps LVGL's own OBJ_ID support"
@@ -153,7 +153,27 @@ env.ASAN_OPTIONS = "detect_leaks=0"
 run = [
   "mkdir -p target/asan-conf",
   "sed 's/^#define LV_USE_STDLIB_MALLOC .*/#define LV_USE_STDLIB_MALLOC LV_STDLIB_CLIB/' lvgl-rust/conf/lv_conf.h > target/asan-conf/lv_conf.h",
-  "cargo test -p lvgl-rust --target \"$(rustc -vV | sed -n 's/^host: //p')\"",
+  "cargo test -p lvgl-rust --features async,heap,fmt --target \"$(rustc -vV | sed -n 's/^host: //p')\"",
+  "cargo run -q -p lvgl-rust --example desktop --target \"$(rustc -vV | sed -n 's/^host: //p')\"",
+]
+
+[tasks.example]
+description = "Run the desktop example of lvgl-rust (a scripted Xila-like desktop on the host)"
+env.RUSTFLAGS = "-D warnings"
+env.DEP_LV_CONFIG_PATH = "{{config_root}}/lvgl-rust/conf"
+env.CARGO_TARGET_DIR = "target/safe"
+run = "cargo run -q -p lvgl-rust --example desktop"
+
+[tasks.test-allocator]
+description = "Lint and test lvgl-rust's allocator feature, on a configuration whose heap is the Rust allocator (LV_STDLIB_CUSTOM)"
+env.RUSTFLAGS = "-D warnings"
+env.DEP_LV_CONFIG_PATH = "{{config_root}}/target/allocator-conf"
+env.CARGO_TARGET_DIR = "target/allocator"
+run = [
+  "mkdir -p target/allocator-conf",
+  "sed 's/^#define LV_USE_STDLIB_MALLOC .*/#define LV_USE_STDLIB_MALLOC LV_STDLIB_CUSTOM/' lvgl-rust/conf/lv_conf.h > target/allocator-conf/lv_conf.h",
+  "cargo clippy -p lvgl-rust --features allocator,heap --all-targets",
+  "cargo test -p lvgl-rust --features allocator,heap --test allocator",
 ]
 
 [tasks.miri]
@@ -181,14 +201,19 @@ description = "Rewrite access.toml from the call graph of LVGL (after changing a
 tools = { clang = "22.1.8" }
 run = "cargo run -q -p lvgl-rust-gen --features cli -- audit"
 
+[tasks.bump]
+description = "Regenerate universe.txt and report hierarchy and stale table entries (after bumping LVGL or changing lvgl-rust/conf)"
+run = "cargo run -q -p lvgl-rust-gen --features cli -- bump"
+
 [tasks.audit-check]
-description = "Lint and test the audit tool, and check that access.toml matches the call graph of LVGL"
+description = "Lint and test the audit tool, and check that access.toml, universe.txt and the hierarchy match LVGL"
 tools = { clang = "22.1.8" }
 env.RUSTFLAGS = "-D warnings"
 run = [
   "cargo clippy -p lvgl-rust-gen --all-targets --features cli",
   "cargo test -p lvgl-rust-gen --features cli",
   "cargo run -q -p lvgl-rust-gen --features cli -- audit --check",
+  "cargo run -q -p lvgl-rust-gen --features cli -- bump --check",
 ]
 
 [tasks.doc]

@@ -129,9 +129,12 @@ impl Lvgl {
         enter_raw().map(|()| Session::new())
     }
 
-    /// Runs LVGL's timers (`lv_timer_handler`), then carries out the deferred
-    /// requests. Returns the time in milliseconds until the next timer.
+    /// Carries out the deferred requests, runs LVGL's timers
+    /// (`lv_timer_handler`), then carries out the requests they made.
+    /// Returns the time in milliseconds until the next timer.
     pub fn timer_handler(&mut self) -> u32 {
+        // Dropped timers and objects go before the timers run.
+        super::drain::drain();
         // SAFETY: exclusive access.
         let next = unsafe { ffi::timer_handler() };
         super::drain::drain();

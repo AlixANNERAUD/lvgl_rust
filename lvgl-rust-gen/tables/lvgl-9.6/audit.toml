@@ -35,6 +35,72 @@ event_dispatch = [
 unwrapped_widgets = ["menu"]
 
 
+# ---------------------------------------------------------------------------
+# Event codes (events.toml).
+
+# How safe code sends object events (`Obj::send_event`): its body (class
+# event callbacks, bubbling) and every registered handler run for the code.
+object_sender = "lv_obj_send_event"
+
+# Calls that return or dereference the event parameter without a NULL
+# check (lv_obj_event.c:202-334, lv_display.c:1099, lv_indev_gesture.c):
+# code that calls one for a code reads that code's parameter, so safe code
+# (which sends with NULL) cannot send it.
+param_getters = [
+    "lv_event_get_param",
+    "lv_event_get_indev",
+    "lv_event_get_layer",
+    "lv_event_get_old_size",
+    "lv_event_get_scroll_anim",
+    "lv_event_set_ext_draw_size",
+    "lv_event_get_self_size_info",
+    "lv_event_get_hit_test_info",
+    "lv_event_get_cover_area",
+    "lv_event_set_cover_res",
+    "lv_event_get_draw_task",
+    "lv_event_get_invalidated_area",
+]
+# Getters that return 0 for a NULL parameter (`k ? *k : 0`,
+# lv_obj_event.c:250-268, 336-344).
+param_checked_getters = [
+    "lv_event_get_key",
+    "lv_event_get_rotary_diff",
+    "lv_event_get_prev_state",
+]
+
+# Query and draw codes: sent in the middle of hit testing, layout or
+# rendering to fill their parameter. Their handlers are restricted (no
+# shared access): a hold across them restricts them further instead of
+# making the freeing function exclusive.
+blockable_codes = [
+    "LV_EVENT_HIT_TEST",
+    "LV_EVENT_COVER_CHECK",
+    "LV_EVENT_REFR_EXT_DRAW_SIZE",
+    "LV_EVENT_DRAW_MAIN_BEGIN",
+    "LV_EVENT_DRAW_MAIN",
+    "LV_EVENT_DRAW_MAIN_END",
+    "LV_EVENT_DRAW_POST_BEGIN",
+    "LV_EVENT_DRAW_POST",
+    "LV_EVENT_DRAW_POST_END",
+    "LV_EVENT_DRAW_TASK_ADDED",
+    "LV_EVENT_GET_SELF_SIZE",
+]
+
+
+# ---------------------------------------------------------------------------
+# Held regions (see held.rs): memory a frame keeps a pointer to across an
+# event send, and the shared functions that can free it.
+
+# The functions that release memory, with the index of the freed pointer.
+free_primitives = { lv_free = 0, lv_realloc = 0 }
+# The functions that return fresh memory (lv_mem.c, lv_string_builtin.c).
+alloc_primitives = ["lv_malloc", "lv_malloc_zeroed", "lv_realloc", "lv_strdup", "lv_strndup"]
+
+# Functions that free memory they allocated only where it was not
+# published (the analysis does not follow paths), with the reason.
+[unpublished]
+lv_obj_class_create_obj = "frees the new object only when allocating the parent's attributes or lv_obj_add_child failed (lv_obj_class.c:94-100); lv_obj_add_child stores the child only after its realloc succeeded (lv_obj.c:1213-1218)"
+
 # Globals emitted with a literal struct type (bitfields): their struct.
 [literal_globals]
 "lv_*_class" = "_lv_obj_class_t"
@@ -53,6 +119,63 @@ lv_indev_add_event_cb = [1, 2]
 lv_event_add = [1, 2]
 
 # Hand decisions, with the reason. They override the graph.
+# LVGL's own lifecycle and global state: never from safe code.
+[exceptions.lv_mem_init]
+access = "raw"
+why = "initialises LVGL's heap pool (lv_mem.c): LVGL's lifecycle belongs to lvgl_rust::init"
+
+[exceptions.lv_mem_deinit]
+access = "raw"
+why = "frees LVGL's heap pool under every live object (lv_mem.c)"
+
+[exceptions.lv_draw_init]
+access = "raw"
+why = "re-initialises the draw units while objects and draw tasks use them (lv_draw.c)"
+
+[exceptions.lv_draw_deinit]
+access = "raw"
+why = "frees the draw units while objects and draw tasks use them (lv_draw.c)"
+
+[exceptions.lv_bin_decoder_init]
+access = "raw"
+why = "registers another binary decoder (lv_bin_decoder.c): part of lv_init"
+
+[exceptions.lv_flex_init]
+access = "raw"
+why = "registers the flex layout again (lv_flex.c): part of lv_init"
+
+[exceptions.lv_grid_init]
+access = "raw"
+why = "registers the grid layout again (lv_grid.c): part of lv_init"
+
+[exceptions.lv_span_stack_init]
+access = "raw"
+why = "replaces the global snippet stack (lv_span.c) without freeing it"
+
+[exceptions.lv_span_stack_deinit]
+access = "raw"
+why = "frees the global snippet stack (lv_span.c) without clearing it: span drawing uses it afterwards"
+
+[exceptions.lv_theme_default_deinit]
+access = "raw"
+why = "frees theme_def (lv_theme_default.c) while objects and their theme keep pointers to it"
+
+[exceptions.lv_theme_simple_deinit]
+access = "raw"
+why = "frees the simple theme (lv_theme_simple.c) while objects keep pointers to it"
+
+[exceptions.lv_theme_mono_deinit]
+access = "raw"
+why = "frees the mono theme (lv_theme_mono.c) while objects keep pointers to it"
+
+[exceptions.lv_fs_remove_drive]
+access = "raw"
+why = "removes a driver that open files and image sources may still use (lv_fs.c)"
+
+[exceptions.lv_obj_class_init_obj]
+access = "raw"
+why = "runs a class constructor again on an initialised object (lv_obj_class.c): only for objects made with lv_obj_class_create_obj"
+
 [exceptions.lv_color_make]
 access = "pure"
 why = "computes a value"
@@ -100,3 +223,146 @@ exec_arg = 1
 carry = ["lv_anim_delete", "misc/lv_anim::remove_anim"]
 exec_slots = ["_lv_anim_t.1", "_lv_anim_t.2"]
 deleted_slot = "_lv_anim_t.5"
+
+# Hand decisions on event codes.
+[event_policy.LV_EVENT_CREATE]
+handler = "none"
+sendable = "no"
+why = "sent by lv_obj_class_init_obj while the object is being built (lv_obj_class.c), before any handler can be registered; a fake CREATE reruns creation logic"
+
+[event_policy.LV_EVENT_DELETE]
+sendable = "no"
+why = "DELETE handlers free per-object state on the assumption that the object goes away (lv_event_free_user_data_cb, lv_obj.c:1365; unsubscribe_on_delete_cb, lv_observer.c:538): a fake DELETE frees it while the object keeps using it"
+
+[event_policy.LV_EVENT_INVALIDATE_AREA]
+handler = "none"
+why = "display event (lv_display.c): sent to displays, not objects"
+
+[event_policy.LV_EVENT_RESOLUTION_CHANGED]
+handler = "none"
+why = "display event (lv_display.c): sent to displays, not objects"
+
+[event_policy.LV_EVENT_COLOR_FORMAT_CHANGED]
+handler = "none"
+why = "display event (lv_display.c): sent to displays, not objects"
+
+[event_policy.LV_EVENT_REFR_REQUEST]
+handler = "none"
+why = "display event (lv_display.c, lv_refr.c): sent to displays, not objects"
+
+[event_policy.LV_EVENT_REFR_START]
+handler = "none"
+why = "display event (lv_refr.c): sent to displays, not objects"
+
+[event_policy.LV_EVENT_REFR_READY]
+handler = "none"
+why = "display event (lv_refr.c): sent to displays, not objects"
+
+[event_policy.LV_EVENT_RENDER_START]
+handler = "none"
+why = "display event (lv_refr.c): sent to displays, not objects"
+
+[event_policy.LV_EVENT_RENDER_READY]
+handler = "none"
+why = "display event (lv_refr.c): sent to displays, not objects"
+
+[event_policy.LV_EVENT_FLUSH_START]
+handler = "none"
+why = "display event (lv_refr.c): sent to displays around flush_cb, with the frame buffer in use"
+
+[event_policy.LV_EVENT_FLUSH_FINISH]
+handler = "none"
+why = "display event (lv_refr.c): sent to displays around flush_cb, with the frame buffer in use"
+
+[event_policy.LV_EVENT_FLUSH_WAIT_START]
+handler = "none"
+why = "display event (lv_refr.c): sent to displays, not objects"
+
+[event_policy.LV_EVENT_FLUSH_WAIT_FINISH]
+handler = "none"
+why = "display event (lv_refr.c): sent to displays, not objects"
+
+[event_policy.LV_EVENT_SYNC_START]
+handler = "none"
+why = "display event: sent to displays, not objects"
+
+[event_policy.LV_EVENT_SYNC_FINISH]
+handler = "none"
+why = "display event: sent to displays, not objects"
+
+[event_policy.LV_EVENT_SYNC_WAIT_START]
+handler = "none"
+why = "display event: sent to displays, not objects"
+
+[event_policy.LV_EVENT_SYNC_WAIT_FINISH]
+handler = "none"
+why = "display event: sent to displays, not objects"
+
+[event_policy.LV_EVENT_UPDATE_LAYOUT_COMPLETED]
+handler = "none"
+why = "display event (lv_obj_pos.c:354): sent to displays, not objects"
+
+[event_policy.LV_EVENT_VSYNC]
+handler = "none"
+why = "display event: sent to displays, not objects"
+
+[event_policy.LV_EVENT_VSYNC_REQUEST]
+handler = "none"
+why = "display event: sent to displays, not objects"
+
+# Holds made harmless by a runtime check, with the check and the reason.
+# A hazard is skipped when its region (as `--verbose` prints it) is listed
+# and its freer (or holding frame) is covered.
+[guarded.anim_list]
+regions = ["Obj(_lv_anim_t)"]
+holders = ["misc/lv_anim::anim_timer"]
+check = "LVGL: state.anim_list_changed, set by every animation removal (lv_anim.c, anim_mark_list_change)"
+why = "anim_timer reads the animation after its callbacks only if the list did not change (lv_anim.c:640, 672, 675, 692) and restarts from the head otherwise"
+
+[guarded.timer_list]
+regions = ["Obj(_lv_timer_t)"]
+holders = ["misc/lv_timer::lv_timer_exec", "lv_timer_handler"]
+check = "LVGL: state.timer_deleted / timer_created, set by lv_timer_delete and lv_timer_create (lv_timer.c)"
+why = "lv_timer_exec touches the timer after its callback only if no timer was deleted (lv_timer.c:369), and lv_timer_handler restarts from the head when one was created or deleted (lv_timer.c:104)"
+
+[guarded.anim_unlinked]
+regions = ["Obj(_lv_anim_t)"]
+holders = [
+    "misc/lv_anim::anim_completed_handler",
+    "display/lv_display::scr_anim_completed",
+    "misc/lv_anim::remove_anim",
+    "lv_anim_delete",
+]
+check = "LVGL: animations are unlinked before their callbacks run (anim_completed_handler, lv_anim.c:723; remove_anim, lv_anim.c:878), and lv_anim_delete restarts from the head after a removal (lv_anim.c:198-200)"
+why = "animation removals find animations by walking the list (lv_anim_delete, lv_anim_delete_all, remove_concurrent_anims in lv_anim.c), so they cannot free an animation whose callbacks are running: its owner frees it afterwards (lv_anim.c:735, 886)"
+
+[guarded.async_info]
+regions = ["Buf(_lv_timer_t.3)"]
+freers = ["lv_async_call_cancel"]
+check = "LVGL: lv_async_call_cancel frees the user data only of timers whose callback is lv_async_timer_cb (lv_async.c:81-88)"
+why = "the timers whose user data other frames keep (input device read timers, lv_indev.c) run other callbacks"
+
+[guarded.event_list_cleanup]
+regions = ["Copy(*_lv_event_list_t.0/*)"]
+holders = ["lv_event_send"]
+via = ["misc/lv_event::cleanup_event_list_core"]
+check = "LVGL: list->is_traversing: a nested lv_event_send returns before its cleanup (lv_event.c:143) and cleanup_event_list returns while the list is traversed (lv_event.c:495); removals only mark descriptors meanwhile"
+why = "lv_event_send's copy of the list header (lv_event.c:111) is never freed under it by cleanups other than its own, which runs after the traversal"
+
+[guarded.event_list_add_obj]
+regions = ["Copy(*_lv_event_list_t.0/*)"]
+holders = ["lv_event_send"]
+freers = ["lv_obj_add_event_cb"]
+check = "lvgl-rust: Obj::add_handler returns Busy inside callbacks while lvgl_sys_obj_events_traversing(obj) (lvgl-rust/src/event.rs; lvgl-rust-sys/shims/lvgl_sys.c)"
+why = "growing an object's handler list reallocates it under lv_event_send's copy of the header, which is freed again if the object is deleted during the send (lv_event.c:111, 145): H1"
+
+[guarded.event_list_add_display_indev]
+regions = [
+    "Copy(_lv_event_list_t.0/*)",
+    "Copy(*_lv_display_t.*_lv_event_list_t.0/*)",
+    "Copy(*_lv_indev_t.*_lv_event_list_t.0/*)",
+]
+holders = ["lv_event_send"]
+via = ["lv_display_add_event_cb", "lv_indev_add_event_cb"]
+check = "LVGL: lv_event_send uses its copy only when the event was marked deleted during the send (lv_event.c:145), which for displays and input devices only lv_display_delete and lv_indev_delete do (both exclusive)"
+why = "adding a handler to a display (lv_label_mark_need_refr_text, lv_label.c:1151) or an input device reallocates its list, but no shared code can delete the display or input device being sent to, so the stale copy is never used"

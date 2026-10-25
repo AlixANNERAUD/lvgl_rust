@@ -4,7 +4,7 @@ use lvgl_rust::{
     Lvgl, LvglAccess, Obj, Session,
     enums::{Align, LabelLongMode, State},
     functions, init,
-    widgets::{Bar, Button, Label, Slider, Switch},
+    widgets::{Bar, Button, Dropdown, Label, Slider, Switch},
 };
 use std::sync::{Mutex, MutexGuard};
 
@@ -40,15 +40,21 @@ fn labels_take_copied_and_static_text() {
         let text = std::ffi::CString::new("temporary").unwrap();
         label.set_text(Some(&text));
     } // freed: LVGL keeps its own copy
-    // SAFETY: session held, live label.
-    let stored =
-        unsafe { core::ffi::CStr::from_ptr(lvgl_rust::sys::lv_label_get_text(label.as_ptr())) };
-    assert_eq!(stored, c"temporary");
-    label.set_text_static(Some(c"static"));
-    label.set_long_mode(LabelLongMode::DOTS);
-    assert_eq!(label.get_long_mode(), LabelLongMode::DOTS);
+    let mut buf = [0u8; 16];
+    assert_eq!(label.get_text_into(&mut buf), Ok(Some(c"temporary")));
+    label.set_text_static(Some(c"static")).unwrap();
     drop(lv);
     let mut lv = Lvgl::enter(&mut guard).unwrap();
+    // Deletes the label's animations, which other frames may be running:
+    // exclusive access.
+    lv.edit(|lv| lv.screen_active()?.child(-1)?.downcast::<Label>())
+        .unwrap()
+        .set_long_mode(LabelLongMode::DOTS);
+    let label = lv.screen_active().unwrap().child(-1).unwrap();
+    assert_eq!(
+        label.downcast::<Label>().unwrap().get_long_mode(),
+        LabelLongMode::DOTS
+    );
     lv.edit(|lv| lv.screen_active()?.child(-1))
         .unwrap()
         .delete()
@@ -161,4 +167,146 @@ fn pure_functions_need_no_token() {
         (made.red, made.green, made.blue)
     );
     assert!(functions::pct(50) != 50);
+}
+
+#[test]
+fn text_is_copied_out_of_views_and_borrowed_under_exclusive_access() {
+    let mut guard = guard();
+    let mut lv = session(&mut guard);
+    let label = Label::create(lv.screen_active().unwrap()).unwrap();
+    label.set_text(Some(c"hello"));
+    let mut buf = [0u8; 8];
+    assert_eq!(label.get_text_into(&mut buf), Ok(Some(c"hello")));
+    let mut small = [0u8; 5]; // no room for the NUL
+    assert_eq!(
+        label.get_text_into(&mut small),
+        Err(lvgl_rust::Error::TooSmall)
+    );
+    {
+        fn last_label(lv: &Lvgl) -> Option<&Label> {
+            lv.screen_active()?.child(-1)?.downcast()
+        }
+        let mut edit = lv.edit(last_label).unwrap();
+        assert_eq!(edit.get_text(), Some(c"hello"));
+    }
+    // NULL comes back as `None`: a dropdown has no fixed text by default.
+    let dropdown = Dropdown::create(lv.screen_active().unwrap()).unwrap();
+    assert_eq!(dropdown.get_text_into(&mut buf), Ok(None));
+    lv.edit(|lv| lv.screen_active()?.child(-1))
+        .unwrap()
+        .delete()
+        .unwrap();
+    lv.edit(|lv| lv.screen_active()?.child(-1))
+        .unwrap()
+        .delete()
+        .unwrap();
+}
+
+#[test]
+fn labels_take_str_and_numbers() {
+    let mut guard = guard();
+    let mut lv = session(&mut guard);
+    let label = Label::create(lv.screen_active().unwrap()).unwrap();
+    let mut buf = [0u8; 128];
+    let mut text = |label: &Label| {
+        label
+            .get_text_into(&mut buf)
+            .unwrap()
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_owned()
+    };
+    // Multi-byte characters across the 31-byte chunk boundaries.
+    let long = "héllo wörld, ça va très bien — 日本語のテキスト 🎉🎉 fin";
+    label.set_text_str(long).unwrap();
+    assert_eq!(text(label), long);
+    label.set_text_str("").unwrap();
+    assert_eq!(text(label), "");
+    assert_eq!(
+        label.set_text_str("a\0b"),
+        Err(lvgl_rust::Error::InvalidArg)
+    );
+    // Replaces static text too.
+    label.set_text_static(Some(c"static")).unwrap();
+    label.set_text_str("dynamic").unwrap();
+    assert_eq!(text(label), "dynamic");
+    label.set_text_i32(i32::MIN);
+    assert_eq!(text(label), "-2147483648");
+    label.set_text_u32(u32::MAX);
+    assert_eq!(text(label), "4294967295");
+    label.set_text_i32(0);
+    assert_eq!(text(label), "0");
+    lv.edit(|lv| lv.screen_active()?.child(-1))
+        .unwrap()
+        .delete()
+        .unwrap();
+}
+
+/// Composite deletion paths, for ASan (`mise run test-asan`): an open
+/// dropdown deletes the list it put on the top layer, a closed message box
+/// deletes its parts (and its backdrop when it has one).
+#[test]
+fn composites_free_their_parts_when_deleted() {
+    use lvgl_rust::widgets::MsgBox;
+    let mut guard = guard();
+    let mut lv = session(&mut guard);
+    // The dropdown puts its list on the screen, after itself.
+    let index = Dropdown::create(lv.screen_active().unwrap())
+        .unwrap()
+        .get_index();
+    fn dropdown(lv: &Lvgl, index: i32) -> Option<&Dropdown> {
+        lv.screen_active()?.child(index)?.downcast()
+    }
+    let children = lv.screen_active().unwrap().get_child_count();
+    lv.edit(|lv| dropdown(lv, index)).unwrap().open();
+    assert!(dropdown(&lv, index).unwrap().get_list().is_some());
+    lv.edit(|lv| dropdown(lv, index)).unwrap().delete().unwrap();
+    lv.timer_handler();
+    assert_eq!(lv.screen_active().unwrap().get_child_count(), children - 2);
+
+    fn last_msgbox(lv: &Lvgl) -> Option<&MsgBox> {
+        lv.screen_active()?.child(-1)?.downcast()
+    }
+    MsgBox::create(lv.screen_active().unwrap()).unwrap();
+    // SAFETY: session held, live message box: adds a header and footer.
+    unsafe {
+        let mbox = last_msgbox(&lv).unwrap().as_ptr();
+        lvgl_rust::sys::lv_msgbox_add_title(mbox, c"Title".as_ptr());
+        lvgl_rust::sys::lv_msgbox_add_close_button(mbox);
+        lvgl_rust::sys::lv_msgbox_add_footer_button(mbox, c"OK".as_ptr());
+    }
+    let children = lv.screen_active().unwrap().get_child_count();
+    lv.edit(last_msgbox).unwrap().close();
+    lv.timer_handler();
+    assert_eq!(lv.screen_active().unwrap().get_child_count(), children - 1);
+}
+
+#[cfg(feature = "fmt")]
+#[test]
+fn labels_take_formatted_text() {
+    let mut guard = guard();
+    let mut lv = session(&mut guard);
+    let label = Label::create(lv.screen_active().unwrap()).unwrap();
+    let value = 3.5f32;
+    label
+        .set_text_fmt(format_args!("{} élans, {value:.2} — {:>8}|", 42, "日本"))
+        .unwrap();
+    let mut buf = [0u8; 64];
+    let text = label
+        .get_text_into(&mut buf)
+        .unwrap()
+        .unwrap()
+        .to_str()
+        .unwrap();
+    assert_eq!(text, "42 élans, 3.50 —       日本|");
+    assert_eq!(
+        label.set_text_fmt(format_args!("a{}b", '\0')),
+        Err(lvgl_rust::Error::InvalidArg)
+    );
+    assert_eq!(lvgl_rust::Error::Dead.to_string(), "the object was deleted");
+    lv.edit(|lv| lv.screen_active()?.child(-1))
+        .unwrap()
+        .delete()
+        .unwrap();
 }

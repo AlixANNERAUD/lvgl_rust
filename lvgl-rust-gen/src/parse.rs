@@ -81,6 +81,8 @@ pub struct Bindings {
     pub structs: BTreeMap<String, bool>,
     /// `pub static name: T;` in extern blocks (class descriptors, ...).
     pub statics: BTreeSet<String>,
+    /// The type of each static.
+    pub static_types: BTreeMap<String, CType>,
 }
 
 impl Bindings {
@@ -131,6 +133,8 @@ impl Bindings {
                         }
                         ForeignItem::Static(s) => {
                             self.statics.insert(s.ident.to_string());
+                            self.static_types
+                                .insert(s.ident.to_string(), CType::from_syn(&s.ty));
                         }
                         _ => {}
                     }

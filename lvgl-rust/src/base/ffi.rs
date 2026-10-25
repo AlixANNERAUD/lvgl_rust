@@ -42,6 +42,25 @@ pub(crate) unsafe fn obj_set_parent(obj: *mut lv_obj_t, parent: *mut lv_obj_t) {
     unsafe { sys::lv_obj_set_parent(obj, parent) }
 }
 
+pub(crate) unsafe fn obj_move_to_index(obj: *mut lv_obj_t, index: i32) {
+    unsafe { sys::lv_obj_move_to_index(obj, index) }
+}
+
+#[cfg(not(lvgl_rust_views_only))]
+pub(crate) unsafe fn group_delete(group: *mut sys::lv_group_t) {
+    unsafe { sys::lv_group_delete(group) }
+}
+
+#[cfg(all(feature = "heap", not(lvgl_rust_views_only)))]
+pub(crate) unsafe fn timer_user_data(timer: *mut sys::lv_timer_t) -> *mut core::ffi::c_void {
+    unsafe { sys::lv_timer_get_user_data(timer) }
+}
+
+#[cfg(not(lvgl_rust_views_only))]
+pub(crate) unsafe fn timer_delete(timer: *mut sys::lv_timer_t) {
+    unsafe { sys::lv_timer_delete(timer) }
+}
+
 pub(crate) unsafe fn obj_parent(obj: *const lv_obj_t) -> *mut lv_obj_t {
     unsafe { sys::lv_obj_get_parent(obj) }
 }

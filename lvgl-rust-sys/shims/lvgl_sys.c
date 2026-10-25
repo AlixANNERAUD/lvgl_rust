@@ -33,6 +33,18 @@ bool lvgl_sys_obj_is_deleting(const lv_obj_t * obj)
     return obj->is_deleting;
 }
 
+bool lvgl_sys_obj_events_traversing(const lv_obj_t * obj)
+{
+    return obj->spec_attr != NULL && obj->spec_attr->event_list.is_traversing;
+}
+
+#if LV_USE_KEYBOARD
+void lvgl_sys_keyboard_forget_textarea(lv_obj_t * keyboard)
+{
+    ((lv_keyboard_t *)keyboard)->ta = NULL;
+}
+#endif
+
 #if LV_USE_OBJ_ID
 void lvgl_sys_obj_set_id_raw(lv_obj_t * obj, void * id)
 {

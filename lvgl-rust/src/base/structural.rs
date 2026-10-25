@@ -256,6 +256,32 @@ pub(crate) fn check_set_parent(o: *mut lv_obj_t, parent: *mut lv_obj_t) -> Resul
     Ok(())
 }
 
+/// Creating a child of `parent` appends it to `parent`'s children, which a
+/// widget can mistake for one of its own (a tileview casts every child to
+/// a tile) or count as one of its indexed children.
+pub(crate) fn check_create(parent: *mut lv_obj_t) -> Result<(), Error> {
+    if accepts_children(parent) {
+        Ok(())
+    } else {
+        Err(Error::Internal)
+    }
+}
+
+/// Moving `o` among its siblings shifts their indexes: the same conditions
+/// as moving it out of its parent and back in.
+pub(crate) fn move_to_index(o: *mut lv_obj_t, index: i32) -> Result<(), Error> {
+    let p = parent(o);
+    if p.is_null() {
+        return Err(Error::InvalidArg); // a screen: LVGL would ignore the call
+    }
+    if is_layer(o) || is_protected(o) || !accepts_children(p) {
+        return Err(Error::Internal);
+    }
+    // SAFETY: exclusive access, checks passed.
+    unsafe { ffi::obj_move_to_index(o, index) };
+    Ok(())
+}
+
 pub(crate) fn delete(o: *mut lv_obj_t) -> Result<(), Error> {
     check_delete(o)?;
     // SAFETY: exclusive access, checks passed.

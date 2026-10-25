@@ -40,12 +40,18 @@ pub fn emit(classifier: &Classifier, plans: &BTreeMap<String, Plan>) -> String {
         }
     }
 
+    for (c_type, t) in &classifier.tables.overrides.types {
+        if t.emit && classifier.is_enum(c_type) {
+            enums.insert(c_type.clone());
+        }
+    }
     let enum_items = enums.iter().map(|e| emit_enum(classifier, e));
     let widget_items = classes.iter().map(|c| emit_widget(classifier, c));
 
     let mut by_class: BTreeMap<String, Vec<TokenStream>> = BTreeMap::new();
     let mut by_objmut: BTreeMap<String, Vec<TokenStream>> = BTreeMap::new();
     let mut on_lvgl = Vec::new();
+    let mut on_style = Vec::new();
     let mut free = Vec::new();
     // `ObjMut` methods of a class are emitted for that class only (generic
     // impls of different classes would overlap); base object methods are
@@ -58,6 +64,8 @@ pub fn emit(classifier: &Classifier, plans: &BTreeMap<String, Plan>) -> String {
         "as_raw",
         "delete",
         "clean",
+        "move_to_index",
+        "remove_from_group",
         "set_parent",
         "set_parent_to",
         "load_screen",
@@ -67,6 +75,22 @@ pub fn emit(classifier: &Classifier, plans: &BTreeMap<String, Plan>) -> String {
         .filter(|m| matches!(m.shape, Shape::ObjMut { .. }) && m.class.as_deref() == Some("obj"))
         .map(|m| m.name.clone())
         .chain(CORE_OBJMUT.iter().map(|n| (*n).to_owned()))
+        .collect();
+    // A string inside the object: a copy-out `x_into` on the view and a
+    // borrow on `ObjMut`.
+    let methods: Vec<Method> = methods
+        .iter()
+        .flat_map(|m| {
+            if m.ret == RetPlan::BorrowedStr && m.shape == Shape::View {
+                let mut into = (*m).clone();
+                into.name = format!("{}_into", m.name);
+                let mut borrow = (*m).clone();
+                borrow.shape = Shape::ObjMut { consumes: false };
+                vec![into, borrow]
+            } else {
+                vec![(*m).clone()]
+            }
+        })
         .collect();
     for m in &methods {
         let renamed;
@@ -79,7 +103,7 @@ pub fn emit(classifier: &Classifier, plans: &BTreeMap<String, Plan>) -> String {
             renamed = copy;
             &renamed
         } else {
-            *m
+            m
         };
         let tokens = emit_method(classifier, m);
         match (&m.shape, &m.class) {
@@ -90,6 +114,7 @@ pub fn emit(classifier: &Classifier, plans: &BTreeMap<String, Plan>) -> String {
                 by_objmut.entry(class.clone()).or_default().push(tokens)
             }
             (Shape::LvglShared | Shape::LvglExclusive, _) => on_lvgl.push(tokens),
+            (Shape::Style, _) => on_style.push(tokens),
             (Shape::Free, _) => free.push(tokens),
             _ => unreachable!("class-less view method {}", m.c_name),
         }
@@ -107,12 +132,37 @@ pub fn emit(classifier: &Classifier, plans: &BTreeMap<String, Plan>) -> String {
         }
     });
     let lvgl_impl = (!on_lvgl.is_empty()).then(|| quote! { impl crate::Lvgl { #(#on_lvgl)* } });
+    let style_impl =
+        (!on_style.is_empty()).then(|| quote! { impl crate::StyleMut<'_> { #(#on_style)* } });
+    let props = methods.iter().filter_map(|m| emit_prop(classifier, m));
+    let prop_ids: Vec<TokenStream> = methods
+        .iter()
+        .filter(|m| m.shape == Shape::Style)
+        .filter_map(|m| {
+            let property = m.name.strip_prefix("set_")?;
+            let id = Ident::new(&style_prop_id(classifier, property)?, Span::call_site());
+            let name = Ident::new(&property.to_ascii_uppercase(), Span::call_site());
+            Some(quote! {
+                pub const #name: Self = Self(crate::sys::#id as crate::sys::lv_style_prop_t);
+            })
+        })
+        .collect();
+    let prop_ids = (!prop_ids.is_empty()).then(|| {
+        quote! {
+            #[allow(clippy::unnecessary_cast)]
+            impl crate::StyleProp { #(#prop_ids)* }
+        }
+    });
+    let events = emit_events(classifier);
+    let fonts = emit_fonts(classifier);
+    let draw_buf = emit_draw_buf(classifier);
     let composites = emit_composites(classifier);
 
     let file = quote! {
         /// Enum and flags types, with the values of these bindings.
         pub mod enums {
             #(#enum_items)*
+            #events
         }
 
         /// Widget view types.
@@ -125,9 +175,20 @@ pub fn emit(classifier: &Classifier, plans: &BTreeMap<String, Plan>) -> String {
             #(#free)*
         }
 
+        /// Properties of a [`ConstStyle`](crate::ConstStyle), for
+        /// [`const_style!`](crate::const_style): one constructor per style
+        /// property of these bindings.
+        pub mod props {
+            #(#props)*
+        }
+
         #(#class_impls)*
         #(#objmut_impls)*
         #lvgl_impl
+        #style_impl
+        #prop_ids
+        #fonts
+        #draw_buf
         #composites
     };
     let file: syn::File = syn::parse2(file).expect("generated code parses");
@@ -272,6 +333,91 @@ fn emit_enum(classifier: &Classifier, c_type: &str) -> TokenStream {
     }
 }
 
+/// From `events.toml`: the handler mask and the event codes safe code may
+/// send (codes missing from these bindings are left out).
+fn emit_events(classifier: &Classifier) -> TokenStream {
+    let present: Vec<(&String, &crate::tables::EventEntry)> = classifier
+        .tables
+        .events
+        .code
+        .iter()
+        .filter(|(name, _)| {
+            classifier
+                .bindings
+                .consts
+                .contains_key(&format!("lv_event_code_t_{name}"))
+        })
+        .collect();
+    let words = present
+        .iter()
+        .map(|(_, e)| e.value as usize / 64 + 1)
+        .max()
+        .unwrap_or(1);
+    let mut mask = vec![0u64; words];
+    for (_, e) in &present {
+        if e.handler == "shared" {
+            mask[e.value as usize / 64] |= 1 << (e.value % 64);
+        }
+    }
+    let mask = mask.iter().map(|w| {
+        let lit = proc_macro2::Literal::u64_unsuffixed(*w);
+        quote!(#lit)
+    });
+    let consts = |sendable: &[&str]| -> Vec<TokenStream> {
+        present
+            .iter()
+            .filter(|(_, e)| sendable.contains(&e.sendable.as_str()))
+            .map(|(name, _)| {
+                let c_ident = format_ident!("lv_event_code_t_{}", name);
+                let short = name.strip_prefix("LV_EVENT_").unwrap_or(name);
+                let ident = Ident::new(&rust_ident(short), Span::call_site());
+                quote! { pub const #ident: Self = Self(crate::sys::#c_ident as u32); }
+            })
+            .collect()
+    };
+    let words = proc_macro2::Literal::usize_unsuffixed(words);
+    let safe = consts(&["shared"]);
+    let sendable = consts(&["shared", "exclusive"]);
+    quote! {
+        /// Event codes whose handlers get shared access, one bit per code
+        /// (`events.toml`, generated by the access audit).
+        pub(crate) const HANDLER_SHARED: [u64; #words] = [#(#mask),*];
+
+        /// An event code safe code may send with shared access
+        /// ([`Obj::send_event`](crate::Obj::send_event)): no handler LVGL
+        /// installs deletes or frees what other frames hold for it, and
+        /// none reads its parameter (sent as NULL).
+        #[repr(transparent)]
+        #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+        pub struct SafeEventCode(pub(crate) u32);
+
+        #[allow(clippy::unnecessary_cast)] // the bindgen alias may already be `u32`
+        impl SafeEventCode {
+            #(#safe)*
+        }
+
+        /// An event code safe code may send with exclusive access
+        /// ([`ObjMut::send_event`](crate::ObjMut::send_event)): its
+        /// handlers may delete objects, the receiver included, but read no
+        /// parameter (sent as NULL).
+        #[repr(transparent)]
+        #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+        pub struct SendableEventCode(pub(crate) u32);
+
+        #[allow(clippy::unnecessary_cast)] // the bindgen alias may already be `u32`
+        impl SendableEventCode {
+            #(#sendable)*
+        }
+
+        impl From<SafeEventCode> for SendableEventCode {
+            #[inline]
+            fn from(code: SafeEventCode) -> Self {
+                Self(code.0)
+            }
+        }
+    }
+}
+
 fn emit_method(classifier: &Classifier, m: &Method) -> TokenStream {
     let c_fn = Ident::new(&m.c_name, Span::call_site());
     let name = Ident::new(&m.name, Span::call_site());
@@ -283,6 +429,7 @@ fn emit_method(classifier: &Classifier, m: &Method) -> TokenStream {
         return quote! {
             #doc
             pub fn create(parent: &crate::Obj) -> Result<&Self, crate::Error> {
+                crate::base::gen_support::check_create(parent.as_ptr())?;
                 // SAFETY: shared access through the parent view; creation
                 // frees nothing.
                 let p = unsafe { crate::sys::#c_fn(parent.as_ptr()) };
@@ -305,10 +452,11 @@ fn emit_method(classifier: &Classifier, m: &Method) -> TokenStream {
     let mut call_args = Vec::new();
     match m.shape {
         Shape::View => call_args.push(quote!(crate::base::gen_support::ptr_of(self))),
-        Shape::ObjMut { .. } => call_args.push(quote!(self.as_raw())),
+        Shape::ObjMut { .. } | Shape::Style => call_args.push(quote!(self.as_raw())),
         _ => {}
     }
     let mut out = None;
+    let mut generics = quote!();
     for p in &m.params {
         if let ParamPlan::Out { name, ty } = p {
             let n = Ident::new(name, Span::call_site());
@@ -324,11 +472,48 @@ fn emit_method(classifier: &Classifier, m: &Method) -> TokenStream {
     let receiver = match m.shape {
         Shape::View | Shape::LvglShared => quote!(&self,),
         Shape::ObjMut { consumes: true } => quote!(self,),
-        Shape::ObjMut { consumes: false } | Shape::LvglExclusive => quote!(&mut self,),
+        Shape::ObjMut { consumes: false } | Shape::LvglExclusive | Shape::Style => {
+            quote!(&mut self,)
+        }
         Shape::Free | Shape::Create => quote!(),
     };
+    if m.ret == RetPlan::BorrowedStr && m.shape == Shape::View {
+        args.push(quote!(buf: &'b mut [u8]));
+        generics = quote!(<'b>);
+    }
+    // Other objects of exclusive calls are handles, resolved first.
+    let handles: Vec<TokenStream> = m
+        .params
+        .iter()
+        .filter_map(|p| match p {
+            ParamPlan::ObjHandle { name, nullable } => {
+                let n = Ident::new(name, Span::call_site());
+                Some(if *nullable {
+                    quote! {
+                        let #n = match #n {
+                            Some(h) => crate::base::gen_support::resolve_obj(h)?,
+                            None => core::ptr::null_mut(),
+                        };
+                    }
+                } else {
+                    quote!(let #n = crate::base::gen_support::resolve_obj(#n)?;)
+                })
+            }
+            _ => None,
+        })
+        .collect();
     let call = quote!(crate::sys::#c_fn(#(#call_args),*));
     let (ret_ty, body) = match &m.ret {
+        RetPlan::BorrowedStr if m.shape == Shape::View => (
+            quote!(-> Result<Option<&'b core::ffi::CStr>, crate::Error>),
+            quote!(crate::base::gen_support::copy_str(unsafe { #call }, buf)),
+        ),
+        // Exclusive access, borrowed for as long as the string: nothing
+        // can change or free it meanwhile.
+        RetPlan::BorrowedStr => (
+            quote!(-> Option<&core::ffi::CStr>),
+            quote!(crate::base::gen_support::borrow_str(unsafe { #call })),
+        ),
         RetPlan::Unit => (quote!(), quote!(unsafe { #call })),
         RetPlan::Scalar(ty) => {
             let ty: syn::Type = syn::parse_str(ty).unwrap();
@@ -345,6 +530,20 @@ fn emit_method(classifier: &Classifier, m: &Method) -> TokenStream {
                 quote!(crate::enums::#ty(unsafe { #call } as u32)),
             )
         }
+        RetPlan::Observer => (
+            quote!(-> Result<(), crate::Error>),
+            quote! {
+                if unsafe { #call }.is_null() {
+                    Err(crate::Error::OutOfMemory)
+                } else {
+                    Ok(())
+                }
+            },
+        ),
+        RetPlan::Font => (
+            quote!(-> Option<&crate::Font>),
+            quote!(crate::base::gen_support::font(unsafe { #call })),
+        ),
         RetPlan::View(None) => (
             quote!(-> Option<&crate::Obj>),
             quote!(crate::base::gen_support::getter_view(unsafe { #call })),
@@ -382,14 +581,40 @@ fn emit_method(classifier: &Classifier, m: &Method) -> TokenStream {
             )
         }
     };
+    // Resolving handles can fail: the result becomes a `Result`.
+    let returns_result = matches!(m.ret, RetPlan::Observer);
+    let (ret_ty, body, cfg) = if handles.is_empty() {
+        (ret_ty, body, quote!())
+    } else {
+        let cfg = quote!(#[cfg(not(lvgl_rust_views_only))]);
+        if returns_result {
+            (ret_ty, quote! { #(#handles)* #body }, cfg)
+        } else {
+            if ret_ty.is_empty() {
+                (
+                    quote!(-> Result<(), crate::Error>),
+                    quote! { #(#handles)* #body; Ok(()) },
+                    cfg,
+                )
+            } else {
+                let inner = strip_arrow(ret_ty);
+                (
+                    quote!(-> Result<#inner, crate::Error>),
+                    quote! { #(#handles)* let value = { #body }; Ok(value) },
+                    cfg,
+                )
+            }
+        }
+    };
     // Safety of every call: the receiver (view, `ObjMut`, `Lvgl`) proves
     // the access the table assigns to the function, and each parameter is
     // mapped to a type that upholds what LVGL expects of it.
     quote! {
         #doc
+        #cfg
         #[inline]
         #[allow(clippy::unnecessary_cast, clippy::too_many_arguments)]
-        pub fn #name(#receiver #(#args),*) #ret_ty {
+        pub fn #name #generics(#receiver #(#args),*) #ret_ty {
             #body
         }
     }
@@ -464,7 +689,209 @@ fn emit_param(p: &ParamPlan) -> (TokenStream, TokenStream) {
                 (quote!(#n: #ty), quote!(#n.as_ptr()))
             }
         }
+        ParamPlan::Style {
+            name,
+            nullable: false,
+        } => {
+            let n = ident(name);
+            (
+                quote!(#n: impl Into<crate::StyleRef>),
+                quote!(#n.into().as_ptr()),
+            )
+        }
+        ParamPlan::Style {
+            name,
+            nullable: true,
+        } => {
+            let n = ident(name);
+            (
+                quote!(#n: Option<crate::StyleRef>),
+                quote!(#n.map_or(core::ptr::null(), crate::StyleRef::as_ptr)),
+            )
+        }
+        ParamPlan::Font {
+            name,
+            nullable: false,
+        } => {
+            let n = ident(name);
+            (quote!(#n: &'static crate::Font), quote!(#n.as_ptr()))
+        }
+        ParamPlan::Font {
+            name,
+            nullable: true,
+        } => {
+            let n = ident(name);
+            (
+                quote!(#n: Option<&'static crate::Font>),
+                quote!(#n.map_or(core::ptr::null(), crate::Font::as_ptr)),
+            )
+        }
+        ParamPlan::Retained {
+            name,
+            ty,
+            by_value,
+            nullable,
+        } => {
+            let n = ident(name);
+            let t = ident(ty);
+            let ty = if *by_value {
+                quote!(crate::#t)
+            } else {
+                quote!(&'static crate::#t)
+            };
+            if *nullable {
+                (
+                    quote!(#n: Option<#ty>),
+                    quote!(#n.map_or(core::ptr::null(), |v| v.as_ptr().cast())),
+                )
+            } else {
+                (quote!(#n: #ty), quote!(#n.as_ptr().cast()))
+            }
+        }
+        ParamPlan::ObjHandle { name, nullable } => {
+            let n = ident(name);
+            if *nullable {
+                (quote!(#n: Option<crate::Handle<crate::Obj>>), quote!(#n))
+            } else {
+                (quote!(#n: crate::Handle<crate::Obj>), quote!(#n))
+            }
+        }
+        ParamPlan::Selector { name } => {
+            let n = ident(name);
+            (
+                quote!(#n: impl Into<crate::Selector>),
+                quote!(#n.into().bits()),
+            )
+        }
         ParamPlan::Out { .. } => unreachable!("handled by emit_method"),
+    }
+}
+
+/// A `const` property constructor for a style setter
+/// (`lv_style_set_<p>(style, value)`), if its value fits a constant.
+fn emit_prop(classifier: &Classifier, m: &Method) -> Option<TokenStream> {
+    if m.shape != Shape::Style || m.ret != RetPlan::Unit {
+        return None;
+    }
+    let property = m.name.strip_prefix("set_")?;
+    let [param] = m.params.as_slice() else {
+        return None;
+    };
+    let id = Ident::new(&style_prop_id(classifier, property)?, Span::call_site());
+    // `lv_style_value_t` field, as the setters of `lv_style_gen.c` fill it.
+    let (arg, value) = match param {
+        ParamPlan::Scalar { ty, .. }
+            if !matches!(
+                ty.as_str(),
+                "f32" | "f64" | "core::ffi::c_float" | "core::ffi::c_double"
+            ) =>
+        {
+            let ty: syn::Type = syn::parse_str(ty).unwrap();
+            (quote!(value: #ty), quote!(num: value as i32))
+        }
+        ParamPlan::Enum { c_type, .. } => {
+            let ty = Ident::new(&type_name(c_type), Span::call_site());
+            (
+                quote!(value: crate::enums::#ty),
+                quote!(num: value.0 as i32),
+            )
+        }
+        ParamPlan::Struct { c_type, .. } if c_type == "lv_color_t" => {
+            (quote!(value: crate::sys::lv_color_t), quote!(color: value))
+        }
+        ParamPlan::Font {
+            nullable: false, ..
+        } => (
+            quote!(value: &'static crate::Font),
+            quote!(ptr: (value as *const crate::Font).cast()),
+        ),
+        // A property set to NULL is unset: constants always point to data.
+        ParamPlan::Retained { ty, by_value, .. } => {
+            let t = Ident::new(ty, Span::call_site());
+            let ty = if *by_value {
+                quote!(crate::#t)
+            } else {
+                quote!(&'static crate::#t)
+            };
+            (quote!(value: #ty), quote!(ptr: value.as_ptr().cast()))
+        }
+        _ => return None,
+    };
+    let name = Ident::new(&m.name["set_".len()..], Span::call_site());
+    let doc = format!(" `{}` (`{}`).", property, m.c_name);
+    Some(quote! {
+        #[doc = #doc]
+        #[inline]
+        #[allow(clippy::unnecessary_cast)]
+        pub const fn #name(#arg) -> crate::ConstProp {
+            crate::ConstProp::new(
+                crate::sys::#id as crate::sys::lv_style_prop_t,
+                crate::sys::lv_style_value_t { #value },
+            )
+        }
+    })
+}
+
+/// `DrawBuf`, aligned to `LV_DRAW_BUF_ALIGN` (a literal: `repr(align)`
+/// takes no constant expression).
+fn emit_draw_buf(classifier: &Classifier) -> TokenStream {
+    let Some(&align) = classifier.bindings.consts.get("LV_DRAW_BUF_ALIGN") else {
+        return quote!();
+    };
+    let align = proc_macro2::Literal::usize_unsuffixed(align.max(1) as usize);
+    quote! {
+        /// A draw buffer for a [`Display`](crate::Display): a `static`
+        /// aligned to `LV_DRAW_BUF_ALIGN`, claimed by the display that uses
+        /// it.
+        #[repr(C, align(#align))]
+        pub struct DrawBuf<const BYTES: usize> {
+            pub(crate) data: core::cell::UnsafeCell<[u8; BYTES]>,
+            pub(crate) claimed: core::cell::Cell<bool>,
+        }
+    }
+}
+
+/// The constant of a style property (`LV_STYLE_BG_COLOR`, ...).
+fn style_prop_id(classifier: &Classifier, property: &str) -> Option<String> {
+    let id = format!("LV_STYLE_{}", property.to_ascii_uppercase());
+    ["_lv_style_id_t_", ""]
+        .iter()
+        .map(|prefix| format!("{prefix}{id}"))
+        .find(|c| classifier.bindings.consts.contains_key(c))
+}
+
+/// `Font` constructors for the fonts these bindings declare
+/// (`lv_font_montserrat_14`, ...).
+fn emit_fonts(classifier: &Classifier) -> TokenStream {
+    let fonts = classifier
+        .bindings
+        .static_types
+        .iter()
+        .filter(|(_, ty)| ty.named() == Some("lv_font_t"))
+        .map(|(c_name, _)| {
+            let c_ident = Ident::new(c_name, Span::call_site());
+            let name = Ident::new(
+                &rust_ident(c_name.strip_prefix("lv_font_").unwrap_or(c_name)),
+                Span::call_site(),
+            );
+            let doc = format!(" `{c_name}`.");
+            quote! {
+                #[doc = #doc]
+                #[inline]
+                pub const fn #name() -> &'static Self {
+                    // SAFETY: a constant font of the C library.
+                    unsafe { Self::from_raw(&*core::ptr::addr_of!(crate::sys::#c_ident)) }
+                }
+            }
+        })
+        .collect::<Vec<_>>();
+    if fonts.is_empty() {
+        return quote!();
+    }
+    quote! {
+        impl crate::Font {
+            #(#fonts)*
+        }
     }
 }
 

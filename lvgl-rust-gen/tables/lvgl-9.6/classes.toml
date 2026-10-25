@@ -14,6 +14,27 @@ manual = [
     "lv_screen_load",
     "lv_screen_load_anim",
     "lv_init",
+    "lv_style_init",
+    # Reorders children: checked like a move (structural.rs).
+    "lv_obj_move_to_index",
+    # Copies one entry per button: length-checked (button_map.rs).
+    "lv_buttonmatrix_set_ctrl_map",
+    # The open list's label shows the options as static text: re-pointed
+    # after every change (manual.rs).
+    "lv_dropdown_set_options",
+    "lv_dropdown_set_options_static",
+    "lv_dropdown_clear_options",
+    # A textarea edits its label's text in place (manual.rs).
+    "lv_label_set_text_static",
+    # The needle divides by max - min (lv_scale.c:329, 384) (manual.rs).
+    "lv_scale_set_range",
+    "lv_scale_set_min_value",
+    "lv_scale_set_max_value",
+    # Shims the core uses; they assume the object's class.
+    "lvgl_sys_menu_part",
+    "lvgl_sys_obj_is_deleting",
+    "lvgl_sys_obj_events_traversing",
+    "lvgl_sys_keyboard_forget_textarea",
     "lv_deinit",
     "lv_timer_handler",
 ]
@@ -163,6 +184,9 @@ max_depth = 1
 [composite.msgbox]
 parts = ["lv_msgbox_get_header", "lv_msgbox_get_title", "lv_msgbox_get_footer", "lv_msgbox_get_content"]
 max_depth = 2
+# The close button's callback deletes parent(parent(button)) as the message
+# box (lv_msgbox.c:313-321, 295): the header's children stay in place.
+indexed = { lv_msgbox_get_header = 1 }
 
 # spinbox inherits it.
 [composite.textarea]
@@ -173,16 +197,10 @@ max_depth = 1
 parts = ["child:0"]
 max_depth = 1
 
-# Deprecated in 9.6: protects menu objects reached through views. The
-# sidebar accessors return NULL unless a sidebar is shown.
-[composite.menu]
-parts = [
-    "shim:menu.storage", "shim:menu.main", "shim:menu.main_header",
-    "shim:menu.main_header_back_btn", "shim:menu.main_header_title",
-    "shim:menu.sidebar", "shim:menu.sidebar_header",
-    "shim:menu.sidebar_header_back_btn", "shim:menu.sidebar_header_title",
-]
-max_depth = 3
+# No entry for menu: LVGL keeps pointers to its pages and to the selected
+# sidebar entry, at any depth inside them (lv_menu.c:237, 245, 832, 884),
+# and every lv_menu_* function is deprecated in 9.6 (menus come from raw
+# code only): everything inside a menu stays refused.
 
 # LVGL finds the bar and content by child index, the pages by child count
 # and the buttons and their labels by typed index (lv_tabview.c:114, 126-130,
@@ -191,3 +209,24 @@ max_depth = 3
 parts = ["lv_tabview_get_tab_bar", "lv_tabview_get_content"]
 max_depth = 3
 indexed = { lv_tabview_get_tab_bar = 2, lv_tabview_get_content = 1 }
+
+# No child, no object pointer (lv_arclabel.c:380-401).
+[composite.arclabel]
+parts = []
+max_depth = 1
+
+# A dropdown's list: open and draw take child 0 as its label, unchecked
+# (lv_dropdown.c:818, 1484-1491).
+[composite.dropdownlist]
+parts = ["child:0"]
+max_depth = 1
+
+# Message box buttons: their only child is a label or an icon, which
+# nothing refers back to (lv_msgbox.c:182-186, 248-252).
+[composite.msgbox_header_button]
+parts = []
+max_depth = 1
+
+[composite.msgbox_footer_button]
+parts = []
+max_depth = 1

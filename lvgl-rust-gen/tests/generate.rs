@@ -16,6 +16,23 @@ pub type lv_obj_t = _lv_obj_t;
 #[repr(C)] pub struct lv_color_t { pub blue: u8, pub green: u8, pub red: u8 }
 #[repr(C)] pub struct lv_area_t { pub x1: i32, pub y1: i32, pub x2: i32, pub y2: i32 }
 pub type lv_opa_t = u8;
+#[repr(C)] pub struct lv_style_t { pub values_and_props: *mut core::ffi::c_void, pub has_group: u32, pub prop_cnt: u8 }
+#[repr(C)] pub struct lv_font_t { pub line_height: i32 }
+#[repr(C)] pub struct lv_subject_t { pub type_: u32 }
+#[repr(C)] pub struct _lv_observer_t { _unused: [u8; 0] }
+pub type lv_observer_t = _lv_observer_t;
+pub type lv_style_prop_t = u8;
+pub type lv_style_selector_t = u32;
+pub type _lv_style_id_t = core::ffi::c_uint;
+pub const _lv_style_id_t_LV_STYLE_BG_COLOR: _lv_style_id_t = 73;
+pub const _lv_style_id_t_LV_STYLE_RADIUS: _lv_style_id_t = 12;
+pub const _lv_style_id_t_LV_STYLE_TEXT_FONT: _lv_style_id_t = 90;
+pub type lv_event_code_t = core::ffi::c_uint;
+pub const lv_event_code_t_LV_EVENT_CLICKED: lv_event_code_t = 10;
+pub const lv_event_code_t_LV_EVENT_KEY: lv_event_code_t = 21;
+pub const lv_event_code_t_LV_EVENT_DRAW_MAIN: lv_event_code_t = 33;
+pub const lv_event_code_t_LV_EVENT_VALUE_CHANGED: lv_event_code_t = 39;
+pub const lv_event_code_t_LV_EVENT_SCREEN_LOADED: lv_event_code_t = 70;
 pub type lv_anim_enable_t = bool;
 pub type lv_align_t = core::ffi::c_uint;
 pub const lv_align_t_LV_ALIGN_CENTER: lv_align_t = 9;
@@ -29,8 +46,24 @@ unsafe extern "C" {
     pub static lv_bar_class: lv_obj_class_t;
     pub static lv_slider_class: lv_obj_class_t;
     pub static lv_label_class: lv_obj_class_t;
+    pub static lv_image_class: lv_obj_class_t;
     pub static lv_textarea_class: lv_obj_class_t;
     pub static lv_msgbox_class: lv_obj_class_t;
+    pub static lv_font_montserrat_14: lv_font_t;
+
+    pub fn lv_style_set_bg_color(style: *mut lv_style_t, value: lv_color_t);
+    pub fn lv_style_set_radius(style: *mut lv_style_t, value: i32);
+    pub fn lv_style_set_text_font(style: *mut lv_style_t, value: *const lv_font_t);
+    pub fn lv_style_set_bg_image_src(style: *mut lv_style_t, value: *const core::ffi::c_void);
+    pub fn lv_image_set_src(obj: *mut lv_obj_t, src: *const core::ffi::c_void);
+    pub fn lv_style_copy(dst: *mut lv_style_t, src: *const lv_style_t);
+    pub fn lv_style_is_empty(style: *const lv_style_t) -> bool;
+    pub fn lv_obj_add_style(obj: *mut lv_obj_t, style: *const lv_style_t, selector: lv_style_selector_t);
+    pub fn lv_obj_remove_style(obj: *mut lv_obj_t, style: *const lv_style_t, selector: lv_style_selector_t);
+    pub fn lv_obj_get_style_text_font(obj: *const lv_obj_t, part: u32) -> *const lv_font_t;
+    pub fn lv_font_get_line_height(font: *const lv_font_t) -> i32;
+    pub fn lv_font_get_default() -> *const lv_font_t;
+    pub fn lv_font_set_kerning(font: *mut lv_font_t, kerning: u32);
 
     pub fn lv_obj_set_size(obj: *mut lv_obj_t, w: i32, h: i32);
     pub fn lv_obj_set_opa(obj: *mut lv_obj_t, opa: lv_opa_t);
@@ -50,11 +83,14 @@ unsafe extern "C" {
     pub fn lv_bar_select(obj: *mut lv_obj_t, sel_opt: u32);
     pub fn lv_slider_create(parent: *mut lv_obj_t) -> *mut lv_obj_t;
     pub fn lv_slider_get_value(obj: *const lv_obj_t) -> i32;
+    pub fn lv_slider_bind_value(obj: *mut lv_obj_t, subject: *mut lv_subject_t) -> *mut lv_observer_t;
     pub fn lv_label_create(parent: *mut lv_obj_t) -> *mut lv_obj_t;
     pub fn lv_label_set_text(obj: *mut lv_obj_t, text: *const core::ffi::c_char);
     pub fn lv_label_set_text_static(obj: *mut lv_obj_t, text: *const core::ffi::c_char);
     pub fn lv_label_set_text_fmt(obj: *mut lv_obj_t, fmt: *const core::ffi::c_char, ...);
     pub fn lv_label_set_recolor_text(obj: *mut lv_obj_t, text: *const core::ffi::c_char);
+    pub fn lv_label_get_text(obj: *const lv_obj_t) -> *mut core::ffi::c_char;
+    pub fn lv_label_get_letter(obj: *const lv_obj_t) -> *mut core::ffi::c_char;
     pub fn lv_textarea_get_label(obj: *const lv_obj_t) -> *mut lv_obj_t;
     pub fn lv_textarea_set_placeholder_text(obj: *mut lv_obj_t, txt: *const core::ffi::c_char);
     pub fn lv_msgbox_close(mbox: *mut lv_obj_t);
@@ -88,6 +124,12 @@ void lv_obj_old(lv_obj_t * obj);
  * @param parent    the new parent @nullable
  */
 void lv_msgbox_set_parent_or_null(lv_obj_t * mbox, lv_obj_t * parent);
+
+/**
+ * Remove a style from an object.
+ * @param style     the style, NULL for every style @nullable
+ */
+void lv_obj_remove_style(lv_obj_t * obj, const lv_style_t * style, lv_style_selector_t selector);
 "#;
 
 const ACCESS: &str = r#"
@@ -123,6 +165,8 @@ access = "exclusive"
 access = "shared"
 [fn.lv_slider_get_value]
 access = "shared"
+[fn.lv_slider_bind_value]
+access = "exclusive"
 [fn.lv_label_create]
 access = "shared"
 [fn.lv_label_set_text]
@@ -132,6 +176,10 @@ access = "shared"
 [fn.lv_label_set_text_fmt]
 access = "shared"
 [fn.lv_label_set_recolor_text]
+access = "shared"
+[fn.lv_label_get_text]
+access = "shared"
+[fn.lv_label_get_letter]
 access = "shared"
 [fn.lv_textarea_get_label]
 access = "shared"
@@ -157,6 +205,32 @@ access = "shared"
 access = "shared"
 [fn.lv_tick_inc]
 access = "isr"
+[fn.lv_style_set_bg_color]
+access = "shared"
+[fn.lv_style_set_radius]
+access = "pure"
+[fn.lv_style_set_text_font]
+access = "shared"
+[fn.lv_style_set_bg_image_src]
+access = "shared"
+[fn.lv_image_set_src]
+access = "exclusive"
+[fn.lv_style_copy]
+access = "shared"
+[fn.lv_style_is_empty]
+access = "shared"
+[fn.lv_obj_add_style]
+access = "exclusive"
+[fn.lv_obj_remove_style]
+access = "exclusive"
+[fn.lv_obj_get_style_text_font]
+access = "shared"
+[fn.lv_font_get_line_height]
+access = "shared"
+[fn.lv_font_get_default]
+access = "pure"
+[fn.lv_font_set_kerning]
+access = "shared"
 "#;
 
 const CLASSES: &str = r#"
@@ -188,10 +262,55 @@ params.text = { kind = "copied_str" }
 params.area = { kind = "copied" }
 [fn.lv_textarea_get_label]
 returns = { view = "label" }
+[fn.lv_label_get_text]
+returns = "borrowed_internal"
 [fn.lv_bar_select]
 params.sel_opt = { kind = "checked" }
 [fn.lv_obj_get_coords]
 params.coords = { kind = "out" }
+[fn.lv_image_set_src]
+params.src = { kind = "retained", rust = "ImageSrc" }
+[fn.lv_slider_bind_value]
+params.subject = { kind = "retained", rust = "IntSubject" }
+[fn.lv_style_set_bg_image_src]
+params.value = { kind = "retained", rust = "ImageSrc" }
+"#;
+
+const EVENTS: &str = r#"
+[code.LV_EVENT_CLICKED]
+value = 10
+handler = "shared"
+deleting = true
+param = []
+sendable = "exclusive"
+
+[code.LV_EVENT_KEY]
+value = 21
+handler = "shared"
+deleting = false
+param = ["lv_event_get_param"]
+sendable = "no"
+
+[code.LV_EVENT_DRAW_MAIN]
+value = 33
+handler = "restricted"
+deleting = false
+param = ["lv_event_get_layer"]
+sendable = "no"
+
+[code.LV_EVENT_VALUE_CHANGED]
+value = 39
+handler = "shared"
+deleting = false
+param = []
+sendable = "shared"
+
+[code.LV_EVENT_SCREEN_LOADED]
+value = 70
+handler = "shared"
+deleting = false
+param = []
+sendable = "shared"
 "#;
 
 fn inputs() -> (Bindings, Headers) {
@@ -202,7 +321,9 @@ fn inputs() -> (Bindings, Headers) {
 }
 
 fn load(access: &str, classes: &str, overrides: &str) -> Result<Tables, lvgl_rust_gen::Error> {
-    Tables::parse(access, classes, RELATIONS, &[overrides], &[])
+    let mut tables = Tables::parse(access, classes, RELATIONS, &[overrides], &[])?;
+    tables.parse_events(EVENTS)?;
+    Ok(tables)
 }
 
 fn check_golden(name: &str, actual: &str) {
@@ -314,6 +435,22 @@ fn table_errors_always_fail() {
             format!("{CLASSES}\n[composite.roller]\nparts = [\"child:0\"]\nmax_depth = 0\n"),
             "max_depth must be at least 1",
         ),
+        (
+            ACCESS.to_owned(),
+            format!(
+                "{OVERRIDES}\n[fn.lv_obj_set_user_data]\nparams.user_data = {{ kind = \"retained\", rust = \"Anything\" }}\n"
+            ),
+            CLASSES.to_owned(),
+            "unknown rust type `Anything`",
+        ),
+        (
+            ACCESS.to_owned(),
+            format!(
+                "{OVERRIDES}\n[fn.lv_obj_set_user_data]\nparams.user_data = {{ kind = \"copied\", rust = \"ImageSrc\" }}\n"
+            ),
+            CLASSES.to_owned(),
+            "`rust` needs kind = \"retained\"",
+        ),
     ];
     for (access, overrides, classes, expected) in cases {
         let tables = load(&access, &classes, &overrides).unwrap();
@@ -327,6 +464,69 @@ fn table_errors_always_fail() {
         error.to_string().contains("either `param` or `raw = true`"),
         "{error}"
     );
+}
+
+#[test]
+fn event_tables_are_checked_against_the_bindings() {
+    let (bindings, headers) = inputs();
+    let output = generate_from(
+        &bindings,
+        &headers,
+        &load(ACCESS, CLASSES, OVERRIDES).unwrap(),
+        true,
+    )
+    .unwrap();
+    // CLICKED (10), KEY (21), VALUE_CHANGED (39) in the first word,
+    // SCREEN_LOADED (70) in the second; DRAW_MAIN is restricted.
+    let mask = (1u64 << 10) | (1 << 21) | (1 << 39);
+    assert!(
+        output.code.contains(&format!(
+            "HANDLER_SHARED: [u64; 2] = [{mask}, {}]",
+            1u64 << 6
+        )),
+        "{}",
+        output.code
+    );
+    let cases = [
+        (
+            "value = 10",
+            "value = 11",
+            "has value 11 but the bindings say 10",
+        ),
+        (
+            "sendable = \"shared\"\n\n[code.LV_EVENT_SCREEN_LOADED]",
+            "sendable = \"bogus\"\n\n[code.LV_EVENT_SCREEN_LOADED]",
+            "cannot be sendable \"bogus\"",
+        ),
+        (
+            "param = [\"lv_event_get_param\"]\nsendable = \"no\"",
+            "param = [\"lv_event_get_param\"]\nsendable = \"shared\"",
+            "[code.LV_EVENT_KEY] cannot be sendable \"shared\"",
+        ),
+        (
+            "handler = \"restricted\"",
+            "handler = \"maybe\"",
+            "handler \"maybe\"",
+        ),
+    ];
+    for (from, to, expected) in cases {
+        let mut tables = Tables::parse(ACCESS, CLASSES, RELATIONS, &[OVERRIDES], &[]).unwrap();
+        assert!(EVENTS.contains(from), "{from}");
+        tables.parse_events(&EVENTS.replacen(from, to, 1)).unwrap();
+        let error = generate_from(&bindings, &headers, &tables, false).unwrap_err();
+        assert!(error.to_string().contains(expected), "{error}");
+    }
+    // A code this configuration does not have is stale.
+    let mut tables = load(ACCESS, CLASSES, OVERRIDES).unwrap();
+    tables
+        .parse_events(&format!(
+            "{EVENTS}\n[code.LV_EVENT_GONE]\nvalue = 90\nhandler = \"shared\"\ndeleting = false\nsendable = \"shared\"\n"
+        ))
+        .unwrap();
+    let output = generate_from(&bindings, &headers, &tables, false).unwrap();
+    assert!(output.warnings.iter().any(|w| w.contains("LV_EVENT_GONE")));
+    assert!(!output.code.contains("GONE"));
+    assert!(generate_from(&bindings, &headers, &tables, true).is_err());
 }
 
 #[test]

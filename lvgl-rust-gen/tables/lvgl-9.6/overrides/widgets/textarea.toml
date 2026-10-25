@@ -22,3 +22,19 @@ why = "lv_textarea.c:364-372 uses lv_realloc for placeholder_txt, then lv_strcpy
 [fn.lv_textarea_set_text]
 params.txt = { kind = "copied_str" }
 why = "Not retained: lv_label_set_text (lv_textarea.c:320) copies through set_text_internal, using lv_malloc and copy_text_to_label (lv_label.c:1076-1080). add_text only reads it (lv_textarea.c:318, 1481), and pwd_tmp gets lv_strdup(txt) at line 336. NULL is rejected by LV_CHECK_ARG at line 304."
+
+[fn.lv_textarea_get_text]
+returns = "borrowed_internal"
+why = "lv_textarea.c:571-586 returns the label's text, or ta->pwd_tmp in password mode (owned by the textarea, NULL if its allocation failed)."
+
+[fn.lv_textarea_get_placeholder_text]
+returns = "borrowed_internal"
+why = "lv_textarea.c:588-595 returns ta->placeholder_txt (the textarea's copy) or a literal."
+
+[fn.lv_textarea_get_password_bullet]
+returns = "borrowed_internal"
+why = "lv_textarea.c:629-645 returns ta->pwd_bullet (the textarea's copy) or a string literal."
+
+[fn.lv_textarea_get_accepted_chars]
+returns = "borrowed_internal"
+why = "lv_textarea.c:655-662 returns ta->accepted_chars: the textarea's copy, the list given to the _static variant, or NULL."

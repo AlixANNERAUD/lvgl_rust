@@ -4,8 +4,9 @@ params.btn_id = { kind = "checked" }
 why = "lv_buttonmatrix.c:204 has a plain if(btn_id >= btnm->btn_cnt) return; before ctrl_bits[btn_id] at line 206. invalidate_button_area checks again at lv_buttonmatrix.c:984 and :990."
 
 [fn.lv_buttonmatrix_get_button_text]
+returns = "borrowed_internal"
 params.btn_id = { kind = "checked" }
-why = "lv_buttonmatrix.c:283 rejects LV_BUTTONMATRIX_BUTTON_NONE and line 286 has a plain if(btn_id >= btnm->btn_cnt) return NULL; before the map walk at lines 293-297, which therefore stays inside the btn_cnt buttons of the map."
+why = "lv_buttonmatrix.c:283 rejects LV_BUTTONMATRIX_BUTTON_NONE and line 286 has a plain if(btn_id >= btnm->btn_cnt) return NULL; before the map walk at lines 293-297, which therefore stays inside the btn_cnt buttons of the map. Returns: lv_buttonmatrix.c:279-302 returns an entry of map_p, the map the widget was given, or NULL."
 
 [fn.lv_buttonmatrix_has_button_ctrl]
 params.btn_id = { kind = "checked" }
@@ -22,3 +23,7 @@ why = "lv_buttonmatrix.c:241 has a plain if(btn_id >= btnm->btn_cnt) return; bef
 [fn.lv_buttonmatrix_set_selected_button]
 params.btn_id = { kind = "checked" }
 why = "lv_buttonmatrix.c:171 returns unless btn_id < btn_cnt or btn_id is BUTTON_NONE. invalidate_button_area returns for NONE or out-of-range values (lv_buttonmatrix.c:984, 990), and btn_id_sel elsewhere is treated as a NONE-capable id."
+
+[fn.lv_buttonmatrix_set_map]
+params.map = { kind = "retained", rust = "ButtonMap" }
+why = "lv_buttonmatrix.c:137-138 counts the buttons up to the first NULL or empty string (836-844) and keeps map_p, which every redraw and get_button_text walk again. ButtonMap is 'static and terminated by an empty string, with none before."

@@ -15,7 +15,8 @@
 //!
 //! Build variables: `LVGL_RUST_HANDLE_SLOTS` (registry size, default 32;
 //! `0` for views only, without handles) and `LVGL_RUST_MAX_CALLBACK_DEPTH`
-//! (default 16).
+//! (default 16) and `LVGL_RUST_POST_SLOTS` (entries of [`Lvgl::post`],
+//! default 4).
 
 #![no_std]
 
@@ -24,9 +25,38 @@ mod config {
     include!(concat!(env!("OUT_DIR"), "/config.rs"));
 }
 
+#[cfg(feature = "allocator")]
+mod allocator;
+mod anim;
 mod base;
+mod button_map;
+#[cfg(not(lvgl_rust_views_only))]
+mod component;
+mod display;
 mod error;
+mod event;
+#[cfg(not(lvgl_rust_views_only))]
+mod group;
+#[cfg(feature = "heap")]
+mod heap;
+mod image;
+#[cfg(any(feature = "heap", feature = "allocator"))]
+mod heap_align {
+    /// What every allocator LVGL uses guarantees: the builtin TLSF aligns
+    /// to a pointer (`lv_tlsf.c`), C `malloc` to at least that, and an
+    /// `LvglAllocator` must.
+    pub(crate) const HEAP_ALIGN: usize = core::mem::size_of::<usize>();
+}
+mod indev;
+mod manual;
+#[cfg(feature = "async")]
+mod queue;
 mod screen;
+mod style;
+mod subject;
+mod text;
+#[cfg(not(lvgl_rust_views_only))]
+mod timer;
 
 /// Wrappers generated from this build's bindings and the reviewed tables of
 /// `lvgl-rust-gen` (the list of what is wrapped is `$OUT_DIR/coverage.txt`).
@@ -43,12 +73,35 @@ mod generated {
     include!(concat!(env!("OUT_DIR"), "/gen.rs"));
 }
 
-pub use generated::{enums, functions, widgets};
+pub use generated::{DrawBuf, enums, functions, props, widgets};
 
 #[cfg(test)]
 mod tests;
 
+#[cfg(feature = "allocator")]
+pub use allocator::{LvglAllocator, SizedHeader};
+pub use anim::{Anim, AnimCtx};
 pub use base::*;
+pub use button_map::{ButtonMap, MapEntry};
+#[cfg(not(lvgl_rust_views_only))]
+pub use component::Component;
+pub use display::{Display, DisplayCell, DrawBuffers, Flush, FlushDone, FlushRequest, RenderMode};
 pub use error::Error;
+#[cfg(not(lvgl_rust_views_only))]
+pub use event::EventSub;
+pub use event::{Event, Handler, HandlerResult, UserData, handler_allowed};
+#[cfg(not(lvgl_rust_views_only))]
+pub use group::Group;
+pub use image::{ImageColorkey, ImageData, ImageDsc, ImageSrc, PixelFormat};
+pub use indev::{Indev, IndevCell, IndevData, IndevKind, Read};
 pub use lvgl_rust_sys as sys;
+#[cfg(feature = "async")]
+pub use queue::{Receiver, Recv, StaticQueue, StaticRx, next_event};
 pub use screen::{ScreenAnim, ScreenLoadAnim};
+pub use style::{
+    AnimPath, ColorFilter, ConstProp, ConstStyle, Font, GradDir, GradDsc, Selector, Style,
+    StyleMut, StyleProp, StyleRef, TransitionDsc, color,
+};
+pub use subject::{ColorSubject, IntSubject, ObserverCtx};
+#[cfg(not(lvgl_rust_views_only))]
+pub use timer::{Timer, TimerCtx};

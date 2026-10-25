@@ -17,6 +17,23 @@ extern "C"
     /** Whether `obj` is being deleted (its `LV_EVENT_DELETE` was sent). */
     bool lvgl_sys_obj_is_deleting(const lv_obj_t * obj);
 
+    /**
+     * Whether LVGL is sending an event to `obj` right now (its event list is
+     * being traversed): adding a handler may reallocate the list under a
+     * copy of its header that LVGL frees if the object is deleted during
+     * the send (lv_event.c:111, 145).
+     */
+    bool lvgl_sys_obj_events_traversing(const lv_obj_t * obj);
+
+#if LV_USE_KEYBOARD
+    /**
+     * Makes a keyboard forget its textarea without touching it (unlike
+     * `lv_keyboard_set_textarea(kb, NULL)`), for when the textarea is being
+     * deleted.
+     */
+    void lvgl_sys_keyboard_forget_textarea(lv_obj_t * keyboard);
+#endif
+
 #if LV_USE_OBJ_ID
     /** Stores `id` in the object without calling `lv_obj_free_id` or
      *  `lv_obj_assign_id`, for applications that implement the OBJ_ID hooks. */

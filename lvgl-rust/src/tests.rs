@@ -506,7 +506,11 @@ mod model {
             // SAFETY: test lock held, live parent.
             let widget = unsafe { ffi::obj_create_other(plain.as_ptr()) };
             let widget = unsafe { Obj::from_raw(&lv, core::ptr::NonNull::new(widget).unwrap()) };
-            let part = Obj::create(widget).unwrap();
+            // Nothing is created inside it either; a widget makes its own.
+            assert_eq!(Obj::create(widget).err(), Some(Error::Internal));
+            // SAFETY: test lock held, live parent.
+            let part = unsafe { ffi::obj_create(widget.as_ptr()) };
+            let part = unsafe { Obj::from_raw(&lv, core::ptr::NonNull::new(part).unwrap()) };
             assert_eq!(part.own().err(), Some(Error::Internal));
             assert_eq!(part.delete_later(), Err(Error::Internal));
             assert_eq!(widget.clean_later(), Err(Error::Internal));
@@ -736,6 +740,77 @@ mod lvgl_only {
         assert_eq!(calendar.clean_later(), Err(Error::Internal));
         let calendar = calendar.handle().unwrap();
         calendar.get_mut(&mut lv).unwrap().delete().unwrap();
+    }
+
+    #[test]
+    fn message_box_header_buttons_stay_in_place() {
+        let mut guard = guard();
+        let mut lv = session(&mut guard);
+        let screen = lv.screen_active().unwrap();
+        // SAFETY: session held, live parent. The close button's callback
+        // deletes parent(parent(button)) as the message box.
+        let (msgbox, close) = unsafe {
+            let mbox = sys::lv_msgbox_create(screen.as_ptr());
+            (mbox, sys::lv_msgbox_add_close_button(mbox))
+        };
+        let screen = screen.handle().unwrap();
+        let close = from_raw(&lv, close).handle().unwrap();
+        let mut edit = close.get_mut(&mut lv).unwrap();
+        assert_eq!(edit.set_parent(screen), Err(Error::Internal));
+        assert_eq!(edit.move_to_index(0), Err(Error::Internal));
+        assert_eq!(edit.delete(), Err(Error::Internal));
+        let msgbox = from_raw(&lv, msgbox).handle().unwrap();
+        msgbox.get_mut(&mut lv).unwrap().delete().unwrap();
+    }
+
+    #[test]
+    fn children_are_created_and_reordered_only_where_no_index_shifts() {
+        use crate::widgets::Label;
+        let mut guard = guard();
+        let mut lv = session(&mut guard);
+        let screen = lv.screen_active().unwrap();
+        // SAFETY: session held, live parent.
+        let (tabview, page, content, bar, calendar) = unsafe {
+            let tv = sys::lv_tabview_create(screen.as_ptr());
+            let page = sys::lv_tabview_add_tab(tv, c"One".as_ptr());
+            let content = sys::lv_tabview_get_content(tv);
+            let bar = sys::lv_tabview_get_tab_bar(tv);
+            (
+                tv,
+                page,
+                content,
+                bar,
+                sys::lv_calendar_create(screen.as_ptr()),
+            )
+        };
+        // The tab view indexes its pages; the calendar is not in the tables.
+        for parent in [tabview, content, calendar] {
+            let parent = from_raw(&lv, parent);
+            assert_eq!(Obj::create(parent).err(), Some(Error::Internal));
+            assert_eq!(Label::create(parent).err(), Some(Error::Internal));
+        }
+        Obj::create(from_raw(&lv, page)).unwrap();
+        // Siblings in a plain object can be reordered.
+        let parent = Obj::create(screen).unwrap();
+        let parent_handle = parent.handle().unwrap();
+        Obj::create(parent).unwrap();
+        let second = Obj::create(parent).unwrap();
+        let second_ptr = second.as_ptr();
+        let second = second.handle().unwrap();
+        second.get_mut(&mut lv).unwrap().move_to_index(0).unwrap();
+        let parent = parent_handle.get(&lv).unwrap();
+        assert_eq!(parent.child(0).unwrap().as_ptr(), second_ptr);
+        // Tab buttons are found by index.
+        let button = from_raw(&lv, bar).child(0).unwrap().handle().unwrap();
+        assert_eq!(
+            button.get_mut(&mut lv).unwrap().move_to_index(-1),
+            Err(Error::Internal)
+        );
+        parent_handle.get_mut(&mut lv).unwrap().delete().unwrap();
+        for widget in [tabview, calendar] {
+            let widget = from_raw(&lv, widget).handle().unwrap();
+            widget.get_mut(&mut lv).unwrap().delete().unwrap();
+        }
     }
 
     fn lv_screen(lv: &Lvgl) -> &Obj {
