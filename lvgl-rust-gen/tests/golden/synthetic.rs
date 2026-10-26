@@ -654,8 +654,18 @@ pub(crate) const MAX_PARTS: usize = 1usize;
 #[cfg_attr(miri, allow(dead_code))]
 pub(crate) static COMPOSITES: &[crate::base::structural::Composite] = &[
     crate::base::structural::Composite {
+        class: core::ptr::addr_of!(crate ::sys::lv_slider_class),
+        max_depth: 1u8,
+        closed: true,
+        pinned: true,
+        indexed: &[],
+        parts: slider_parts,
+    },
+    crate::base::structural::Composite {
         class: core::ptr::addr_of!(crate ::sys::lv_textarea_class),
         max_depth: 1u8,
+        closed: false,
+        pinned: false,
         indexed: &[0u8],
         parts: textarea_parts,
     },
@@ -663,7 +673,16 @@ pub(crate) static COMPOSITES: &[crate::base::structural::Composite] = &[
 /// Widgets that create no child and keep no pointer to their
 /// children.
 #[cfg_attr(miri, allow(dead_code))]
-pub(crate) static LEAVES: &[crate::base::structural::ClassRef] = &[];
+pub(crate) static LEAVES: &[crate::base::structural::ClassRef] = &[
+    crate::base::structural::ClassRef(core::ptr::addr_of!(crate ::sys::lv_bar_class)),
+];
+#[cfg_attr(miri, allow(dead_code))]
+fn slider_parts(
+    _: *mut crate::sys::lv_obj_t,
+    _: &mut [*mut crate::sys::lv_obj_t; MAX_PARTS],
+) -> usize {
+    0
+}
 #[cfg_attr(miri, allow(dead_code))]
 fn textarea_parts(
     o: *mut crate::sys::lv_obj_t,

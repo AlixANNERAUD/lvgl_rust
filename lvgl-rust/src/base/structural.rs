@@ -8,9 +8,12 @@
 //!   tables of `classes.toml` (generated into `COMPOSITES`) list them; parts
 //!   are found at call time, so lazily created ones count. A part, or an
 //!   ancestor of one, cannot be deleted, owned or moved; a widget with parts
-//!   cannot be cleaned; nothing can be moved into an indexed widget. Inside
-//!   a widget class the tables do not list, nothing can be deleted, owned,
-//!   moved or cleaned. Refusals are `Internal`.
+//!   cannot be cleaned; nothing can be moved into an indexed widget. A
+//!   closed widget (a tile view, which casts every child to a tile) gets
+//!   children only from its own API, and a pinned one (a calendar header,
+//!   whose handlers read its parent as the calendar) never changes parent.
+//!   Inside a widget class the tables do not list, nothing can be deleted,
+//!   owned, moved or cleaned. Refusals are `Internal`.
 //! - A screen being loaded, or the previous one during an animated load,
 //!   cannot be deleted yet (`Busy`): LVGL keeps pointers to both. The
 //!   previous screen cannot be loaded either: with `auto_delete`, LVGL
@@ -60,6 +63,12 @@ pub(crate) struct Composite {
     pub(crate) class: *const ffi::lv_obj_class_t,
     /// How deep below the widget its parts can be.
     pub(crate) max_depth: u8,
+    /// LVGL finds or casts the widget's children by position: children
+    /// come only from its own API, and none is moved in or reordered.
+    pub(crate) closed: bool,
+    /// The widget's handlers read its parent as the widget that created
+    /// it: it never moves to another parent.
+    pub(crate) pinned: bool,
     /// Per part: how many levels below it LVGL finds objects by index (0:
     /// none).
     pub(crate) indexed: &'static [u8],
@@ -194,11 +203,11 @@ fn is_protected(x: *mut lv_obj_t) -> bool {
 }
 
 /// Whether `p` can receive a new child without shifting an index LVGL uses:
-/// not an indexed widget, and not a part (or within the indexed levels of
-/// a part) whose children LVGL counts.
+/// not a closed or indexed widget, and not a part (or within the indexed
+/// levels of a part) whose children LVGL counts.
 fn accepts_children(p: *mut lv_obj_t) -> bool {
     known_from(p)
-        && !composites(p).any(|c| c.indexed.iter().any(|&d| d > 0))
+        && !composites(p).any(|c| c.closed || c.indexed.iter().any(|&d| d > 0))
         && !indexed_reach(p).is_some_and(|(d, depth)| d < depth as u32)
 }
 
@@ -241,7 +250,8 @@ pub(crate) fn check_set_parent(o: *mut lv_obj_t, parent: *mut lv_obj_t) -> Resul
     if unsafe { ffi::obj_parent(o) }.is_null() {
         return Err(Error::InvalidArg); // a screen: LVGL would ignore the call
     }
-    if is_protected(o) || !accepts_children(parent) {
+    let pinned = composites(o).any(|c| c.pinned);
+    if pinned || is_protected(o) || !accepts_children(parent) {
         return Err(Error::Internal);
     }
     // Reject `o` itself and its descendants.

@@ -182,9 +182,11 @@ parts = []
 max_depth = 1
 
 [composite.win]
-# Found by child index (lv_win_get_header/content).
+# Found by child index (lv_win_get_header/content): no child goes before
+# them.
 parts = ["lv_win_get_header", "lv_win_get_content"]
 max_depth = 1
+closed = true
 
 [composite.msgbox]
 parts = ["lv_msgbox_get_header", "lv_msgbox_get_title", "lv_msgbox_get_footer", "lv_msgbox_get_content"]
@@ -198,9 +200,12 @@ indexed = { lv_msgbox_get_header = 1 }
 parts = ["lv_textarea_get_label"]
 max_depth = 1
 
+# The label is child 0 (lv_roller.c: lv_obj_get_child(obj, 0) throughout):
+# a child put before it would be cast to a label.
 [composite.roller]
 parts = ["child:0"]
 max_depth = 1
+closed = true
 
 # No entry for menu: LVGL keeps pointers to its pages and to the selected
 # sidebar entry, at any depth inside them (lv_menu.c:237, 245, 832, 884),
@@ -225,6 +230,7 @@ max_depth = 1
 [composite.dropdownlist]
 parts = ["child:0"]
 max_depth = 1
+closed = true
 
 # Message box buttons: their only child is a label or an icon, which
 # nothing refers back to (lv_msgbox.c:182-186, 248-252).
