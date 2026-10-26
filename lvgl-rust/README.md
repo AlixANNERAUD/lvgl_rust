@@ -119,7 +119,9 @@ loop {
 The desktop example (`mise run example`, `examples/desktop.rs`) puts most
 of the API together: drivers in statics, a clock bound to a subject, a
 launcher posting work, window components with a close button, a
-textarea and a keyboard, styles, a timer and an animation.
+textarea and a keyboard, styles, a timer and an animation. It also runs
+on `wasm32-wasip1` (`mise run cross-wasip1` builds it with wasi-sdk and
+runs it, with the tests, under wasmtime): the crate needs no threads.
 
 ## Migrating from raw `lvgl-rust-sys` code
 

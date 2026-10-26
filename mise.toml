@@ -7,7 +7,7 @@ min_version = "2026.9.2"
 # `targets` are the cross targets built in CI (`cross-*` tasks).
 # `mr_boxington` routes Cargo through mbx, a shared build cache: LVGL's C
 # objects and the build script output are restored instead of recompiled.
-rust = { version = "stable", components = "rustfmt,clippy,llvm-tools", targets = "wasm32-unknown-unknown,riscv32imc-unknown-none-elf,thumbv6m-none-eabi,thumbv7em-none-eabihf,thumbv8m.main-none-eabihf", mr_boxington = true }
+rust = { version = "stable", components = "rustfmt,clippy,llvm-tools", targets = "wasm32-unknown-unknown,wasm32-wasip1,riscv32imc-unknown-none-elf,thumbv6m-none-eabi,thumbv7em-none-eabihf,thumbv8m.main-none-eabihf", mr_boxington = true }
 mr-boxington = "latest"
 # Coverage (`mise run coverage`).
 "aqua:taiki-e/cargo-llvm-cov" = "latest"
@@ -116,6 +116,28 @@ run = [
   "DEP_LV_CONFIG_PATH={{config_root}}/lvgl-rust/conf CARGO_TARGET_DIR=target/safe-wasm32 cargo build -p lvgl-rust --target wasm32-unknown-unknown",
 ]
 
+[tasks.cross-wasip1]
+description = "Build for wasm32-wasip1 with wasi-sdk, then run the tests and the desktop example under wasmtime"
+# Task-scoped: wasi-sdk's `bin` has its own `clang`, `ar` and `nm`, which
+# must not shadow the host ones for other tasks.
+tools = { "github:WebAssembly/wasi-sdk" = "wasi-sdk-33", wasmtime = "50.0.0" }
+env.RUSTFLAGS = "-D warnings"
+# `wasm32-wasip1-clang` targets WASI and finds the SDK's sysroot itself.
+env.CC_wasm32_wasip1 = "wasm32-wasip1-clang"
+env.AR_wasm32_wasip1 = "llvm-ar"
+env.CARGO_TARGET_WASM32_WASIP1_RUNNER = "wasmtime"
+# bindgen's libclang does not read the SDK's `clang.cfg`: it gets the same
+# sysroot explicitly. Tests that spawn threads (WASI has none) or catch
+# panics (wasm aborts) are ignored on this target.
+run = """
+sdk="$(dirname "$(command -v wasm32-wasip1-clang)")/.."
+export BINDGEN_EXTRA_CLANG_ARGS_wasm32_wasip1="--sysroot=$sdk/share/wasi-sysroot"
+cargo test -p lvgl-rust-sys --lib --target wasm32-wasip1
+export DEP_LV_CONFIG_PATH={{config_root}}/lvgl-rust/conf CARGO_TARGET_DIR=target/safe-wasip1
+cargo test -p lvgl-rust --features async,heap,fmt --target wasm32-wasip1
+cargo run -q -p lvgl-rust --example desktop --target wasm32-wasip1
+"""
+
 [tasks.cross-riscv32]
 description = "Build lvgl-rust-sys for riscv32imc-unknown-none-elf (C toolchain from `mise bootstrap packages apply`)"
 env.RUSTFLAGS = "-D warnings"
@@ -147,7 +169,7 @@ run = [
 [tasks.msrv]
 description = "Check the workspace with the minimum Rust version, on the host and the cross targets"
 # Keep in sync with `rust-version` in the root Cargo.toml.
-tools = { rust = { version = "1.89", targets = "wasm32-unknown-unknown,riscv32imc-unknown-none-elf" } }
+tools = { rust = { version = "1.89", targets = "wasm32-unknown-unknown,wasm32-wasip1,riscv32imc-unknown-none-elf" } }
 env.RUSTFLAGS = "-D warnings"
 # A separate target directory: another compiler version invalidates the
 # regular build.

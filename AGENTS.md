@@ -232,7 +232,9 @@ checks:
   tests for `shadcn-theme`, `color_depth_32`, `color_depth_8` and without string
   functions;
 - cross builds for `wasm32-unknown-unknown` and `riscv32imc-unknown-none-elf`,
-  and `lvgl-rust` firmware for Cortex-M4/M7 and Cortex-M33 (`mise run
+  `wasm32-wasip1` (`mise run cross-wasip1`: wasi-sdk and wasmtime as task
+  tools, then the `-sys` library tests, the `lvgl-rust` tests and the
+  desktop example under wasmtime) and `lvgl-rust` firmware for Cortex-M4/M7 and Cortex-M33 (`mise run
   cross-arm`: thumbv7em and thumbv8m.main, with handles and views only);
 - `lvgl-rust` with 16-bit color, and with 32-bit color and the shadcn
   theme (`mise run test-matrix`);
@@ -538,8 +540,12 @@ review the `access.toml` and `events.toml` diffs.
   comes from `cc`, which honours `CC_<target>`/`CFLAGS_<target>`; give bindgen
   the same headers with `BINDGEN_EXTRA_CLANG_ARGS_<target>` (see the
   `cross-riscv32` task). Targets without a C library (`wasm*-unknown-unknown`)
-  get `shims/freestanding/` on every include path, for `inttypes.h`. The
-  root `[env]` of `mise.toml` points `cc` and bindgen at the Debian/Ubuntu
+  get `shims/freestanding/` on every include path, for `inttypes.h`.
+  `wasm32-wasip1` uses wasi-sdk (`CC_wasm32_wasip1=wasm32-wasip1-clang`,
+  bindgen gets `--sysroot`); WASI has no threads and wasm aborts on panic,
+  so tests that spawn threads or catch panics carry
+  `cfg_attr(target_os = "wasi", ignore)` or `cfg_attr(panic = "abort",
+  ignore)`. The root `[env]` of `mise.toml` points `cc` and bindgen at the Debian/Ubuntu
   riscv32 and arm-none-eabi toolchains. CI builds
   `wasm32-unknown-unknown` and `riscv32imc-unknown-none-elf` (the riscv C
   toolchain is declared in `[bootstrap.packages]` of `mise.toml`, installed
