@@ -1279,9 +1279,8 @@ impl Graph {
             if getters.iter().chain(checked).any(|g| g == node) {
                 continue; // the call itself was counted (or is checked)
             }
-            let function = module
-                .functions
-                .get(node.strip_suffix("#body").unwrap_or(node));
+            // `#body` and specialised nodes run their base function's code.
+            let function = module.functions.get(node.split('#').next().unwrap_or(node));
             for call in function.into_iter().flat_map(|f| &f.calls) {
                 if getters.contains(&call.callee)
                     && call.codes.as_ref().is_none_or(|c| c.contains(&code))
@@ -1545,12 +1544,69 @@ why = "test"
         }
     }
 
+    #[test]
+    fn parameter_reads_are_found_in_specialised_nodes() {
+        let mut m = Module::default();
+        m.add_ir(
+            "t",
+            r#"
+define internal void @obj_delete_core(ptr noundef %0) {
+  ret void
+}
+define dso_local ptr @lv_event_get_param(ptr noundef %0) {
+  ret ptr null
+}
+define dso_local void @lv_group_remove_obj(ptr noundef %0) {
+  call void @obj_delete_core(ptr %0)
+  ret void
+}
+define dso_local void @lv_group_add_obj(ptr noundef %0) {
+  %2 = call ptr @lv_event_get_param(ptr noundef %0)
+  call void @lv_group_remove_obj(ptr %0)
+  ret void
+}
+define dso_local void @lv_obj_class_init_obj(ptr noundef %0, i32 noundef %1) {
+  call void @lv_group_add_obj(ptr %0)
+  ret void
+}
+"#,
+            &[],
+        );
+        let config: AuditConfig = toml::from_str(
+            r#"
+sinks = ["t::obj_delete_core"]
+[send]
+lv_obj_class_init_obj = 1
+[infeasible.fresh]
+context = "lv_obj_class_init_obj -> lv_group_add_obj"
+calls = ["lv_group_remove_obj"]
+why = "test"
+"#,
+        )
+        .unwrap();
+        let graph = Graph::build(&m, &config).unwrap();
+        // The sender reaches `lv_group_add_obj` only through its
+        // specialised node, whose own calls still read the parameter.
+        let getters = ["lv_event_get_param".to_owned()];
+        let (found, witness) = graph
+            .param_reads(&m, "lv_obj_class_init_obj", 7, &getters, &[])
+            .expect("the specialised node reads the parameter");
+        assert!(found.contains("lv_event_get_param"));
+        assert!(
+            witness
+                .iter()
+                .any(|n| n == "lv_group_add_obj#infeasible(fresh)"),
+            "{witness:?}"
+        );
+    }
+
     const CONSTRUCTION_IR: &str = r#"
 %struct._lv_obj_t = type { ptr }
 %struct._lv_obj_class_t = type { ptr, ptr }
 @lv_obj_class = dso_local constant { ptr, ptr } { ptr null, ptr @obj_constructor }, align 8
 @lv_a_class = dso_local constant { ptr, ptr } { ptr @lv_obj_class, ptr @a_constructor }, align 8
 @lv_bad_class = dso_local constant { ptr, ptr } { ptr @lv_obj_class, ptr @bad_constructor }, align 8
+@slot = dso_local global ptr null, align 8
 define dso_local void @sink() {
   ret void
 }
@@ -1632,6 +1688,49 @@ define dso_local ptr @lv_a_meddle(ptr noundef %0) {
   call void @lv_obj_class_init_obj(ptr noundef %6)
   ret ptr %6
 }
+define dso_local ptr @lv_a_store(ptr noundef %0) {
+  %2 = alloca ptr, align 8
+  %3 = alloca ptr, align 8
+  store ptr %0, ptr %2, align 8
+  %4 = load ptr, ptr %2, align 8
+  %5 = call ptr @lv_obj_class_create_obj(ptr noundef @lv_a_class, ptr noundef %4)
+  store ptr %5, ptr %3, align 8
+  %6 = load ptr, ptr %3, align 8
+  %7 = getelementptr inbounds nuw %struct._lv_obj_t, ptr %6, i32 0, i32 0
+  store ptr @lv_bad_class, ptr %7, align 8
+  call void @lv_obj_class_init_obj(ptr noundef %6)
+  ret ptr %6
+}
+define dso_local ptr @lv_a_loop(ptr noundef %0) {
+  %2 = alloca ptr, align 8
+  %3 = alloca ptr, align 8
+  store ptr %0, ptr %2, align 8
+  %4 = load ptr, ptr %2, align 8
+  %5 = call ptr @lv_obj_class_create_obj(ptr noundef @lv_a_class, ptr noundef %4)
+  store ptr %5, ptr %3, align 8
+  br label %6
+
+6:
+  %7 = load ptr, ptr %3, align 8
+  call void @lv_obj_class_init_obj(ptr noundef %7)
+  %8 = icmp eq ptr %7, null
+  br i1 %8, label %6, label %9
+
+9:
+  ret ptr %7
+}
+define dso_local ptr @lv_a_escaped(ptr noundef %0) {
+  %2 = alloca ptr, align 8
+  %3 = alloca ptr, align 8
+  store ptr %0, ptr %2, align 8
+  store ptr %3, ptr @slot, align 8
+  %4 = load ptr, ptr %2, align 8
+  %5 = call ptr @lv_obj_class_create_obj(ptr noundef @lv_a_class, ptr noundef %4)
+  store ptr %5, ptr %3, align 8
+  %6 = load ptr, ptr %3, align 8
+  call void @lv_obj_class_init_obj(ptr noundef %6)
+  ret ptr %6
+}
 "#;
 
     #[test]
@@ -1659,8 +1758,13 @@ why = "test"
         // An `a` runs its own and `lv_obj`'s constructors, not `bad`'s.
         assert_eq!(graph.verdict("lv_a_create"), Verdict::Shared);
         assert!(exclusive("lv_bad_create"));
-        // A call between the creation and `init` could change the class.
+        // A call or a store through a pointer between the creation and
+        // `init` could change the class; so could a loop running `init`
+        // again, or a write through the local's escaped address.
         assert!(exclusive("lv_a_meddle"));
+        assert!(exclusive("lv_a_store"));
+        assert!(exclusive("lv_a_loop"));
+        assert!(exclusive("lv_a_escaped"));
         // Without the table, every constructor is reachable.
         let plain: AuditConfig = toml::from_str("sinks = [\"sink\"]").unwrap();
         let graph = Graph::build(&m, &plain).unwrap();

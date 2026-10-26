@@ -393,7 +393,8 @@ soundness:
   across the codes of the `deleted_cb`s of animations the removal matches
   (they share its `exec_cb` and `var`); and an animation the frame itself
   unlinked from the running list (`unlink`: a must analysis over the
-  blocks, the local not written since) by no other removal, since every
+  blocks, the local not written since and its address never stored or
+  passed to a call) by no other removal, since every
   removal frees only what it finds in that list;
 - object creation is specialised by class (`[construction]`): an
   `lv_obj_class_init_obj(obj)` call whose argument is a local holding only

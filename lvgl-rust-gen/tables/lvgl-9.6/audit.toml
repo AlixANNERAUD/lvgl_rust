@@ -263,10 +263,12 @@ event_parameter = { lv_obj_send_event = 2 }
 # obj->class_p after recursing into its base_class with obj->class_p set to
 # each base in turn (lv_obj_class.c:219-232). Nothing in between writes
 # class_p: lv_theme_apply, which runs first (lv_obj_class.c:111), only
-# removes and adds styles (lv_theme.c:66-76), and the audit requires the
-# creation and the init call to be consecutive calls of one block with no
-# store through a pointer between them. The class chain is read from the
-# initializers of the class globals.
+# removes and adds styles (lv_theme.c:66-76), and the audit requires no
+# other call and no store through a pointer on any path between the
+# creation and the init call, every block in between entered only from
+# earlier ones (no loop runs init again), and a local whose address never
+# escapes. The class chain is read from the initializers of the class
+# globals.
 [construction]
 create = "lv_obj_class_create_obj"
 init = "lv_obj_class_init_obj"
