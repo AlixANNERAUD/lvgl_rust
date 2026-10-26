@@ -190,3 +190,64 @@ fn children_bubble_into_queues_when_asked() {
     assert_eq!(queue.try_recv(&lv), Recv::Closed);
     assert_eq!(rx.try_recv(&lv), Recv::Closed);
 }
+
+/// Deletes its target from inside the recording frame (raw code that
+/// breaks the deferral rules on purpose): DELETE then finds the queue busy
+/// and leaves the free to that frame (AddressSanitizer checks the order).
+fn delete_target(e: &Event<'_>) -> Option<u32> {
+    if e.code() == EventCode::CLICKED {
+        let target = e.target()?.as_ptr();
+        // SAFETY: test only: the session holder runs this callback and
+        // nothing touches the object afterwards.
+        unsafe { sys::lv_obj_delete(target) };
+    }
+    Some(e.code().bits())
+}
+
+#[test]
+fn a_queue_deleted_while_recording_is_freed_by_the_recording_frame() {
+    let mut guard = guard();
+    let lv = session(&mut guard);
+    let object = Obj::create(lv.screen_active().unwrap()).unwrap();
+    let queue = object
+        .subscribe_owned::<u32, 2>(EventCode::CLICKED, delete_target)
+        .unwrap();
+    let counter = Arc::new(Counter(AtomicU32::new(0)));
+    queue.register(&lv, &Waker::from(counter.clone()));
+    send(object, EventCode::CLICKED);
+    // DELETE woke the task; the queue went with the object.
+    assert_eq!(counter.0.load(Relaxed), 1);
+    assert_eq!(Arc::strong_count(&counter), 1);
+    assert_eq!(queue.try_recv(&lv), Recv::Closed);
+}
+
+static CLOSING: Mutex<Option<lvgl_rust::OwnedQueue<u32, 2>>> = Mutex::new(None);
+
+/// Closes the queue it records into (through `Lvgl::assume`, as raw code
+/// may): the handlers are only marked removed while LVGL walks them, and
+/// the frame frees the queue once it returns.
+fn close_own_queue(e: &Event<'_>) -> Option<u32> {
+    if let Some(queue) = CLOSING.lock().unwrap().take() {
+        // SAFETY: test only: the session holder runs this callback, and no
+        // other reference to the token is used while this one lives.
+        queue.close(unsafe { Lvgl::assume() });
+    }
+    Some(e.code().bits())
+}
+
+#[test]
+fn a_queue_closed_while_recording_is_freed_by_the_recording_frame() {
+    let mut guard = guard();
+    let mut lv = session(&mut guard);
+    let object = Obj::create(lv.screen_active().unwrap()).unwrap();
+    let before = event_count(object);
+    let queue = object
+        .subscribe_owned::<u32, 2>(EventCode::CLICKED, close_own_queue)
+        .unwrap();
+    *CLOSING.lock().unwrap() = Some(queue);
+    send(object, EventCode::CLICKED);
+    let object = last(&lv).unwrap();
+    assert_eq!(event_count(object), before);
+    send(object, EventCode::CLICKED);
+    lv.edit(last).unwrap().delete().unwrap();
+}
