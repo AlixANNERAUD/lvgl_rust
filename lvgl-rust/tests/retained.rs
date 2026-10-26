@@ -339,3 +339,51 @@ fn owned_image_sources_live_until_replaced_or_deleted() {
     lv.timer_handler();
     render();
 }
+
+/// Blocks in use on LVGL's builtin heap; `None` with the C library's
+/// `malloc` (AddressSanitizer), which LVGL does not monitor.
+#[cfg(feature = "heap")]
+fn used_blocks() -> Option<usize> {
+    let mut monitor = core::mem::MaybeUninit::<sys::lv_mem_monitor_t>::zeroed();
+    // SAFETY: session held by the caller; LVGL fills the whole struct.
+    let monitor = unsafe {
+        sys::lv_mem_monitor(monitor.as_mut_ptr());
+        monitor.assume_init()
+    };
+    (monitor.total_size != 0).then_some(monitor.used_cnt)
+}
+
+/// A retired owned source is freed by the next drain (entering a session
+/// drains without running LVGL's timers), whether it was replaced or its
+/// image deleted, and the list is empty afterwards.
+#[cfg(feature = "heap")]
+#[test]
+fn retired_image_sources_are_freed_at_the_next_drain() {
+    use lvgl_rust::ImageBuffer;
+    let mut guard = guard();
+    let mut lv = session(&mut guard);
+    fn last_image(lv: &Lvgl) -> Option<&Image> {
+        last(lv)?.downcast()
+    }
+    Image::create(lv.screen_active().unwrap()).unwrap();
+    for _ in 0..2 {
+        let pixels = ImageBuffer::new(PixelFormat::Rgb565, 4, 3, 0, [0x55; 24]).unwrap();
+        lv.edit(last_image).unwrap().set_src_owned(pixels).unwrap();
+    }
+    // The first block is queued; re-entering frees exactly it.
+    let queued = used_blocks();
+    drop(lv);
+    let lv = session(&mut guard);
+    let drained = used_blocks();
+    assert_eq!(drained, queued.map(|count| count - 1));
+    drop(lv);
+    let mut lv = session(&mut guard);
+    assert_eq!(used_blocks(), drained);
+    // Deleting the image retires the second block.
+    lv.edit(last).unwrap().delete().unwrap();
+    let queued = used_blocks();
+    drop(lv);
+    let lv = session(&mut guard);
+    assert_eq!(used_blocks(), queued.map(|count| count - 1));
+    drop(lv);
+}
