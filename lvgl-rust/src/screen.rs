@@ -4,6 +4,7 @@ use lvgl_rust_sys as sys;
 
 /// A screen load animation type (`lv_screen_load_anim_t`).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(transparent)]
 pub struct ScreenLoadAnim(u8);
 
@@ -38,6 +39,7 @@ impl ScreenLoadAnim {
 /// (up to 65.5 s), and whether the previous screen is deleted once the load
 /// completes. 6 bytes.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(C)]
 pub struct ScreenAnim {
     kind: ScreenLoadAnim,

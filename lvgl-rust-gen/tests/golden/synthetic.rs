@@ -5,6 +5,7 @@ pub mod enums {
     /// `lv_state_t`.
     #[repr(transparent)]
     #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+    #[cfg_attr(feature = "defmt", derive(defmt::Format))]
     pub struct State(pub(crate) u32);
     #[allow(clippy::unnecessary_cast)]
     impl State {
@@ -39,6 +40,7 @@ pub mod enums {
     /// none reads its parameter (sent as NULL).
     #[repr(transparent)]
     #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+    #[cfg_attr(feature = "defmt", derive(defmt::Format))]
     pub struct SafeEventCode(pub(crate) u32);
     #[allow(clippy::unnecessary_cast)]
     impl SafeEventCode {
@@ -55,6 +57,7 @@ pub mod enums {
     /// parameter (sent as NULL).
     #[repr(transparent)]
     #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+    #[cfg_attr(feature = "defmt", derive(defmt::Format))]
     pub struct SendableEventCode(pub(crate) u32);
     #[allow(clippy::unnecessary_cast)]
     impl SendableEventCode {

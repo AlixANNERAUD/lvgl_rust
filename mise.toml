@@ -136,12 +136,17 @@ description = "Check lvgl-rust's footprint in thumbv6m and riscv32imc firmware (
 env.RUSTFLAGS = "-D warnings"
 # Budgets: the crate's code in bytes, with N = 16 slots and in views-only
 # mode. Raise them only with the feature that needs it (the composite part
-# checks took about 1.35 KB on thumbv6m).
+# checks took about 1.35 KB on thumbv6m). The last runs add the diagnostic
+# features: +8 B of .bss for the counters, defmt built for thumbv6m and free
+# while nothing logs, within the same budgets.
 run = [
   "lvgl-rust/size-gate/gate.sh thumbv6m-none-eabi 16 4608",
   "lvgl-rust/size-gate/gate.sh thumbv6m-none-eabi 0 2304",
   "lvgl-rust/size-gate/gate.sh riscv32imc-unknown-none-elf 16 5888",
   "lvgl-rust/size-gate/gate.sh riscv32imc-unknown-none-elf 0 2816",
+  "lvgl-rust/size-gate/gate.sh thumbv6m-none-eabi 16 4608 defmt,debug-counters",
+  "lvgl-rust/size-gate/gate.sh thumbv6m-none-eabi 0 2304 debug-counters",
+  "lvgl-rust/size-gate/gate.sh riscv32imc-unknown-none-elf 16 5888 debug-counters",
 ]
 
 [tasks.msrv]
@@ -168,14 +173,14 @@ description = "Run clippy on lvgl-rust"
 env.RUSTFLAGS = "-D warnings"
 env.DEP_LV_CONFIG_PATH = "{{config_root}}/lvgl-rust/conf"
 env.CARGO_TARGET_DIR = "target/safe"
-run = "cargo clippy -p lvgl-rust -p lvgl-rust-size-gate --all-targets --features lvgl-rust/async,lvgl-rust/heap,lvgl-rust/fmt"
+run = "cargo clippy -p lvgl-rust -p lvgl-rust-size-gate --all-targets --features lvgl-rust/async,lvgl-rust/heap,lvgl-rust/fmt,lvgl-rust/defmt,lvgl-rust/debug-counters"
 
 [tasks.test-safe]
 description = "Test lvgl-rust against LVGL"
 env.RUSTFLAGS = "-D warnings"
 env.DEP_LV_CONFIG_PATH = "{{config_root}}/lvgl-rust/conf"
 env.CARGO_TARGET_DIR = "target/safe"
-run = "cargo test -p lvgl-rust --features async,heap,fmt"
+run = "cargo test -p lvgl-rust --features async,heap,fmt,defmt,debug-counters"
 
 [tasks.test-views-only]
 description = "Lint and test lvgl-rust without handles, on a config that keeps LVGL's own OBJ_ID support"

@@ -197,7 +197,13 @@ What the suites cover:
   (16 slots and views-only) and checks the crate's symbols: registry size and
   `.bss` placement, no `.data`, no `core::fmt` or panic code, the OBJ_ID
   hooks, and a code budget per target (set in the `size-gate` task). Raise a
-  budget only in the change that needs it, and say why.
+  budget only in the change that needs it, and say why. An optional fourth
+  argument enables firmware features (`defmt`, `debug-counters`); the gate
+  then expects the 8 bytes of counters in `.bss`, and none without
+  `debug-counters`.
+- `lvgl-rust/tests/counters.rs`: the `debug-counters` values (drained and
+  refused requests, skipped callbacks, leaked drivers) and, with `defmt`,
+  which types implement `defmt::Format` (a host has no logger).
 
 Rules for integration tests:
 
@@ -510,6 +516,11 @@ review the `access.toml` and `events.toml` diffs.
   `req`, `any_req` and `ticks`. `Registry::request_drop` and `drain` pair
   SeqCst fences; keep that pairing if either side changes, and rerun
   `mise run loom`.
+- **Diagnostic counters.** `counters::count` is the only way to bump
+  them, a load and a store like the registry (no read-modify-write), and
+  it compiles to nothing without `debug-counters`. Count only what the
+  crate does or refuses silently: an error returned to the caller needs no
+  counter.
 - **New LVGL calls in the core** go through `base/ffi.rs`, with a matching
   model in `base/ffi_stub.rs`, or Miri cannot run the tests.
 - **Bindgen output lints.** Generated code lives in the `bindings` module in

@@ -55,6 +55,13 @@ impl<W> fmt::Debug for Handle<W> {
     }
 }
 
+#[cfg(feature = "defmt")]
+impl<W> defmt::Format for Handle<W> {
+    fn format(&self, f: defmt::Formatter<'_>) {
+        defmt::write!(f, "Handle({=u32})", self.raw.get())
+    }
+}
+
 impl<W> Handle<W> {
     pub(crate) fn raw(self) -> u32 {
         self.raw.get()
@@ -195,6 +202,13 @@ impl<W: Tracked> Drop for Owned<W> {
 impl<W: Tracked> fmt::Debug for Owned<W> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple("Owned").field(&self.0.raw).finish()
+    }
+}
+
+#[cfg(feature = "defmt")]
+impl<W: Tracked> defmt::Format for Owned<W> {
+    fn format(&self, f: defmt::Formatter<'_>) {
+        defmt::write!(f, "Owned({=u32})", self.0.raw.get())
     }
 }
 

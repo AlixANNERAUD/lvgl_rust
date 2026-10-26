@@ -19,6 +19,7 @@ pub trait Flush: Send + 'static {
 
 /// How LVGL renders into the draw buffers.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum RenderMode {
     /// Areas rendered in turn into buffers of at least one line.
     Partial,
@@ -280,7 +281,8 @@ unsafe fn drop_driver<D>(cell: *const ()) {
 }
 
 /// A display made by [`Display::create`]: 8 bytes. Dropping it keeps the
-/// display; deletion is explicit ([`Display::try_delete`]).
+/// display (a leak, counted by `DebugCounters::leaked` with
+/// `debug-counters`); deletion is explicit ([`Display::try_delete`]).
 pub struct Display {
     disp: NonNull<sys::lv_display_t>,
     core: NonNull<DisplayCore>,
@@ -289,6 +291,14 @@ pub struct Display {
 // SAFETY: a pointer to LVGL's display and to a `'static` cell, used only
 // with the token.
 unsafe impl Send for Display {}
+
+/// Counts the leak (feature `debug-counters`); the display stays.
+#[cfg(feature = "debug-counters")]
+impl Drop for Display {
+    fn drop(&mut self) {
+        crate::counters::count(crate::counters::Counter::Leaked);
+    }
+}
 
 impl Display {
     /// Creates a `width` × `height` display drawing through `driver`, whose
@@ -393,6 +403,9 @@ impl Display {
             b.claimed.set(false);
         }
         core.claimed.set(false);
+        // Deleted: not a leak.
+        #[cfg(feature = "debug-counters")]
+        core::mem::forget(self);
         Ok(())
     }
 
