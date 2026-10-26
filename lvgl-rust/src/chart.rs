@@ -55,6 +55,10 @@ unsafe impl Send for ChartSeries {}
 // SAFETY: as above; shared references give no access.
 unsafe impl Sync for ChartSeries {}
 
+/// `LV_CHART_POINT_NONE`, `INT32_MAX` (`lv_chart.h:26`): bindgen cannot
+/// evaluate it where `stdint.h` is not the host's (cross targets).
+const POINT_NONE: i32 = i32::MAX;
+
 /// Whether a point array of `count` 4-byte points fits in an address
 /// space whose largest size is `size_max` (`usize::MAX` on the target).
 fn point_arrays_fit(count: u32, size_max: u64) -> bool {
@@ -162,7 +166,7 @@ impl Chart {
             }
             let count = sys::lv_chart_get_point_count(self.as_ptr()) as usize;
             for i in 0..count {
-                points.add(i).write(sys::LV_CHART_POINT_NONE as i32);
+                points.add(i).write(POINT_NONE);
             }
         }
     }
