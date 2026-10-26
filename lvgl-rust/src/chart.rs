@@ -55,6 +55,12 @@ unsafe impl Send for ChartSeries {}
 // SAFETY: as above; shared references give no access.
 unsafe impl Sync for ChartSeries {}
 
+/// Whether a point array of `count` 4-byte points fits in an address
+/// space whose largest size is `size_max` (`usize::MAX` on the target).
+fn point_arrays_fit(count: u32, size_max: u64) -> bool {
+    count as u64 * core::mem::size_of::<i32>() as u64 <= size_max
+}
+
 impl Chart {
     /// The series pointer, if `series` is still one of this chart's.
     fn series_ptr(&self, series: &ChartSeries) -> Result<*mut sys::lv_chart_series_t, Error> {
@@ -80,8 +86,7 @@ impl Chart {
     ///
     /// `lv_chart_set_point_count`.
     pub fn set_point_count(&self, count: u32) -> Result<(), Error> {
-        let bytes = usize::try_from(count).map(|c| c.checked_mul(core::mem::size_of::<i32>()));
-        if !matches!(bytes, Ok(Some(_))) {
+        if !point_arrays_fit(count, usize::MAX as u64) {
             return Err(Error::InvalidArg);
         }
         // SAFETY: shared access, live chart; the array sizes do not wrap.
@@ -395,5 +400,25 @@ impl Chart {
         // `fill_x_points`); nothing runs during the copy.
         buf[..count].copy_from_slice(unsafe { core::slice::from_raw_parts(points, count) });
         count
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::point_arrays_fit;
+
+    #[test]
+    fn point_arrays_fit_the_address_space() {
+        // 32-bit targets: 4-byte points wrap `size_t` from 2^30 points.
+        let max32 = u32::MAX as u64;
+        assert!(point_arrays_fit(0x3FFF_FFFF, max32));
+        assert!(!point_arrays_fit(0x4000_0000, max32));
+        assert!(!point_arrays_fit(u32::MAX, max32));
+        // 16-bit address spaces refuse far less.
+        assert!(point_arrays_fit(0x3FFF, u16::MAX as u64));
+        assert!(!point_arrays_fit(0x4000, u16::MAX as u64));
+        // 64-bit targets take every count.
+        assert!(point_arrays_fit(u32::MAX, u64::MAX));
+        assert!(point_arrays_fit(1, usize::MAX as u64));
     }
 }
