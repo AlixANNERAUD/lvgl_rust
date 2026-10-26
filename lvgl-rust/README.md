@@ -42,6 +42,16 @@ else stays reachable through `lvgl_rust::sys`.
   guard is never borrowed for `'static` (a leaked guard would let a
   thread-local keep shared access). Drawing into a layer stays raw
   (`Layer::as_ptr`).
+- **Widgets LVGL trusts blindly.** `chart.add_series(color, axis)` returns
+  a `ChartSeries` token (one pointer, not `Clone`) that every series call
+  checks against the chart's list: a series of another chart, of a
+  deleted chart or already removed is `Error::InvalidArg`, and point
+  counts whose arrays would wrap the address space are refused. Table cell
+  getters and setters check rows and columns against the table and its
+  size against `TABLE_CELL_LIMIT`; cell text is copied out of views and
+  borrowed under `ObjMut`. Tile views take children only from `add_tile`,
+  and `get_tile_active` forgets a deleted tile; calendar headers keep
+  their parts and their calendar, and the shown month stays in `1..=12`.
 - **Timers.** `lv.timer(period_ms, data, f)` returns an `Owned<Timer>`
   (dropping it deletes the timer); `Handle<Timer>` pauses, resumes and
   changes the period and repeat count. No allocation besides LVGL's timer.

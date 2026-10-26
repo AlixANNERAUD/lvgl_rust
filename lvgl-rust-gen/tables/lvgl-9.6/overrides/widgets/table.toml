@@ -1,12 +1,19 @@
 # Parameter kinds, each checked against the LVGL sources (file:line in `why`).
+[type.lv_table_cell_ctrl_t]
+flags = true
+emit = true
+why = "a bit set (lv_table.h); the cell setters of table.rs take it"
+
 [fn.lv_table_get_column_width]
 params.col = { kind = "checked" }
 why = "lv_table.c:463-466 is a plain if(col >= table->col_cnt) { return 0; } before the col_w[col] read at line 468."
 
 [fn.lv_table_has_cell_ctrl]
 params.row = { kind = "checked" }
+params.col = { kind = "checked" }
 why = "lv_table.c:476-479 is a plain if(row >= table->row_cnt || col >= table->col_cnt) return false; before the cell_data[row*col_cnt+col] access at 480-483."
 
 [fn.lv_table_set_selected_cell]
 params.row = { kind = "checked" }
+params.col = { kind = "checked" }
 why = "lv_table.c:410 returns early when the table is empty, and lines 413-414 clamp row and col to row_cnt-1 / col_cnt-1 with plain ternaries before storing them. scroll_to_selected_cell (lv_table.c:1170-1176) only uses these clamped row_act/col_act values."

@@ -30,6 +30,49 @@ manual = [
     "lv_scale_set_range",
     "lv_scale_set_min_value",
     "lv_scale_set_max_value",
+    # Chart series: a token checked against the chart's list (chart.rs).
+    "lv_chart_add_series",
+    "lv_chart_remove_series",
+    "lv_chart_hide_series",
+    "lv_chart_set_series_color",
+    "lv_chart_get_series_color",
+    "lv_chart_set_x_start_point",
+    "lv_chart_get_x_start_point",
+    "lv_chart_get_point_pos_by_id",
+    "lv_chart_set_all_values",
+    "lv_chart_set_next_value",
+    "lv_chart_set_next_value2",
+    "lv_chart_set_series_values",
+    "lv_chart_set_series_values2",
+    "lv_chart_set_series_value_by_id",
+    "lv_chart_set_series_value_by_id2",
+    "lv_chart_get_series_y_array",
+    "lv_chart_get_series_x_array",
+    # The point arrays are `sizeof(int32_t) * cnt` bytes, which wraps on
+    # 32-bit targets before `cnt` points are written (lv_chart.c:1910-1942).
+    "lv_chart_set_point_count",
+    # Row and column are checked only under LV_USE_CHECK_ARG, and the
+    # counts multiply in 32 bits before allocating (lv_table.c:231, 246,
+    # 271): bounds and sizes checked in Rust (table.rs).
+    "lv_table_set_row_count",
+    "lv_table_set_column_count",
+    "lv_table_set_column_width",
+    "lv_table_set_cell_value",
+    "lv_table_set_cell_ctrl",
+    "lv_table_clear_cell_ctrl",
+    "lv_table_get_cell_value",
+    "lv_table_get_cell_user_data",
+    "lv_table_get_selected_cell",
+    # tile_act is never cleared when its tile goes (lv_tileview.c:99, 192)
+    # and the tile is cast without a class check (97): the active tile is
+    # checked against the current children, and set_tile takes only one
+    # of them (tileview.rs).
+    "lv_tileview_get_tile_active",
+    "lv_tileview_set_tile",
+    # The arrow header indexes month names with the shown month, unchecked
+    # (lv_calendar_header_arrow.c:148, 164): months are checked (calendar.rs).
+    "lv_calendar_set_month_shown",
+    "lv_calendar_set_shown_month",
     # Shims the core uses; they assume the object's class.
     "lvgl_sys_menu_part",
     "lvgl_sys_obj_is_deleting",
@@ -153,6 +196,7 @@ max_depth = 1
 parts = []
 max_depth = 1
 
+# Series and cursors live in lists of the chart, not in children.
 [composite.chart]
 parts = []
 max_depth = 1
@@ -231,6 +275,45 @@ max_depth = 1
 parts = ["child:0"]
 max_depth = 1
 closed = true
+
+# The calendar keeps its button matrix (calendar->btnm, never reset:
+# lv_calendar.c:273-277, 371) and sends VALUE_CHANGED to its other
+# children, its headers (244-251). Other children are the application's.
+[composite.calendar]
+parts = ["lv_calendar_get_btnmatrix"]
+max_depth = 1
+
+# The arrow header's handlers take child 0 as the previous-month button,
+# child 1 as the label they write (lv_calendar_header_arrow.c:126, 147-148,
+# 163-164) and the header's parent, and the button's grandparent, as the
+# calendar (113-119, 156-159), unchecked.
+[composite.calendar_header_arrow]
+parts = ["child:0", "child:1", "child:2"]
+max_depth = 1
+closed = true
+pinned = true
+
+# The dropdown header (created from raw code only, see audit.toml) reads
+# child 0 and 1 as its dropdowns and its parent as the calendar, and the
+# dropdowns' handlers keep the calendar as user data
+# (lv_calendar_header_dropdown.c:112-127, 184-195).
+[composite.calendar_header_dropdown]
+parts = ["child:0", "child:1"]
+max_depth = 1
+closed = true
+pinned = true
+
+# The tile view casts every child to a tile and reads its `dir`, found by
+# position (lv_tileview.c:97-101, 118-125, 186-193): children come only
+# from lv_tileview_add_tile. Tiles keep no pointer to their children.
+[composite.tileview]
+parts = []
+max_depth = 1
+closed = true
+
+[composite.tileview_tile]
+parts = []
+max_depth = 1
 
 # Message box buttons: their only child is a label or an icon, which
 # nothing refers back to (lv_msgbox.c:182-186, 248-252).
