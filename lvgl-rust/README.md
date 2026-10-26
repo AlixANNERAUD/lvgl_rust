@@ -23,8 +23,13 @@ else stays reachable through `lvgl_rust::sys`.
   are always `'static`, since LVGL keeps pointers to them.
 - **Constant data stays in flash.** Images (`ImageDsc` over aligned
   `ImageData`, checked against their format and size), button maps
-  (`button_map![...]`), gradients and transitions are `const` and
-  `'static`, as LVGL keeps pointers to them.
+  (`button_map![...]`), keyboard layouts (`KeyboardMap`, a button map with
+  one control entry per button), grid templates (`grid_template![...]`,
+  never empty), scale labels (`scale_labels![...]`), gradients and
+  transitions are `const` and `'static`, as LVGL keeps pointers to them.
+  Their shape is checked at compile time. A grid layout is set only with
+  its templates (`ObjMut::set_grid_dsc_array`) and cell spans are bounded,
+  which keeps LVGL's grid code within the templates.
 - **Event handlers without allocation.** `obj.on(code, |e| ...)` (a closure
   without captures), `on_with(code, data, ...)` (a value of up to 4 bytes),
   `on_static` (a `static` context), `on_removable`. Handlers get shared

@@ -301,9 +301,18 @@ cfgs mirror the `LV_USE_*` values for hand-written code.
   `kind = "retained", rust = "<Type>"` to a type of `lvgl-rust` that makes
   it `'static` and checks its layout (terminators, sizes, first bytes):
   `RETAINED_TYPES` in `tables.rs` lists them, each with a `const fn
-  as_ptr`. Data LVGL writes stays raw. Grid templates and scale labels are
-  raw on purpose: LVGL reads past them for some cell positions or tick
-  counts (`lv_grid.c:321-325`, `lv_scale.c:1849, 1988`).
+  as_ptr`. Data LVGL writes stays raw. Retained data whose setter needs
+  more than a type is wrapped by hand: keyboard layouts (`KeyboardMap`,
+  global per mode, with `set_popovers` showing the mode's layout again
+  before LVGL copies its control map), scale labels (`ScaleLabels`; the
+  15-bit tick counts keep LVGL's `uint16_t` label index from wrapping) and
+  grid templates (`grid.rs`: the grid layout is set only with both
+  templates, in the local style, the other layout setters refuse
+  `LV_LAYOUT_GRID` and `remove_local_style_prop` the templates, so LVGL's
+  unchecked subgrid path, `lv_grid.c:321-325`, is unreachable; cell spans
+  are bounded because LVGL's clamp overflows, `lv_grid.c:550-558`). The
+  template style setters stay raw: they accept NULL, which would hide the
+  local templates.
 - A string getter that points into the object stays raw until an override
   says `returns = "borrowed_internal"` (after checking that the pointer is
   the object's own text, a literal or static text it was given, never
@@ -311,7 +320,8 @@ cfgs mirror the `LV_USE_*` values for hand-written code.
   `x_into(&self, buf)` on the view, since a shared setter could free the
   string, and a borrowing `x(&mut self)` on `ObjMut`.
 - `classes.toml` `crate_owned` functions can never be shared or exclusive;
-  `manual` ones are wrapped by hand in `lvgl-rust/src/base/`.
+  `manual` ones are wrapped by hand in `lvgl-rust/src/base/` or next to
+  the types they need (`manual.rs`, `grid.rs`, `button_map.rs`, ...).
 - `classes.toml` `[composite.<widget>]` tables drive the structural checks:
   `parts` are the objects LVGL holds pointers to (getters, `child:N`,
   `shim:`), `indexed` how many levels below a part LVGL finds objects by
