@@ -48,6 +48,18 @@ mod heap_align {
     pub(crate) const HEAP_ALIGN: usize = core::mem::size_of::<usize>();
 }
 mod indev;
+mod layout {
+    /// The address of the value that follows a header `H` at `header`: the
+    /// first address after it aligned for `T`. It is the field offset of a
+    /// `#[repr(C)]` struct `{ header: H, value: T }` placed at an address
+    /// aligned for `T` (driver cells), and the value of an `LvBox<H, T>`.
+    /// The result has `header`'s provenance.
+    pub(crate) fn trailing<H, T>(header: *const H) -> *mut T {
+        let start = header.cast::<u8>().wrapping_add(size_of::<H>());
+        let padding = start.addr().wrapping_neg() & (align_of::<T>() - 1);
+        start.wrapping_add(padding).cast_mut().cast()
+    }
+}
 mod manual;
 #[cfg(feature = "async")]
 mod queue;
@@ -85,7 +97,10 @@ pub use base::*;
 pub use button_map::{ButtonMap, MapEntry};
 #[cfg(not(lvgl_rust_views_only))]
 pub use component::Component;
-pub use display::{Display, DisplayCell, DrawBuffers, Flush, FlushDone, FlushRequest, RenderMode};
+pub use display::{
+    Display, DisplayCell, DisplayFormat, DrawBuffers, Flush, FlushDone, FlushRequest, RenderMode,
+    Rotation,
+};
 pub use error::Error;
 #[cfg(not(lvgl_rust_views_only))]
 pub use event::EventSub;

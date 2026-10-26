@@ -12,9 +12,7 @@ pub(crate) use crate::heap_align::HEAP_ALIGN;
 
 /// The value's address in a block holding `H` then `T`.
 fn value_ptr<H, T>(block: NonNull<u8>) -> *mut T {
-    let start = block.as_ptr().wrapping_add(size_of::<H>());
-    let offset = start.align_offset(align_of::<T>());
-    start.wrapping_add(offset).cast()
+    crate::layout::trailing::<H, T>(block.as_ptr().cast_const().cast())
 }
 
 /// An `H` and a `T` in one block of LVGL's heap; the block pointer is what
