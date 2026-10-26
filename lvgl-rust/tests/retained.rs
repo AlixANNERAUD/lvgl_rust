@@ -111,6 +111,7 @@ fn images_draw_constant_descriptors_and_checked_sources() {
 static PICTURE_SRC: ImageSrc = ImageSrc::image(&PICTURE);
 
 #[test]
+#[cfg_attr(panic = "abort", ignore = "catches panics")]
 fn image_descriptors_check_their_data() {
     static SHORT: ImageData<11> = ImageData([0; 11]);
     let short = std::panic::catch_unwind(|| ImageDsc::new(PixelFormat::Rgb565, 3, 2, 0, &SHORT));
@@ -125,6 +126,7 @@ fn image_descriptors_check_their_data() {
 static KEYPAD: ButtonMap = button_map![c"1", c"2", c"\n", c"3"];
 
 #[test]
+#[cfg_attr(panic = "abort", ignore = "catches panics")]
 fn button_maps_are_terminated_and_control_maps_cover_them() {
     let mut guard = guard();
     let mut lv = session(&mut guard);
