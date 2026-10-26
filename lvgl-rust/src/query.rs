@@ -38,6 +38,14 @@
 //! }
 //! ```
 //!
+//! ```compile_fail
+//! use lvgl_rust::{Obj, QueryEvent, enums::EventCode};
+//! fn register(object: &Obj) {
+//!     // Only the codes of the restricted tier are accepted.
+//!     let _ = object.on_query(EventCode::CLICKED, |_: &QueryEvent<'_>| {});
+//! }
+//! ```
+//!
 //! ```no_run
 //! use lvgl_rust::{Obj, QueryEvent, enums::QueryCode};
 //! fn register(object: &Obj) {
