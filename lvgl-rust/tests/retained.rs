@@ -269,3 +269,73 @@ fn textarea_labels_and_degenerate_scales_are_refused() {
         lv.edit(last).unwrap().delete().unwrap();
     }
 }
+
+/// Owned sources (`--features heap`): moved to LVGL's heap and retired when
+/// replaced or deleted (AddressSanitizer runs this with C `malloc`, so a
+/// block freed too early would show as a use after free).
+#[cfg(feature = "heap")]
+#[test]
+fn owned_image_sources_live_until_replaced_or_deleted() {
+    use lvgl_rust::ImageBuffer;
+    let mut guard = guard();
+    let mut lv = session(&mut guard);
+    fn last_image(lv: &Lvgl) -> Option<&Image> {
+        last(lv)?.downcast()
+    }
+    fn render() {
+        let before = FLUSHES.load(Ordering::Relaxed);
+        // SAFETY: session held; redraws the whole active screen.
+        unsafe {
+            sys::lv_obj_invalidate(sys::lv_screen_active());
+            sys::lv_refr_now(core::ptr::null_mut());
+        }
+        assert!(FLUSHES.load(Ordering::Relaxed) > before);
+    }
+    fn events(lv: &Lvgl) -> u32 {
+        // SAFETY: session held, live object.
+        unsafe { sys::lv_obj_get_event_count(last(lv).unwrap().as_ptr()) }
+    }
+    assert_eq!(
+        ImageBuffer::new(PixelFormat::Rgb565, 4, 4, 0, [0; 8]).err(),
+        Some(Error::InvalidArg)
+    );
+    Image::create(lv.screen_active().unwrap()).unwrap();
+    let base = events(&lv);
+    {
+        let mut image = lv.edit(last_image).unwrap();
+        let pixels = ImageBuffer::new(PixelFormat::Rgb565, 4, 3, 0, [0x55; 24]).unwrap();
+        image.set_src_owned(pixels).unwrap();
+        assert_eq!((image.get_src_width(), image.get_src_height()), (4, 3));
+    }
+    assert_eq!(events(&lv), base + 1);
+    render();
+    {
+        let mut image = lv.edit(last_image).unwrap();
+        image
+            .set_src_owned(ImageDsc::new(PixelFormat::Rgb565, 3, 2, 8, &PIXELS))
+            .unwrap();
+        assert_eq!((image.get_src_width(), image.get_src_height()), (3, 2));
+    }
+    // The replaced block was retired with its handler.
+    assert_eq!(events(&lv), base + 1);
+    lv.timer_handler();
+    render();
+    {
+        let mut image = lv.edit(last_image).unwrap();
+        // A plain source keeps the block until the next owned one.
+        image.set_src(ImageSrc::image(&INDEXED));
+    }
+    assert_eq!(events(&lv), base + 1);
+    render();
+    {
+        let mut image = lv.edit(last_image).unwrap();
+        let dot = ImageBuffer::new(PixelFormat::Argb8888, 1, 1, 0, [0xff; 4]).unwrap();
+        image.set_src_owned(dot).unwrap();
+        assert_eq!((image.get_src_width(), image.get_src_height()), (1, 1));
+    }
+    assert_eq!(events(&lv), base + 1);
+    render();
+    lv.edit(last).unwrap().delete().unwrap();
+    lv.timer_handler();
+    render();
+}

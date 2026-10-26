@@ -45,7 +45,7 @@ start at the repository root (`mise.toml`, `.github/`, `.cargo/`).
 | `lvgl-rust-sys/tests/` | Unit tests for `build/config.rs` and integration tests driving nested `cargo` builds. |
 | `lvgl-rust-sys/tests/common/mod.rs` | Shared helpers for the integration tests. |
 | `lvgl-rust-sys/tests/fixtures/font_incremental/` | Package used by the incremental rebuild test. |
-| `lvgl-rust/src/base/` | Safe core: session and token (`session.rs`), handle registry (`registry.rs`), OBJ_ID hooks (`hook.rs`), deferred requests (`drain.rs`), structural checks (`structural.rs`), views and handles. |
+| `lvgl-rust/src/base/` | Safe core: session and token (`session.rs`), handle registry (`registry.rs`), OBJ_ID hooks (`hook.rs`), deferred requests (`drain.rs`), the deferred-free list of the `heap` feature (`deferred.rs`), structural checks (`structural.rs`), views and handles. |
 | `lvgl-rust/src/base/ffi.rs` | Every LVGL call the core makes; `ffi_stub.rs` is its Rust model for Miri and loom. |
 | `lvgl-rust/conf/lv_conf.h` | Second vendored configuration, with the OBJ_ID hooks the registry needs. |
 | `lvgl-rust/build.rs` | Checks the `-sys` build (linked, OBJ_ID config) and writes `config.rs` (`LVGL_RUST_HANDLE_SLOTS`, `LVGL_RUST_MAX_CALLBACK_DEPTH`). |
@@ -189,6 +189,10 @@ What the suites cover:
   requests, structural checks). The same tests run against LVGL and, under
   Miri, against `ffi_stub.rs`; keep the stub's behaviour in line with LVGL's
   for every function `ffi.rs` exposes. Tests hold the `LOCK` guard.
+- `mise run miri` runs the core tests twice: without features, and with
+  `heap` (the deferred-free list and `LvBox` against the stub's heap,
+  `ffi::malloc`/`free`, where Miri's leak check catches a block never
+  freed).
 - `lvgl-rust/src/tests.rs` `protocol` module: loom models of `Owned::drop`
   racing the drain (`--cfg loom`).
 - `lvgl-rust/tests/lifecycle.rs`: `init`, ticks, `deinit` (terminal, so in

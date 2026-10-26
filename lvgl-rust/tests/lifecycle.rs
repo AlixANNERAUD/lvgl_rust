@@ -39,6 +39,20 @@ fn init_enter_deinit() {
     let _ = object;
     #[cfg(not(lvgl_rust_views_only))]
     let owned = lv.create_screen().unwrap();
+    // Owned sources retired during `deinit` (after its last drain) are
+    // freed at once, while LVGL's heap still exists.
+    #[cfg(feature = "heap")]
+    let mut lv = lv;
+    #[cfg(feature = "heap")]
+    {
+        use lvgl_rust::{ImageBuffer, PixelFormat, widgets::Image};
+        Image::create(screen_of(&lv)).unwrap();
+        let mut image = lv
+            .edit(|lv| screen_of(lv).child(-1)?.downcast::<Image>())
+            .unwrap();
+        let dot = ImageBuffer::new(PixelFormat::Argb8888, 1, 1, 0, [0xff; 4]).unwrap();
+        image.set_src_owned(dot).unwrap();
+    }
 
     Lvgl::deinit(lv).unwrap();
     assert_eq!(init(&mut guard).err(), Some(Error::NotInitialized));
@@ -49,4 +63,9 @@ fn init_enter_deinit() {
         drop(owned);
         let _ = handle;
     }
+}
+
+#[cfg(feature = "heap")]
+fn screen_of(lv: &Lvgl) -> &Obj {
+    lv.screen_active().unwrap()
 }

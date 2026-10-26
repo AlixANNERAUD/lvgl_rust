@@ -2,7 +2,7 @@
 //! one `lv_malloc` block, so closures and owned data need no Rust
 //! allocator.
 
-use crate::sys;
+use crate::base::ffi;
 use core::{
     mem::{align_of, size_of},
     ptr::{self, NonNull},
@@ -41,7 +41,7 @@ impl<H, T> LvBox<H, T> {
             size_of::<H>() + align_of::<T>() - 1 + size_of::<T>()
         };
         // SAFETY: under the token (every caller has shared access).
-        let block = unsafe { sys::lv_malloc(size.max(1)) }.cast::<u8>();
+        let block = unsafe { ffi::malloc(size.max(1)) }.cast::<u8>();
         let Some(block) = NonNull::new(block) else {
             return Err(value);
         };
@@ -86,7 +86,7 @@ impl<H, T> LvBox<H, T> {
         unsafe {
             ptr::drop_in_place(Self::value(block));
             ptr::drop_in_place(Self::header(block));
-            sys::lv_free(block);
+            ffi::free(block);
         }
     }
 }

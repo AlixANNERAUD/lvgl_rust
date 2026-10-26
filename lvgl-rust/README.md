@@ -56,9 +56,19 @@ else stays reachable through `lvgl_rust::sys`.
   events into a `StaticQueue` through a `capture` function;
   `next_event(lock, &rx).await` takes your async lock, returns the next
   event with the guard, or waits. No executor dependency, no atomics.
-- **Closures (feature `heap`).** `obj.on_boxed(code, move |e| ...)` and
-  `lv.timer_boxed(period, move |ctx| ...)` keep the closure on LVGL's own
-  heap (a 4-byte header), freed with the object or the timer.
+  `SubscribeOptions::new(code).bubble_children()` also records the events
+  of the object's children (they get `EVENT_BUBBLE`, now and when created).
+- **Closures and owned values (feature `heap`).** `obj.on_boxed(code, move
+  |e| ...)` and `lv.timer_boxed(period, move |ctx| ...)` keep the closure on
+  LVGL's own heap (a 4-byte header), freed with the object or the timer.
+  `image.set_src_owned(ImageBuffer::new(format, w, h, 0, pixels)?)` moves
+  an image (or an `ImageDsc`) there: when it is replaced or the image is
+  deleted, LVGL's image caches drop it and the block is freed at the next
+  `enter` or `timer_handler` (4 bytes of `.bss` for that list). With
+  `async` too, `obj.subscribe_owned::<E, N>(code, capture)` puts the queue
+  there and returns its `OwnedQueue` receiver (8 bytes, using the object's
+  registry slot); the queue goes with the object, or with
+  `OwnedQueue::close`.
 - **Your allocator (feature `allocator`).** With
   `LV_USE_STDLIB_MALLOC LV_STDLIB_CUSTOM`, `lvgl_allocator!(HEAP)` makes
   LVGL allocate from a static implementing `LvglAllocator`;

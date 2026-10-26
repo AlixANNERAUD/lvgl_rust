@@ -239,8 +239,12 @@ env.DEP_LV_CONFIG_PATH = "{{config_root}}/lvgl-rust/conf"
 env.CARGO_TARGET_DIR = "target/miri"
 # The model passes C pointers through exposed provenance, as C code does.
 env.MIRIFLAGS = "-Zmiri-permissive-provenance"
-# Miri provides its own `strlen` & co.
-run = "cargo miri test -p lvgl-rust --lib --no-default-features"
+# Miri provides its own `strlen` & co. The second run adds `heap`: the
+# deferred-free list and `LvBox` against the model's heap.
+run = [
+  "cargo miri test -p lvgl-rust --lib --no-default-features",
+  "cargo miri test -p lvgl-rust --lib --no-default-features --features heap",
+]
 
 [tasks.loom]
 description = "Model-check the cross-thread request protocol of lvgl-rust with loom"
