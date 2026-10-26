@@ -431,8 +431,9 @@ are left out):
   `"restricted"` for `blockable_codes` (draw and query codes: handlers
   there would run in the middle of layout or rendering; their handlers
   get a `QueryEvent`, which reaches only the typed parameter), else
-  `"shared"`. A shared code becomes restricted only if a hazard cannot be resolved by making its
-  freer exclusive (a freer with a hand-fixed access): the audit warns.
+  `"shared"`. A shared code becomes restricted only if a hazard cannot be
+  resolved by making its freer exclusive (a freer with a hand-fixed
+  access): the audit warns.
 
 ### Held-region analysis (`held.rs`)
 
