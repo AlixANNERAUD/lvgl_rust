@@ -46,15 +46,31 @@ fn init_enter_deinit() {
     #[cfg(feature = "heap")]
     {
         use lvgl_rust::{ImageBuffer, PixelFormat, widgets::Image};
-        Image::create(screen_of(&lv)).unwrap();
+        let raw = Image::create(screen_of(&lv)).unwrap().as_ptr();
+        // Heap blocks in use around the handler retiring the source.
+        // SAFETY: session held, live object; the callbacks need no data.
+        unsafe { sys::lv_obj_add_event_cb(raw, Some(count_before), DELETE, core::ptr::null_mut()) };
         let mut image = lv
             .edit(|lv| screen_of(lv).child(-1)?.downcast::<Image>())
             .unwrap();
         let dot = ImageBuffer::new(PixelFormat::Argb8888, 1, 1, 0, [0xff; 4]).unwrap();
         image.set_src_owned(dot).unwrap();
+        // SAFETY: as above.
+        unsafe { sys::lv_obj_add_event_cb(raw, Some(count_after), DELETE, core::ptr::null_mut()) };
     }
 
     Lvgl::deinit(lv).unwrap();
+    // The block was freed during the deletion, not queued (the builtin
+    // heap only: LVGL does not monitor the C library's `malloc`).
+    #[cfg(feature = "heap")]
+    {
+        use std::sync::atomic::Ordering::Relaxed;
+        let (before, after) = (BEFORE.load(Relaxed), AFTER.load(Relaxed));
+        assert!(before != usize::MAX && after != usize::MAX);
+        if before != 0 {
+            assert_eq!(after, before - 1);
+        }
+    }
     assert_eq!(init(&mut guard).err(), Some(Error::NotInitialized));
     assert_eq!(Lvgl::enter(&mut guard).err(), Some(Error::NotInitialized));
     // Dropping an `Owned` after deinit only records a request.
@@ -68,4 +84,38 @@ fn init_enter_deinit() {
 #[cfg(feature = "heap")]
 fn screen_of(lv: &Lvgl) -> &Obj {
     lv.screen_active().unwrap()
+}
+
+#[cfg(feature = "heap")]
+const DELETE: sys::lv_event_code_t = sys::lv_event_code_t_LV_EVENT_DELETE;
+
+#[cfg(feature = "heap")]
+static BEFORE: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(usize::MAX);
+#[cfg(feature = "heap")]
+static AFTER: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(usize::MAX);
+
+/// Blocks in use on LVGL's builtin heap (0 with the C library's `malloc`).
+#[cfg(feature = "heap")]
+fn used_blocks() -> usize {
+    let mut monitor = core::mem::MaybeUninit::<sys::lv_mem_monitor_t>::zeroed();
+    // SAFETY: under the session; LVGL fills the whole struct.
+    let monitor = unsafe {
+        sys::lv_mem_monitor(monitor.as_mut_ptr());
+        monitor.assume_init()
+    };
+    if monitor.total_size == 0 {
+        0
+    } else {
+        monitor.used_cnt
+    }
+}
+
+#[cfg(feature = "heap")]
+unsafe extern "C" fn count_before(_: *mut sys::lv_event_t) {
+    BEFORE.store(used_blocks(), std::sync::atomic::Ordering::Relaxed);
+}
+
+#[cfg(feature = "heap")]
+unsafe extern "C" fn count_after(_: *mut sys::lv_event_t) {
+    AFTER.store(used_blocks(), std::sync::atomic::Ordering::Relaxed);
 }

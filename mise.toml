@@ -142,6 +142,10 @@ run = [
   "lvgl-rust/size-gate/gate.sh thumbv6m-none-eabi 0 2304",
   "lvgl-rust/size-gate/gate.sh riscv32imc-unknown-none-elf 16 5888",
   "lvgl-rust/size-gate/gate.sh riscv32imc-unknown-none-elf 0 2816",
+  # The firmware builds with every feature off: check `async` and `heap`
+  # compile for both targets too.
+  "DEP_LV_CONFIG_PATH={{config_root}}/lvgl-rust/conf CARGO_TARGET_DIR=target/size-gate/features cargo check -q -p lvgl-rust --features async,heap --target thumbv6m-none-eabi",
+  "DEP_LV_CONFIG_PATH={{config_root}}/lvgl-rust/conf CARGO_TARGET_DIR=target/size-gate/features cargo check -q -p lvgl-rust --features async,heap --target riscv32imc-unknown-none-elf",
 ]
 
 [tasks.msrv]
@@ -183,7 +187,12 @@ env.RUSTFLAGS = "-D warnings"
 env.LVGL_RUST_HANDLE_SLOTS = "0"
 env.DEP_LV_CONFIG_PATH = "{{config_root}}/lvgl-rust-sys/conf"
 env.CARGO_TARGET_DIR = "target/views-only"
-run = ["cargo clippy -p lvgl-rust --all-targets", "cargo test -p lvgl-rust"]
+run = [
+  "cargo clippy -p lvgl-rust --all-targets",
+  "cargo test -p lvgl-rust",
+  "cargo clippy -p lvgl-rust --all-targets --features async,heap",
+  "cargo test -p lvgl-rust --features async,heap",
+]
 
 [tasks.test-asan]
 description = "Test lvgl-rust with LVGL under AddressSanitizer (C library malloc, so freed objects are visible)"

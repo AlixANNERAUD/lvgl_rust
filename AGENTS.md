@@ -201,7 +201,9 @@ What the suites cover:
   (16 slots and views-only) and checks the crate's symbols: registry size and
   `.bss` placement, no `.data`, no `core::fmt` or panic code, the OBJ_ID
   hooks, and a code budget per target (set in the `size-gate` task). Raise a
-  budget only in the change that needs it, and say why.
+  budget only in the change that needs it, and say why. The task also
+  checks that `async` and `heap` compile for both targets, and
+  `test-views-only` runs with and without them.
 
 Rules for integration tests:
 
