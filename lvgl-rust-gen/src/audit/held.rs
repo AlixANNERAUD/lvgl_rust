@@ -1411,10 +1411,7 @@ pub fn analyze(
                                 && let Some(removal) = &animation.concurrent_removal
                                 && reg.path.is_empty()
                                 && !reg.copy
-                                && reg
-                                    .ty
-                                    .as_deref()
-                                    .is_none_or(|t| t == animation.structure)
+                                && reg.ty.as_deref().is_none_or(|t| t == animation.structure)
                                 && ((removal == name
                                     && reg.root == Root::Param(0)
                                     && deleted_site(f, site, &animation.deleted_slot))
@@ -1943,26 +1940,27 @@ fn unlinked_at_calls(
             }
         }
     }
-    let transfer = |b: usize,
-                    set: &mut BTreeSet<String>,
-                    mut at_call: Option<&mut BTreeMap<usize, BTreeSet<String>>>| {
-        for ev in &f.held.events[b] {
-            match ev {
-                Ev::Call(site) => {
-                    if let Some(map) = at_call.as_deref_mut() {
-                        map.insert(*site, set.clone());
+    let transfer =
+        |b: usize,
+         set: &mut BTreeSet<String>,
+         mut at_call: Option<&mut BTreeMap<usize, BTreeSet<String>>>| {
+            for ev in &f.held.events[b] {
+                match ev {
+                    Ev::Call(site) => {
+                        if let Some(map) = at_call.as_deref_mut() {
+                            map.insert(*site, set.clone());
+                        }
+                        if let Some(a) = unlinks(*site) {
+                            set.insert(a.to_owned());
+                        }
                     }
-                    if let Some(a) = unlinks(*site) {
-                        set.insert(a.to_owned());
+                    Ev::Store(a) | Ev::Use(a) => {
+                        set.remove(a);
                     }
+                    Ev::Load(_) => {}
                 }
-                Ev::Store(a) | Ev::Use(a) => {
-                    set.remove(a);
-                }
-                Ev::Load(_) => {}
             }
-        }
-    };
+        };
     // Must analysis: `None` is the top (not reached yet).
     let mut out: Vec<Option<BTreeSet<String>>> = vec![None; blocks];
     let entry_of = |b: usize, out: &[Option<BTreeSet<String>>]| -> BTreeSet<String> {
@@ -1973,7 +1971,9 @@ fn unlinked_at_calls(
         let Some(first) = reached.next() else {
             return BTreeSet::new();
         };
-        reached.fold(first.clone(), |acc, x| acc.intersection(x).cloned().collect())
+        reached.fold(first.clone(), |acc, x| {
+            acc.intersection(x).cloned().collect()
+        })
     };
     let mut changed = true;
     while changed {
@@ -2436,7 +2436,10 @@ unlink = { function = "lv_ll_remove", list_arg = 0, node_arg = 1, list_field = "
                 .remove(&site)
                 .unwrap_or_default()
         };
-        assert_eq!(at_callback("t::unlinked"), BTreeSet::from(["%2".to_owned()]));
+        assert_eq!(
+            at_callback("t::unlinked"),
+            BTreeSet::from(["%2".to_owned()])
+        );
         // Unlinked from another list, overwritten since, or unlinked on one
         // path only: unknown.
         assert!(at_callback("t::other_list").is_empty());

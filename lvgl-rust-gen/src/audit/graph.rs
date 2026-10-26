@@ -290,8 +290,7 @@ fn specialise_construction(
     }
     let slot = format!("{}.{}", c.class_structure, c.constructor_field);
     let construct = &module.functions[&c.construct];
-    if construct.indirect.len() != 1 || construct.indirect[0].target != Target::Slot(slot.clone())
-    {
+    if construct.indirect.len() != 1 || construct.indirect[0].target != Target::Slot(slot.clone()) {
         return Err(format!(
             "audit.toml: [construction] {} must make one indirect call, through {slot}",
             c.construct
@@ -1665,7 +1664,10 @@ why = "test"
         // Without the table, every constructor is reachable.
         let plain: AuditConfig = toml::from_str("sinks = [\"sink\"]").unwrap();
         let graph = Graph::build(&m, &plain).unwrap();
-        assert!(matches!(graph.verdict("lv_a_create"), Verdict::Exclusive(_)));
+        assert!(matches!(
+            graph.verdict("lv_a_create"),
+            Verdict::Exclusive(_)
+        ));
     }
 
     #[test]
