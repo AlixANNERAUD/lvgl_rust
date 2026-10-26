@@ -214,15 +214,36 @@ keyboard = ["textarea", "spinbox"]
 "_lv_anim_t.3" = "later"
 "_lv_anim_t.4" = "later"
 
-# `lv_anim_delete(var, exec_cb)` runs the `deleted_cb` of the animations with
-# that `exec_cb`: with a constant `exec_cb`, only the deleted callbacks
-# installed together with it (by the same function) are reached.
-[anim_delete]
-function = "lv_anim_delete"
-exec_arg = 1
-carry = ["lv_anim_delete", "misc/lv_anim::remove_anim"]
-exec_slots = ["_lv_anim_t.1", "_lv_anim_t.2"]
+# Animations told apart (identity.rs). `lv_anim_delete(var, exec_cb)`
+# removes the animations whose `var` and `exec_cb` match (lv_anim.c:190),
+# running their `deleted_cb` and freeing them (remove_anim, lv_anim.c:
+# 875-887); `lv_anim_start` first removes the running animations with the
+# same `var` and `exec_cb`, only when `early_apply` is on and `exec_cb` is
+# set (lv_anim.c:124-126, 836-859), then runs the callbacks only when
+# `early_apply` is on (lv_anim.c:141-158). A removal with a constant
+# `exec_cb`, a `var` of a known struct type, or started from a local whose
+# setters are all visible, reaches only the `deleted_cb`s of the
+# animations it can match, and frees only them. Field indices of
+# `_lv_anim_t` with `LV_USE_EXT_DATA 0`.
+[animation]
+structure = "_lv_anim_t"
+start = "lv_anim_start"
+init = "lv_anim_init"
+delete = "lv_anim_delete"
+delete_var_arg = 0
+delete_exec_arg = 1
+delete_carry = ["lv_anim_delete", "misc/lv_anim::remove_anim"]
+start_carry = ["lv_anim_start", "misc/lv_anim::remove_concurrent_anims"]
+var_slot = "_lv_anim_t.0"
+exec_slot = "_lv_anim_t.1"
 deleted_slot = "_lv_anim_t.5"
+early_apply_setter = "lv_anim_set_early_apply"
+# lv_obj_scroll_by passes its animation with SCROLL_BEGIN
+# (lv_obj_scroll.c:365, 380); no LVGL code reads it back
+# (lv_event_get_scroll_anim has no caller), lvgl-rust handlers do not see
+# it, and a handler installed through `sys` that writes it is that code's
+# obligation.
+event_parameter = { lv_obj_send_event = 2 }
 
 # Hand decisions on event codes.
 [event_policy.LV_EVENT_CREATE]
@@ -366,3 +387,24 @@ holders = ["lv_event_send"]
 via = ["lv_display_add_event_cb", "lv_indev_add_event_cb"]
 check = "LVGL: lv_event_send uses its copy only when the event was marked deleted during the send (lv_event.c:145), which for displays and input devices only lv_display_delete and lv_indev_delete do (both exclusive)"
 why = "adding a handler to a display (lv_label_mark_need_refr_text, lv_label.c:1151) or an input device reallocates its list, but no shared code can delete the display or input device being sent to, so the stale copy is never used"
+
+# ---------------------------------------------------------------------------
+# Object identity: calls that cannot happen for the objects a caller passes.
+
+# lv_group_remove_obj returns at once for an object in no group
+# (lv_group.c:185-186); lv_group_add_obj calls it first (lv_group.c:140).
+# lv_obj_class_init_obj runs only on objects lv_obj_class_create_obj just
+# made (its own access is raw, `exceptions`), so the object it adds to the
+# default group (lv_obj_class.c:122-125) was just allocated zeroed by
+# lv_obj_class_create_obj (lv_obj_class.c:51: no spec_attr, so no group),
+# and only its theme, constructors and style refresh ran since: no LVGL
+# code adds an object to a group except lv_obj_class_init_obj itself and
+# lv_tabview_add_tab (for a button it created, after its init); the
+# object has no handler yet, and handlers run during its constructors or
+# style refresh get shared access, under which adding to a group is
+# exclusive (group.rs). A theme apply callback installed through `sys`
+# is that code's obligation.
+[infeasible.fresh_object_group]
+context = "lv_obj_class_init_obj -> lv_group_add_obj"
+calls = ["lv_group_remove_obj"]
+why = "a new object is in no group"

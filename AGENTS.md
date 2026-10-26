@@ -375,8 +375,23 @@ soundness:
 - widget code reaches only handlers registered by core code, by itself, by
   widgets it creates or that create it, and by its `peers`;
 - animation callbacks are attributed to whoever installs them
-  (`caller_slots`), and `lv_anim_delete` with a constant `exec_cb` reaches
-  only the `deleted_cb`s installed with it (`anim_delete`);
+  (`caller_slots`);
+- animations are told apart (`[animation]`, `identity.rs`): each local
+  `lv_anim_t` a function fills through setters and starts is a profile
+  (its callbacks per field, the struct type of its `var`, whether
+  `early_apply` is off); a local whose address goes anywhere else matches
+  everything. `lv_anim_delete(var, exec_cb)` and the replacement in
+  `lv_anim_start` are specialised per key (a constant `exec_cb`, the type
+  of `var`) and reach only the `deleted_cb`s of the animations the key can
+  match. Pointer types come from uses (`getelementptr`, forwarding to a
+  typed parameter), generalised to the root of the first-member chain
+  (`_lv_label_t` is `_lv_obj_t`); two roots differ only if neither starts
+  with a union or byte buffer. The held-region analysis uses the same keys:
+  the animation `lv_anim_start` keeps across its callbacks is freed only by
+  removals that match it, across the codes its callbacks send;
+- `[infeasible.<name>]` removes calls that cannot happen in one calling
+  context (`context = "caller -> callee"`, `calls`), with the LVGL lines
+  that prove it: the callee is specialised for that caller;
 - `exceptions` holds hand decisions (pure functions), with a reason.
 
 ### Event codes (`events.toml`)

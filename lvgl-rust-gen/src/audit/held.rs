@@ -40,6 +40,7 @@
 //! every value stored into it anywhere in the function.
 
 use super::graph::{AuditConfig, Edge, Graph, Out};
+use super::identity::AnimationKey;
 use super::ir::{Ev, Function, Module, SiteKind, Val};
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::fmt;
@@ -66,6 +67,18 @@ pub struct Reg {
     pub copy: bool,
     /// The struct type of the memory, when known.
     pub ty: Option<String>,
+    /// Which animations, for an animation object (see `identity.rs`).
+    pub animation: Option<AnimationMark>,
+}
+
+/// Which animations an animation region is.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum AnimationMark {
+    /// Freed by a removal that matches only these.
+    Key(AnimationKey),
+    /// The animation `lv_anim_start` is starting: one whose callbacks run
+    /// there and can send events.
+    Started,
 }
 
 impl Reg {
@@ -80,7 +93,17 @@ impl Reg {
             path,
             copy,
             ty,
+            animation: None,
         }
+    }
+
+    /// The same region with the animation mark of `from` (object regions
+    /// only: a buffer is never an animation).
+    fn marked(mut self, from: &Reg) -> Reg {
+        if self.path.is_empty() && !self.copy {
+            self.animation = from.animation.clone();
+        }
+        self
     }
 
     fn abs(path: Vec<String>, copy: bool, ty: Option<String>) -> Reg {
@@ -95,6 +118,17 @@ impl Reg {
 
 impl fmt::Display for Reg {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.fmt_region(f)?;
+        match &self.animation {
+            Some(AnimationMark::Key(k)) => write!(f, "[{k}]"),
+            Some(AnimationMark::Started) => write!(f, "[started]"),
+            None => Ok(()),
+        }
+    }
+}
+
+impl Reg {
+    fn fmt_region(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let prefix = match self.root {
             Root::Param(k) => format!("P{k}/"),
             Root::Abs => String::new(),
@@ -576,7 +610,7 @@ fn instantiate(frame: &Frame, pattern: &Reg, args: &[Val]) -> Vec<Option<Reg>> {
                 if r.ty.is_none() && r.path.is_empty() {
                     r.ty = pattern.ty.clone();
                 }
-                r
+                r.marked(pattern)
             }),
             (Ptr::Obj(r), false) => Some(buf(r, pattern.path.clone(), pattern.copy)),
             (Ptr::Field(r, fp), false) => {
@@ -617,7 +651,7 @@ fn absolute(r: &Reg, ty: Option<String>) -> Option<Reg> {
             } else {
                 r.ty.clone()
             };
-            let out = Reg::abs(r.path.clone(), r.copy, ty);
+            let out = Reg::abs(r.path.clone(), r.copy, ty).marked(r);
             out.known().then_some(out)
         }
     }
@@ -815,7 +849,9 @@ impl<'a> Solver<'a> {
 
     fn function(&self, node: usize) -> Option<(&'a str, &'a Function)> {
         let name = self.names[node].as_str();
-        let base = name.strip_suffix("#body").unwrap_or(name);
+        // `#body` (a sender's own code) and specialised nodes run the
+        // function's code.
+        let base = name.split('#').next().unwrap_or(name);
         self.module
             .functions
             .get_key_value(base)
@@ -859,7 +895,7 @@ impl<'a> Solver<'a> {
         let name = &self.names[node];
         let mut site_edges: BTreeSet<&Out> = BTreeSet::new();
         if let Some((base, _)) = self.function(node)
-            && let Some((calls, indirect)) = self.graph.site_outs.get(base)
+            && let Some((calls, indirect)) = self.graph.site_outs_of(name)
         {
             let f = self.module.functions.get(base).unwrap();
             for (i, site) in f.held.sites.iter().enumerate() {
@@ -995,7 +1031,18 @@ impl<'a> Solver<'a> {
                 ) {
                     continue;
                 }
-                let reg = region_of(&p).unwrap_or_else(|| Reg::abs(Vec::new(), false, None));
+                let mut reg = region_of(&p).unwrap_or_else(|| Reg::abs(Vec::new(), false, None));
+                // A specialised removal frees only the animations its key
+                // matches.
+                if let (Some(key), Some(animation)) = (
+                    self.graph.animation_nodes.get(&self.names[node]),
+                    &self.config.animation,
+                ) && reg.ty.as_deref().is_none_or(|t| t == animation.structure)
+                    && reg.path.is_empty()
+                    && !reg.copy
+                {
+                    reg.animation = Some(AnimationMark::Key(key.clone()));
+                }
                 out.push((reg, name.to_owned()));
             }
         }
@@ -1330,7 +1377,18 @@ pub fn analyze(
                 for reg in frame.local_regions(a) {
                     let witness = format!("{name} keeps {a} across {callee}");
                     match reg {
-                        Some(reg) => {
+                        Some(mut reg) => {
+                            // The animation being started (lv_anim_start
+                            // keeps only it across the callbacks).
+                            if let Some(animation) = &config.animation
+                                && *name == animation.start
+                                && reg.root == Root::Abs
+                                && reg.path.is_empty()
+                                && !reg.copy
+                                && reg.ty.as_deref() == Some(animation.structure.as_str())
+                            {
+                                reg.animation = Some(AnimationMark::Started);
+                            }
                             let hold = Hold {
                                 reg,
                                 holder: name.clone(),
@@ -1504,6 +1562,23 @@ pub fn analyze(
         any: h.codes.0,
         set: h.codes.1,
     };
+    // For each removal key, the codes the callbacks of the animations it
+    // can match send while `lv_anim_start` keeps the animation: a hold of
+    // the animation being started is a hazard for that removal only
+    // across those codes.
+    let started_codes: BTreeMap<&AnimationKey, Codes> = graph
+        .animation_nodes
+        .values()
+        .map(|key| (key, started_codes(module, graph, config, key, &sends_of)))
+        .collect();
+    let overlap = |hold: &Reg, free: &Reg| -> Codes {
+        match (&hold.animation, &free.animation) {
+            (Some(AnimationMark::Started), Some(AnimationMark::Key(k))) => {
+                started_codes.get(k).copied().unwrap_or_else(Codes::all)
+            }
+            _ => Codes::all(),
+        }
+    };
     for hold in &holds {
         let codes = codes_of(hold);
         let hazardous: Vec<i64> = inputs
@@ -1520,8 +1595,9 @@ pub fn analyze(
                 if !free.known() || !matches(&hold.reg, free) {
                     continue;
                 }
+                let overlap = overlap(&hold.reg, free);
                 let guarded = is_guarded(config, hold, Some(freer), via);
-                for &code in &hazardous {
+                for &code in hazardous.iter().filter(|&&c| overlap.contains(c)) {
                     analysis.hazards.push(Hazard {
                         code,
                         freer: freer.clone(),
@@ -1619,8 +1695,12 @@ pub fn analyze(
                     continue;
                 }
                 for (free, via) in regs {
+                    let overlap = overlap(&hold.reg, free);
                     if free.known()
                         && matches(&hold.reg, free)
+                        && names
+                            .keys()
+                            .any(|&c| codes.contains(c) && shared_code(c) && overlap.contains(c))
                         && !is_guarded(config, hold, None, via)
                     {
                         analysis.send_hazard.entry(code).or_insert_with(|| {
@@ -1672,6 +1752,61 @@ pub fn analyze(
     ));
     analysis.report = report;
     Ok(analysis)
+}
+
+/// The codes sent by the callbacks `lv_anim_start` runs (`caller_slots`
+/// run immediately) for the animations a removal with `key` can match:
+/// those stored some way the profiles do not name, and those of profiles
+/// started with `early_apply` on that the key matches. A callback running
+/// as `exec_cb` is that animation's `exec_cb`, and its first parameter is
+/// its `var`: a removal comparing another `exec_cb`, or a `var` of
+/// another type, cannot match it.
+fn started_codes(
+    module: &Module,
+    graph: &Graph,
+    config: &AuditConfig,
+    key: &AnimationKey,
+    sends_of: &dyn Fn(&str) -> Codes,
+) -> Codes {
+    let Some(animation) = &config.animation else {
+        return Codes::all();
+    };
+    let AnimationKey::Matching { exec, var } = key else {
+        return Codes::default();
+    };
+    let animations = &graph.animations;
+    let excluded = |slot: &str, g: &str| {
+        *slot == animation.exec_slot
+            && (exec.as_ref().is_some_and(|e| e != g)
+                || var.as_ref().is_some_and(|t| {
+                    animations
+                        .types
+                        .param(g, 0)
+                        .is_some_and(|v| !super::identity::compatible(t, &v, module))
+                }))
+    };
+    let mut codes = Codes::default();
+    for (slot, kind) in &config.caller_slots {
+        if *kind != super::graph::CallerSlot::Immediate {
+            continue;
+        }
+        for (g, origins) in animations.landings.get(slot).into_iter().flatten() {
+            if excluded(slot, g) {
+                continue;
+            }
+            let admitted = origins.iter().any(|origin| match origin {
+                None => true,
+                Some(p) => {
+                    let p = &animations.profiles[*p];
+                    !p.never_early && p.admits(key, animation, module)
+                }
+            });
+            if admitted {
+                codes.union(sends_of(g));
+            }
+        }
+    }
+    codes
 }
 
 /// Whether a `[guarded]` entry covers a hold freed by `freer` (`None`: a
@@ -1953,6 +2088,37 @@ fn free_without_clear(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn started_animations_are_hazards_only_for_removals_that_match_them() {
+        use super::super::identity::tests::{ANIMATION_CONFIG, animation_module};
+        let m = animation_module();
+        let config: AuditConfig = toml::from_str(ANIMATION_CONFIG).unwrap();
+        let graph = Graph::build(&m, &config).unwrap();
+        // `exec_a` sends code 15; it runs as the `exec_cb` of animations
+        // whose `var` is an `A`.
+        let sends_of = |g: &str| {
+            if g == "t::exec_a" {
+                Codes::one(15)
+            } else {
+                Codes::default()
+            }
+        };
+        let codes = |exec: Option<&str>, var: Option<&str>| {
+            let key = AnimationKey::Matching {
+                exec: exec.map(str::to_owned),
+                var: var.map(str::to_owned),
+            };
+            started_codes(&m, &graph, &config, &key, &sends_of)
+        };
+        assert!(codes(None, None).contains(15));
+        assert!(codes(Some("t::exec_a"), Some("A")).contains(15));
+        // Another `exec_cb`, or a `var` of another type, cannot match the
+        // animation `exec_a` runs for.
+        assert!(codes(Some("t::exec_b"), None).is_empty());
+        assert!(codes(None, Some("D")).is_empty());
+        assert!(started_codes(&m, &graph, &config, &AnimationKey::Nothing, &sends_of).is_empty());
+    }
 
     const IR: &str = r#"
 %struct._lv_event_list_t = type { %struct.lv_array_t, i8 }

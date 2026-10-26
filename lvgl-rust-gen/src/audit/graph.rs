@@ -18,6 +18,7 @@
 //! sink is raw (it schedules a deletion that runs without the crate's
 //! checks); anything else is shared.
 
+use super::identity::{AnimationConfig, AnimationKey, Animations};
 use super::ir::{Arg, Module, Stored, Target};
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
@@ -43,8 +44,13 @@ pub struct AuditConfig {
     /// indirect call through the field.
     #[serde(default)]
     pub caller_slots: BTreeMap<String, CallerSlot>,
+    /// Animation functions and fields, to tell animations apart
+    /// (`identity.rs`).
     #[serde(default)]
-    pub anim_delete: Option<AnimDelete>,
+    pub animation: Option<AnimationConfig>,
+    /// Calls that cannot happen in a calling context, with the reason.
+    #[serde(default)]
+    pub infeasible: BTreeMap<String, Infeasible>,
     /// Event senders: the index of the event code argument.
     #[serde(default)]
     pub send: BTreeMap<String, usize>,
@@ -143,18 +149,23 @@ pub struct EventPolicy {
     pub why: String,
 }
 
-/// `lv_anim_delete(var, exec_cb)` runs the `deleted_cb` of the animations
-/// whose `exec_cb` matches: with a constant `exec_cb`, only the deleted
-/// callbacks installed together with it are reached.
+/// `[infeasible.<name>]`: inside calls from `context` (`"caller ->
+/// callee"`), the callee never makes the listed calls (a condition on its
+/// arguments that the caller always meets). The callee is specialised for
+/// that caller without them.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct AnimDelete {
-    pub function: String,
-    pub exec_arg: usize,
-    /// Functions through which the `exec_cb` being deleted stays known.
-    pub carry: Vec<String>,
-    pub exec_slots: Vec<String>,
-    pub deleted_slot: String,
+pub struct Infeasible {
+    pub context: String,
+    pub calls: Vec<String>,
+    pub why: String,
+}
+
+/// Splits `"caller -> callee"`.
+fn call_pair(text: &str) -> Result<(&str, &str), String> {
+    text.split_once(" -> ")
+        .map(|(a, b)| (a.trim(), b.trim()))
+        .ok_or_else(|| format!("audit.toml: expected \"caller -> callee\", got {text:?}"))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
@@ -192,13 +203,8 @@ pub(crate) struct Out {
     pub(crate) sets: Option<i64>,
     /// Forwards the event being dispatched (its code stays known).
     pub(crate) carry: bool,
-    /// A deleted callback, run only when the `exec_cb` being deleted is one
-    /// of these (`*`: any).
-    execs: Option<Vec<String>>,
-    /// Starts deleting the animations of this `exec_cb`.
-    sets_exec: Option<String>,
-    /// Keeps the `exec_cb` being deleted known.
-    carry_exec: bool,
+    /// An indirect call through the animation `deleted_cb` field.
+    pub(crate) deleted_slot: bool,
 }
 
 impl Out {
@@ -209,9 +215,7 @@ impl Out {
             guard: None,
             sets: None,
             carry: false,
-            execs: None,
-            sets_exec: None,
-            carry_exec: false,
+            deleted_slot: false,
         }
     }
 }
@@ -237,6 +241,53 @@ pub struct Graph {
     deleting: BTreeSet<String>,
     /// Event handlers and the codes they are registered for (`None`: any).
     pub handlers: BTreeMap<String, BTreeSet<Option<i64>>>,
+    /// Animation profiles and where callbacks land (`identity.rs`).
+    pub animations: Animations,
+    /// Nodes specialised for an animation key.
+    pub animation_nodes: BTreeMap<String, AnimationKey>,
+}
+
+/// Every edge of `from`, in `edges` and in its per-site lists.
+fn outs_mut<'a>(
+    edges: &'a mut BTreeMap<String, Vec<Out>>,
+    site_outs: &'a mut BTreeMap<String, SiteOuts>,
+    from: &str,
+) -> impl Iterator<Item = &'a mut Out> {
+    let plain = edges.get_mut(from).into_iter().flatten();
+    let sites = site_outs
+        .get_mut(from)
+        .into_iter()
+        .flat_map(|(c, i)| c.iter_mut().chain(i.iter_mut()))
+        .flatten();
+    plain.chain(sites)
+}
+
+/// Adds node `special`: a copy of `base` whose edges `map` rewrites or
+/// drops.
+fn specialise(
+    edges: &mut BTreeMap<String, Vec<Out>>,
+    site_outs: &mut BTreeMap<String, SiteOuts>,
+    base: &str,
+    special: &str,
+    map: impl Fn(&Out) -> Option<Out>,
+) {
+    let plain: Vec<Out> = edges
+        .get(base)
+        .into_iter()
+        .flatten()
+        .filter_map(&map)
+        .collect();
+    edges.insert(special.to_owned(), plain);
+    if let Some((c, i)) = site_outs.get(base) {
+        let rewrite = |sites: &Vec<Vec<Out>>| -> Vec<Vec<Out>> {
+            sites
+                .iter()
+                .map(|s| s.iter().filter_map(&map).collect())
+                .collect()
+        };
+        let special_sites = (rewrite(c), rewrite(i));
+        site_outs.insert(special.to_owned(), special_sites);
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -348,32 +399,6 @@ impl Graph {
         let mut flow_edges: Vec<(String, String)> = Vec::new();
         let caller_slot = |slot: &str| config.caller_slots.get(slot).copied();
         let mut caller_edges: Vec<(String, String, Edge)> = Vec::new();
-        // Animation callbacks installed by each function, to pair a
-        // `deleted_cb` with the `exec_cb` installed with it.
-        let mut anim_execs: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
-        let mut anim_deleted: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
-        let mut note_anim = |installer: &str, slot: &str, g: &str| {
-            if let Some(anim) = &config.anim_delete {
-                if anim.exec_slots.iter().any(|s| s == slot) {
-                    anim_execs
-                        .entry(installer.to_owned())
-                        .or_default()
-                        .insert(g.to_owned());
-                } else if anim.deleted_slot == slot {
-                    anim_deleted
-                        .entry(installer.to_owned())
-                        .or_default()
-                        .insert(g.to_owned());
-                }
-            }
-        };
-        for (name, f) in &module.functions {
-            for (slot, stored) in &f.stores {
-                if let Stored::Function(g) = stored {
-                    note_anim(name, slot, g);
-                }
-            }
-        }
         for (name, f) in &module.functions {
             escaped.extend(f.refs.iter().cloned());
             for call in &f.calls {
@@ -389,7 +414,6 @@ impl Graph {
                                 escaped.insert(g.clone()); // an unknown callee keeps it
                             }
                             for slot in param_slots.get(&key).into_iter().flatten() {
-                                note_anim(name, slot, g);
                                 if caller_slot(slot).is_some() {
                                     caller_slot_funcs
                                         .entry(slot.clone())
@@ -422,19 +446,14 @@ impl Graph {
         }
         escaped.extend(module.global_refs.iter().cloned());
         let taken = escaped;
-        let mut deleted_by: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
-        for (installer, deleted) in &anim_deleted {
-            let execs = anim_execs.get(installer);
-            for d in deleted {
-                let by = deleted_by.entry(d.clone()).or_default();
-                match execs {
-                    Some(execs) if !execs.is_empty() => by.extend(execs.iter().cloned()),
-                    _ => {
-                        by.insert("*".into());
-                    }
-                }
-            }
-        }
+        let animations = Animations::new(
+            module,
+            config.animation.as_ref(),
+            &param_slots,
+            &passthrough,
+        )?;
+        // Removals specialised by the animations they can reach.
+        let mut animation_requests: BTreeSet<(String, AnimationKey)> = BTreeSet::new();
         let mut by_signature: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
         for name in &taken {
             if handlers.contains_key(name) {
@@ -589,7 +608,7 @@ impl Graph {
             let sender = config.send.contains_key(name);
             let in_machinery = machinery(name);
             let sender_widget = widget_of(&f.unit);
-            for call in &f.calls {
+            for (n, call) in f.calls.iter().enumerate() {
                 let start = out.len();
                 if call.callee == "lv_event_get_code" {
                     sites.0.push(Vec::new());
@@ -632,18 +651,29 @@ impl Graph {
                         }
                     }
                     _ => {
-                        let mut e = Out::new(call.callee.clone(), Edge::Call);
-                        e.guard = call.codes.clone();
-                        e.carry = carry;
-                        if let Some(anim) = &config.anim_delete {
-                            if anim.function == call.callee
-                                && let Some(Arg::Function(exec)) = call.args.get(anim.exec_arg)
-                            {
-                                e.sets_exec = Some(exec.clone());
-                            }
-                            e.carry_exec = anim.carry.iter().any(|c| c == name);
+                        // An animation removal goes to the removal
+                        // specialised for the animations it can match.
+                        let keys = match animations.delete_key(module, name, f, n) {
+                            Some(key) => Some(vec![key]),
+                            None => animations.start_keys(name, f, n),
+                        };
+                        let targets: Vec<String> = match keys {
+                            Some(keys) => keys
+                                .into_iter()
+                                .map(|key| {
+                                    let to = format!("{}{}", call.callee, key.suffix());
+                                    animation_requests.insert((call.callee.clone(), key));
+                                    to
+                                })
+                                .collect(),
+                            None => vec![call.callee.clone()],
+                        };
+                        for to in targets {
+                            let mut e = Out::new(to, Edge::Call);
+                            e.guard = call.codes.clone();
+                            e.carry = carry;
+                            out.push(e);
                         }
-                        out.push(e);
                     }
                 }
                 if config.event_dispatch.contains(&call.callee) && !sender && !dispatch {
@@ -703,8 +733,8 @@ impl Graph {
                             .map(|g| (*g).to_owned())
                             .collect(),
                     };
-                    let deleted_slot = match (&indirect.target, &config.anim_delete) {
-                        (Target::Slot(slot), Some(anim)) => *slot == anim.deleted_slot,
+                    let deleted_slot = match (&indirect.target, &config.animation) {
+                        (Target::Slot(slot), Some(animation)) => *slot == animation.deleted_slot,
                         _ => false,
                     };
                     for g in targets {
@@ -713,14 +743,7 @@ impl Graph {
                         let mut e = Out::new(g.clone(), Edge::Indirect);
                         e.guard = indirect.codes.clone();
                         e.carry = carry;
-                        if deleted_slot {
-                            e.execs = Some(
-                                deleted_by
-                                    .get(&g)
-                                    .map(|b| b.iter().cloned().collect())
-                                    .unwrap_or_else(|| vec!["*".to_owned()]),
-                            );
-                        }
+                        e.deleted_slot = deleted_slot;
                         out.push(e);
                     }
                     sites.1.push(out[start..].to_vec());
@@ -739,6 +762,70 @@ impl Graph {
                 .or_default()
                 .push(Out::new(to.clone(), *kind));
         }
+
+        // Calls that cannot happen in a context: the callee specialised
+        // for that caller.
+        for (name, inf) in &config.infeasible {
+            let (from, to) = call_pair(&inf.context)?;
+            if !edges
+                .get(from)
+                .is_some_and(|o| o.iter().any(|o| o.to == to))
+            {
+                return Err(format!(
+                    "audit.toml: [infeasible.{name}] {from} does not call {to}"
+                ));
+            }
+            for c in &inf.calls {
+                if !edges.get(to).is_some_and(|o| o.iter().any(|o| o.to == *c)) {
+                    return Err(format!(
+                        "audit.toml: [infeasible.{name}] {to} does not call {c}"
+                    ));
+                }
+            }
+            let special = format!("{to}#infeasible({name})");
+            specialise(&mut edges, &mut site_outs, to, &special, |o| {
+                (!(inf.calls.contains(&o.to) && o.kind == Edge::Call)).then(|| o.clone())
+            });
+            for o in outs_mut(&mut edges, &mut site_outs, from) {
+                if o.to == to {
+                    o.to = special.clone();
+                }
+            }
+        }
+        // Animation removals: the chain of functions down to the one that
+        // runs `deleted_cb`, specialised for each key, with only the deleted
+        // callbacks of animations the key can match.
+        let mut animation_nodes: BTreeMap<String, AnimationKey> = BTreeMap::new();
+        if let Some(animation) = &config.animation {
+            for (callee, key) in &animation_requests {
+                let chain = if *callee == animation.delete {
+                    &animation.delete_carry
+                } else {
+                    &animation.start_carry
+                };
+                if chain.first() != Some(callee) {
+                    return Err(format!(
+                        "audit.toml: [animation] the carry list of {callee} must start with it"
+                    ));
+                }
+                let suffix = key.suffix();
+                for x in chain {
+                    let special = format!("{x}{suffix}");
+                    specialise(&mut edges, &mut site_outs, x, &special, |o| {
+                        if o.deleted_slot && !animations.admits_deleted(key, &o.to, module) {
+                            return None;
+                        }
+                        let mut o = o.clone();
+                        if chain.contains(&o.to) && matches!(o.kind, Edge::Call | Edge::Indirect) {
+                            o.to = format!("{}{suffix}", o.to);
+                        }
+                        Some(o)
+                    });
+                    animation_nodes.insert(special, key.clone());
+                }
+            }
+        }
+
         // A sender's code is its parameter: called on its own (or with a
         // computed code), it reaches every handler.
         for sender in config.send.keys() {
@@ -773,7 +860,17 @@ impl Graph {
             sinks,
             deleting,
             handlers,
+            animations,
+            animation_nodes,
         })
+    }
+
+    /// The per-site edges of a graph node (specialised nodes have their
+    /// own; `#body` nodes use their function's).
+    pub(crate) fn site_outs_of(&self, node: &str) -> Option<&SiteOuts> {
+        self.site_outs
+            .get(node)
+            .or_else(|| self.site_outs.get(node.split('#').next().unwrap_or(node)))
     }
 
     /// Exclusive if a sink is reachable now; raw if the call schedules a
@@ -858,13 +955,13 @@ impl Graph {
         kinds: &[Edge],
         sinks: &BTreeSet<String>,
     ) -> Option<Vec<String>> {
-        type State<'a> = (&'a str, Option<i64>, Option<&'a str>);
+        type State<'a> = (&'a str, Option<i64>);
         let mut previous: BTreeMap<State, State> = BTreeMap::new();
-        let first: State = (start, code, None);
+        let first: State = (start, code);
         let mut queue = VecDeque::from([first]);
         let mut seen = BTreeSet::from([first]);
         while let Some(state) = queue.pop_front() {
-            let (node, code, exec) = state;
+            let (node, code) = state;
             if sinks.contains(node) {
                 let mut path = vec![node.to_owned()];
                 let mut at = state;
@@ -884,22 +981,12 @@ impl Graph {
                 {
                     continue;
                 }
-                if let (Some(exec), Some(execs)) = (exec, &out.execs)
-                    && !execs.iter().any(|e| e == exec || e == "*")
-                {
-                    continue;
-                }
                 let next_code = match (out.sets, out.carry) {
                     (Some(c), _) => Some(c),
                     (None, true) => code,
                     (None, false) => None,
                 };
-                let next_exec = match (&out.sets_exec, out.carry_exec) {
-                    (Some(e), _) => Some(e.as_str()),
-                    (None, true) => exec,
-                    (None, false) => None,
-                };
-                let next: State = (out.to.as_str(), next_code, next_exec);
+                let next: State = (out.to.as_str(), next_code);
                 if seen.insert(next) {
                     previous.insert(next, state);
                     queue.push_back(next);
@@ -1158,6 +1245,89 @@ define dso_local void @use_display_delete(ptr noundef %0) {
         // An indirect call reaches only what its slot can hold, although a
         // deleting function of the same signature has its address taken.
         assert_eq!(graph.verdict("remove_anim"), Verdict::Shared);
+    }
+
+    #[test]
+    fn animation_removals_reach_only_the_animations_they_match() {
+        use super::super::identity::tests::{ANIMATION_CONFIG, animation_module};
+        let m = animation_module();
+        let config: AuditConfig = toml::from_str(ANIMATION_CONFIG).unwrap();
+        let graph = Graph::build(&m, &config).unwrap();
+        let exclusive = |f: &str| matches!(graph.verdict(f), Verdict::Exclusive(_));
+        // `deleted_bad` belongs to animations whose `exec_cb` is `exec_b`
+        // and whose `var` is NULL.
+        assert!(!exclusive("lv_stop_a"));
+        assert!(exclusive("lv_stop_b"));
+        // No `exec_cb` and a `var` of unknown type: every animation.
+        assert!(exclusive("lv_stop_all"));
+        // A `var` of another struct type.
+        assert!(!exclusive("lv_stop_d"));
+        // Starting replaces the animations with the same `exec_cb` and
+        // `var`, unless `early_apply` is off.
+        assert!(!exclusive("lv_setup_a"));
+        assert!(exclusive("lv_setup_bad"));
+        assert!(!exclusive("lv_setup_quiet"));
+        // A local whose address escapes can be anything.
+        assert!(exclusive("lv_setup_escaping"));
+        // The removal itself, called with unknown arguments.
+        assert!(exclusive("lv_anim_delete"));
+    }
+
+    #[test]
+    fn infeasible_calls_are_removed_only_in_their_context() {
+        let mut m = Module::default();
+        m.add_ir(
+            "t",
+            r#"
+define internal void @obj_delete_core(ptr noundef %0) {
+  ret void
+}
+define dso_local void @lv_group_remove_obj(ptr noundef %0) {
+  call void @obj_delete_core(ptr %0)
+  ret void
+}
+define dso_local void @lv_group_add_obj(ptr noundef %0) {
+  call void @lv_group_remove_obj(ptr %0)
+  ret void
+}
+define dso_local void @lv_obj_class_init_obj(ptr noundef %0) {
+  call void @lv_group_add_obj(ptr %0)
+  ret void
+}
+define dso_local void @lv_tabview_add_tab(ptr noundef %0) {
+  call void @lv_group_add_obj(ptr %0)
+  ret void
+}
+"#,
+            &[],
+        );
+        let entry = r#"
+sinks = ["t::obj_delete_core"]
+[infeasible.fresh]
+context = "lv_obj_class_init_obj -> lv_group_add_obj"
+calls = ["lv_group_remove_obj"]
+why = "test"
+"#;
+        let config: AuditConfig = toml::from_str(entry).unwrap();
+        let graph = Graph::build(&m, &config).unwrap();
+        assert_eq!(graph.verdict("lv_obj_class_init_obj"), Verdict::Shared);
+        assert!(matches!(
+            graph.verdict("lv_tabview_add_tab"),
+            Verdict::Exclusive(_)
+        ));
+        assert!(matches!(
+            graph.verdict("lv_group_add_obj"),
+            Verdict::Exclusive(_)
+        ));
+        // Entries that do not match the call graph are errors.
+        for wrong in [
+            entry.replace("lv_obj_class_init_obj ->", "lv_group_remove_obj ->"),
+            entry.replace("calls = [\"lv_group_remove_obj\"]", "calls = [\"lv_free\"]"),
+            entry.replace(" -> lv_group_add_obj", ""),
+        ] {
+            let config: AuditConfig = toml::from_str(&wrong).unwrap();
+            assert!(Graph::build(&m, &config).is_err(), "{wrong}");
+        }
     }
 
     #[test]
