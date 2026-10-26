@@ -35,10 +35,13 @@ else stays reachable through `lvgl_rust::sys`.
   `COVER_CHECK`, `REFR_EXT_DRAW_SIZE`, `DRAW_*`, `DRAW_TASK_ADDED`) go to
   `obj.on_query(QueryCode::X, |e| ...)` (also `on_query_with`,
   `on_query_fn`). The handler gets a `QueryEvent`, with no `Lvgl` access
-  and no views: it reads the typed parameter and writes the answer
-  (`e.self_size()?.extend(w, h)`, `e.hit_test()?.set_result(false)`,
-  `e.draw_task()?.set_color(c)`), and the compiler rejects anything else.
-  Drawing into a layer stays raw (`Layer::as_ptr`).
+  and no views: it reads the typed parameter and writes the answer (`if
+  let Some(size) = e.self_size() { size.extend(w, h) }`, likewise
+  `hit_test()` with `set_result`, `draw_task()` with `set_color`), and the
+  compiler rejects anything else, given the `LvglAccess` contract that a
+  guard is never borrowed for `'static` (a leaked guard would let a
+  thread-local keep shared access). Drawing into a layer stays raw
+  (`Layer::as_ptr`).
 - **Timers.** `lv.timer(period_ms, data, f)` returns an `Owned<Timer>`
   (dropping it deletes the timer); `Handle<Timer>` pauses, resumes and
   changes the period and repeat count. No allocation besides LVGL's timer.

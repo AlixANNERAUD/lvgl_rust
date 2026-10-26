@@ -18,6 +18,13 @@
 //! deletion is reachable from it; [`Lvgl::enter`] fails inside it (a
 //! callback is running).
 //!
+//! The compiler enforces this through the handler's types: the closure is
+//! `Send + 'static` and zero-sized, its data is a [`UserData`] value
+//! (resolving a [`Handle`](crate::Handle) needs an [`Lvgl`]), and the only
+//! other way in, a thread-local holding a `&'static Lvgl` or a view, needs a
+//! session whose guard is borrowed for `'static`, which the
+//! [`LvglAccess`](crate::LvglAccess) contract forbids.
+//!
 //! ```compile_fail
 //! use lvgl_rust::{Obj, QueryEvent, enums::QueryCode};
 //! fn register(object: &Obj) {
@@ -416,7 +423,7 @@ impl DrawTask<'_> {
     /// Pointers to the color and opacity of the descriptor, for the kinds
     /// that have both: fill, border, box shadow, label, line, arc and
     /// triangle.
-    fn color_opa(&self) -> Option<(*mut sys::lv_color_t, *mut sys::lv_opa_t)> {
+    fn color_opacity(&self) -> Option<(*mut sys::lv_color_t, *mut sys::lv_opa_t)> {
         let t = self.raw();
         macro_rules! kinds {
             ($($getter:ident),*) => { $(
@@ -446,13 +453,14 @@ impl DrawTask<'_> {
     /// triangle task (`None` for other kinds).
     pub fn color(&self) -> Option<sys::lv_color_t> {
         // SAFETY: a live field of the descriptor.
-        self.color_opa().map(|(color, _)| unsafe { color.read() })
+        self.color_opacity()
+            .map(|(color, _)| unsafe { color.read() })
     }
 
     /// Changes the color of a fill, border, box shadow, label, line, arc or
     /// triangle task; `false` (and nothing changed) for other kinds.
     pub fn set_color(&self, color: sys::lv_color_t) -> bool {
-        self.color_opa()
+        self.color_opacity()
             // SAFETY: as above; no renderer reads the task yet.
             .map(|(field, _)| unsafe { field.write(color) })
             .is_some()
@@ -460,18 +468,19 @@ impl DrawTask<'_> {
 
     /// The opacity of a fill, border, box shadow, label, line, arc or
     /// triangle task (`None` for other kinds).
-    pub fn opa(&self) -> Option<u8> {
+    pub fn opacity(&self) -> Option<u8> {
         // SAFETY: a live field of the descriptor.
-        self.color_opa().map(|(_, opa)| unsafe { opa.read() })
+        self.color_opacity()
+            .map(|(_, opacity)| unsafe { opacity.read() })
     }
 
     /// Changes the opacity (0 to 255) of a fill, border, box shadow, label,
     /// line, arc or triangle task; `false` (and nothing changed) for other
     /// kinds.
-    pub fn set_opa(&self, opa: u8) -> bool {
-        self.color_opa()
+    pub fn set_opacity(&self, opacity: u8) -> bool {
+        self.color_opacity()
             // SAFETY: as above.
-            .map(|(_, field)| unsafe { field.write(opa) })
+            .map(|(_, field)| unsafe { field.write(opacity) })
             .is_some()
     }
 }
