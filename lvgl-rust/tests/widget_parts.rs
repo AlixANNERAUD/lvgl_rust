@@ -112,11 +112,23 @@ fn chart_series_belong_to_their_chart() {
     assert_eq!(second.remove_series(series), Err(Error::InvalidArg));
     draw();
 
-    // Scatter charts take pairs.
+    // Scatter charts take pairs. LVGL leaves fresh X arrays
+    // uninitialized (`lv_chart.c:133-139, 476-482`): they read as
+    // `LV_CHART_POINT_NONE` until written.
+    let none = [sys::LV_CHART_POINT_NONE as i32; 4];
     let scatter = first
         .add_series(color::hex(0), ChartAxis::PRIMARY_Y)
         .unwrap();
     first.set_type(ChartType::SCATTER);
+    assert_eq!(first.get_series_x_values_into(&scatter, &mut values), Ok(4));
+    assert_eq!(values[..4], none);
+    let fresh = first
+        .add_series(color::hex(0), ChartAxis::PRIMARY_Y)
+        .unwrap();
+    values = [0; 8];
+    assert_eq!(first.get_series_x_values_into(&fresh, &mut values), Ok(4));
+    assert_eq!(values[..4], none);
+    first.remove_series(fresh).unwrap();
     first.set_next_value2(&scatter, 5, 6).unwrap();
     first
         .set_series_values2(&scatter, &[7, 8], &[9, 10])

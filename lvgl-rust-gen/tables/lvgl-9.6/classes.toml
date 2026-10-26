@@ -48,6 +48,9 @@ manual = [
     "lv_chart_set_series_value_by_id2",
     "lv_chart_get_series_y_array",
     "lv_chart_get_series_x_array",
+    # A chart becoming a scatter chart gets uninitialized X arrays
+    # (lv_chart.c:133-139): the wrapper fills them (chart.rs).
+    "lv_chart_set_type",
     # The point arrays are `sizeof(int32_t) * cnt` bytes, which wraps on
     # 32-bit targets before `cnt` points are written (lv_chart.c:1910-1942).
     "lv_chart_set_point_count",

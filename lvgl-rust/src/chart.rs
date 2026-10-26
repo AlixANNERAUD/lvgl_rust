@@ -21,6 +21,13 @@
 //! `lv_chart_remove_series` does not clear, 657-667) and
 //! `lv_chart_get_series_next` (series without a token).
 //!
+//! LVGL allocates X arrays without initializing them, in
+//! `lv_chart_add_series` on a scatter chart and in `lv_chart_set_type` when
+//! a chart becomes one (`lv_chart.c:133-139, 476-482`; only Y points and
+//! points added by `lv_chart_set_point_count` are filled). Both wrappers
+//! fill them with `LV_CHART_POINT_NONE`, so the X points copied out are
+//! always written values.
+//!
 //! Like the rest of LVGL, the point arrays assume allocations succeed: a
 //! failed reallocation in `lv_chart_set_point_count` leaves a series with
 //! fewer (or no) points than the chart's count (`lv_chart.c:1909-1937`).
@@ -87,7 +94,65 @@ impl Chart {
         #[allow(clippy::unnecessary_cast)] // `lv_chart_axis_t` is `c_int` on MSVC.
         // SAFETY: shared access, live chart.
         let s = unsafe { sys::lv_chart_add_series(self.as_ptr(), color, axis.0 as _) };
-        NonNull::new(s).map(ChartSeries).ok_or(Error::OutOfMemory)
+        let s = NonNull::new(s).ok_or(Error::OutOfMemory)?;
+        // SAFETY: a series of this chart, just added.
+        unsafe { self.fill_x_points(s.as_ptr()) };
+        Ok(ChartSeries(s))
+    }
+
+    /// Sets how the chart draws its series. A chart becoming a scatter
+    /// chart gets X points for every series, `LV_CHART_POINT_NONE` until
+    /// written; one leaving it frees them.
+    ///
+    /// `lv_chart_set_type`.
+    pub fn set_type(&self, chart_type: crate::enums::ChartType) {
+        let was_scatter = self.is_scatter();
+        #[allow(clippy::unnecessary_cast)] // `lv_chart_type_t` is `c_int` on MSVC.
+        // SAFETY: shared access, live chart (the audit finds no deletion
+        // and no hold across event sends).
+        unsafe {
+            sys::lv_chart_set_type(self.as_ptr(), chart_type.0 as _)
+        };
+        if was_scatter || !self.is_scatter() {
+            return;
+        }
+        // SAFETY: shared access, live chart; each `s` is one of its series.
+        unsafe {
+            let mut s = sys::lv_chart_get_series_next(self.as_ptr(), core::ptr::null());
+            while !s.is_null() {
+                self.fill_x_points(s);
+                s = sys::lv_chart_get_series_next(self.as_ptr(), s);
+            }
+        }
+    }
+
+    fn is_scatter(&self) -> bool {
+        // SAFETY: shared access, live chart.
+        let chart_type = unsafe { sys::lv_chart_get_type(self.as_ptr()) };
+        #[allow(clippy::unnecessary_cast)] // the bindgen alias may already match
+        let scatter = chart_type as u32 == sys::lv_chart_type_t_LV_CHART_TYPE_SCATTER as u32;
+        scatter
+    }
+
+    /// Fills the X points of `s`, if it has any, with
+    /// `LV_CHART_POINT_NONE`.
+    ///
+    /// # Safety
+    ///
+    /// `s` is a series of this chart whose X array, if any, LVGL allocated
+    /// for the point count (not an external array).
+    unsafe fn fill_x_points(&self, s: *mut sys::lv_chart_series_t) {
+        // SAFETY: caller contract.
+        unsafe {
+            let points = sys::lv_chart_get_series_x_array(self.as_ptr(), s);
+            if points.is_null() {
+                return;
+            }
+            let count = sys::lv_chart_get_point_count(self.as_ptr()) as usize;
+            for i in 0..count {
+                points.add(i).write(sys::LV_CHART_POINT_NONE as i32);
+            }
+        }
     }
 
     /// Removes `series` and frees its points.
@@ -299,13 +364,10 @@ impl Chart {
         buf: &mut [i32],
     ) -> Result<usize, Error> {
         let s = self.series_ptr(series)?;
-        // SAFETY: shared access, live chart.
-        let chart_type = unsafe { sys::lv_chart_get_type(self.as_ptr()) };
         // X arrays follow the point count only in scatter charts: one left
         // by a failed `lv_chart_set_type` would be shorter
         // (`lv_chart.c:133-139, 158-160`).
-        #[allow(clippy::unnecessary_cast)] // the bindgen alias may already match
-        if chart_type as u32 != sys::lv_chart_type_t_LV_CHART_TYPE_SCATTER as u32 {
+        if !self.is_scatter() {
             return Ok(0);
         }
         // SAFETY: a series of this chart.
@@ -322,7 +384,8 @@ impl Chart {
         let count = count.min(buf.len());
         // SAFETY: LVGL allocates `point_cnt` points per array
         // (`lv_chart.c:482-486`, kept in step by `lv_chart_set_point_count`
-        // and `lv_chart_set_type`); nothing runs during the copy.
+        // and `lv_chart_set_type`), all written (Y by LVGL, X by
+        // `fill_x_points`); nothing runs during the copy.
         buf[..count].copy_from_slice(unsafe { core::slice::from_raw_parts(points, count) });
         count
     }

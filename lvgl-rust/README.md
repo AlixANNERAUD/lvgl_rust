@@ -45,8 +45,9 @@ else stays reachable through `lvgl_rust::sys`.
 - **Widgets LVGL trusts blindly.** `chart.add_series(color, axis)` returns
   a `ChartSeries` token (one pointer, not `Clone`) that every series call
   checks against the chart's list: a series of another chart, of a
-  deleted chart or already removed is `Error::InvalidArg`, and point
-  counts whose arrays would wrap the address space are refused. Table cell
+  deleted chart or already removed is `Error::InvalidArg`, point
+  counts whose arrays would wrap the address space are refused, and X
+  points of scatter charts read as `LV_CHART_POINT_NONE` until written. Table cell
   getters and setters check rows and columns against the table and its
   size against `TABLE_CELL_LIMIT` (and at least one row and one column);
   cell text is copied out of views and
