@@ -288,7 +288,12 @@ pub use owned::{ImageBuffer, OwnedImageSource};
 mod owned {
     use super::{ImageDsc, PixelFormat, header};
     use crate::{
-        Error, ObjMut, base::deferred, enums::EventCode, heap::LvBox, sys, widgets::Image,
+        Error, ObjMut,
+        base::{deferred, ffi},
+        enums::EventCode,
+        heap::LvBox,
+        sys,
+        widgets::Image,
     };
     use core::{
         ffi::c_void,
@@ -325,8 +330,12 @@ mod owned {
     }
 
     /// An image whose descriptor and `N` bytes of palette and pixels live
-    /// in its block of LVGL's heap, for images made at run time. Checked
-    /// like [`ImageDsc::new`].
+    /// in its block of LVGL's heap, for small images made at run time.
+    /// Checked like [`ImageDsc::new`].
+    ///
+    /// The value goes through the stack (`N` bytes, possibly more than once
+    /// without optimizations) on its way to the heap: for larger images,
+    /// [`ObjMut::set_src_buffer`] fills the pixels in their block.
     #[repr(C)]
     pub struct ImageBuffer<const N: usize> {
         /// First: the source LVGL keeps is the block's value.
@@ -424,6 +433,66 @@ mod owned {
         /// A plain `set_src` keeps the previous block until the next
         /// `set_src_owned` or the deletion.
         pub fn set_src_owned<T: OwnedImageSource>(&mut self, image: T) -> Result<(), Error> {
+            let block = LvBox::<Link, T>::new(ptr::null_mut(), image)
+                .map_err(|_| Error::OutOfMemory)?
+                .into_raw();
+            // SAFETY: a block of an owned source, the value in place.
+            unsafe { self.install::<T>(block) }
+        }
+
+        /// Shows an image of `width` × `height` pixels in `format`, rows
+        /// `stride` bytes apart (`0`: packed rows), made in place: the
+        /// block (an [`ImageBuffer`] after a pointer-sized header) is
+        /// allocated first, zeroed, then `fill` writes the `N` bytes of
+        /// palette and pixels into it, so they never go through the stack.
+        /// Owned and retired like [`ObjMut::set_src_owned`].
+        /// [`Error::InvalidArg`] as for [`ImageBuffer::new`] (before
+        /// anything is allocated), or if LVGL refuses the image.
+        #[cfg(target_endian = "little")]
+        pub fn set_src_buffer<const N: usize>(
+            &mut self,
+            format: PixelFormat,
+            width: u16,
+            height: u16,
+            stride: u16,
+            fill: impl FnOnce(&mut [u8; N]),
+        ) -> Result<(), Error> {
+            let header = header(format, width, height, stride, N).map_err(|_| Error::InvalidArg)?;
+            // SAFETY: zero bytes are a valid `ImageBuffer` (null pointers,
+            // zero numbers).
+            let block = unsafe { LvBox::<Link, ImageBuffer<N>>::new_zeroed(ptr::null_mut()) }
+                .ok_or(Error::OutOfMemory)?
+                .into_raw();
+            /// Frees the block if `fill` panics.
+            struct Unwind(*mut c_void);
+            impl Drop for Unwind {
+                fn drop(&mut self) {
+                    // SAFETY: never given to LVGL; the value needs no drop.
+                    unsafe { ffi::free(self.0) };
+                }
+            }
+            let unwind = Unwind(block);
+            let buffer = LvBox::<Link, ImageBuffer<N>>::value(block);
+            // SAFETY: the zeroed value in its fresh block, borrowed by
+            // `fill` alone; then the descriptor is written in place.
+            unsafe {
+                fill(&mut (*buffer).data.0);
+                (*buffer).dsc.header = header;
+                (*buffer).dsc.data_size = N as u32;
+            }
+            core::mem::forget(unwind);
+            // SAFETY: a block of an owned source, the value in place.
+            unsafe { self.install::<ImageBuffer<N>>(block) }
+        }
+
+        /// Shows the owned source in `block`, retiring the ones it
+        /// replaces (and `block` itself if LVGL refuses it).
+        ///
+        /// # Safety
+        ///
+        /// `block` comes from an `LvBox<Link, T>` with `T` in place and
+        /// not yet given to LVGL; it is consumed.
+        unsafe fn install<T: OwnedImageSource>(&mut self, block: *mut c_void) -> Result<(), Error> {
             const {
                 assert!(!needs_drop::<T>(), "owned sources need no drop");
                 assert!(
@@ -431,9 +500,6 @@ mod owned {
                     "owned sources align like a descriptor"
                 );
             }
-            let block = LvBox::<Link, T>::new(ptr::null_mut(), image)
-                .map_err(|_| Error::OutOfMemory)?
-                .into_raw();
             // SAFETY: the value in its block, which never moves.
             let src = unsafe { T::source(LvBox::<Link, T>::value(block)) };
             let o = self.as_raw();

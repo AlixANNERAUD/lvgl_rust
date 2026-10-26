@@ -260,6 +260,28 @@ mod heap {
         crate::base::drain::drain();
         assert_eq!(deferred::queued(), 0);
     }
+
+    #[test]
+    fn zeroed_boxes_are_built_in_place() {
+        #[repr(align(16))]
+        struct Wide([u8; 40]);
+        let mut guard = guard();
+        let _lv = session(&mut guard);
+        // SAFETY: zero bytes are a valid `Wide`.
+        let block = unsafe { LvBox::<*mut c_void, Wide>::new_zeroed(core::ptr::null_mut()) }
+            .unwrap()
+            .into_raw();
+        let value = LvBox::<*mut c_void, Wide>::value(block);
+        assert_eq!(value.addr() % 16, 0);
+        // SAFETY: the box's own value, then a block needing no drop.
+        unsafe {
+            assert!((*value).0.iter().all(|&byte| byte == 0));
+            (*value).0[39] = 1;
+            deferred::defer_free(block);
+        }
+        crate::base::drain::drain();
+        assert_eq!(deferred::queued(), 0);
+    }
 }
 
 #[cfg(not(lvgl_rust_views_only))]

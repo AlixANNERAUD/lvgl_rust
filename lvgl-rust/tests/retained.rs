@@ -387,3 +387,55 @@ fn retired_image_sources_are_freed_at_the_next_drain() {
     assert_eq!(used_blocks(), queued.map(|count| count - 1));
     drop(lv);
 }
+
+/// `set_src_buffer` fills a large image in its block: checked before any
+/// allocation, drawn, retired like other owned sources.
+#[cfg(feature = "heap")]
+#[test]
+fn image_buffers_are_filled_in_place() {
+    let mut guard = guard();
+    let mut lv = session(&mut guard);
+    fn last_image(lv: &Lvgl) -> Option<&Image> {
+        last(lv)?.downcast()
+    }
+    let before = used_blocks();
+    Image::create(lv.screen_active().unwrap()).unwrap();
+    let used = used_blocks();
+    {
+        let mut image = lv.edit(last_image).unwrap();
+        // Too few bytes for 64 rows: refused before anything is allocated
+        // or `fill` runs.
+        assert_eq!(
+            image.set_src_buffer::<64>(PixelFormat::Rgb565, 64, 64, 0, |_| unreachable!()),
+            Err(Error::InvalidArg)
+        );
+    }
+    assert_eq!(used_blocks(), used);
+    {
+        let mut image = lv.edit(last_image).unwrap();
+        image
+            .set_src_buffer::<{ 64 * 64 * 2 }>(PixelFormat::Rgb565, 64, 64, 0, |pixels| {
+                assert!(pixels.iter().all(|&byte| byte == 0));
+                for (i, byte) in pixels.iter_mut().enumerate() {
+                    *byte = i as u8;
+                }
+            })
+            .unwrap();
+        assert_eq!((image.get_src_width(), image.get_src_height()), (64, 64));
+    }
+    // SAFETY: session held; the source is the block's descriptor, whose
+    // data points into the same block.
+    unsafe {
+        let dsc = sys::lv_image_get_src(last(&lv).unwrap().as_ptr()).cast::<sys::lv_image_dsc_t>();
+        assert_eq!((*dsc).data_size, 64 * 64 * 2);
+        let data = core::slice::from_raw_parts((*dsc).data, 64 * 64 * 2);
+        assert!(data.iter().enumerate().all(|(i, &byte)| byte == i as u8));
+        sys::lv_obj_invalidate(sys::lv_screen_active());
+        sys::lv_refr_now(core::ptr::null_mut());
+    }
+    lv.edit(last).unwrap().delete().unwrap();
+    drop(lv);
+    let _lv = session(&mut guard);
+    // The image and its block are gone.
+    assert_eq!(used_blocks(), before);
+}

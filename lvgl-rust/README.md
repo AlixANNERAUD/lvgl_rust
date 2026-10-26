@@ -67,7 +67,10 @@ else stays reachable through `lvgl_rust::sys`.
   `image.set_src_owned(ImageBuffer::new(format, w, h, 0, pixels)?)` moves
   an image (or an `ImageDsc`) there: when it is replaced or the image is
   deleted, LVGL's image caches drop it and the block is freed at the next
-  `enter` or `timer_handler` (4 bytes of `.bss` for that list). With
+  `enter` or `timer_handler` (4 bytes of `.bss` for that list).
+  `image.set_src_buffer::<N>(format, w, h, 0, |pixels| ...)` allocates the
+  block first and fills the pixels in it, so a large image never goes
+  through the stack. With
   `async` too, `obj.subscribe_owned::<E, N>(code, capture)` puts the queue
   there and returns its `OwnedQueue` receiver (8 bytes, using the object's
   registry slot); the queue goes with the object, or with
