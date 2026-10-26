@@ -510,6 +510,15 @@ review the `access.toml` and `events.toml` diffs.
   `req`, `any_req` and `ticks`. `Registry::request_drop` and `drain` pair
   SeqCst fences; keep that pairing if either side changes, and rerun
   `mise run loom`.
+- **Display buffers.** LVGL checks draw buffer sizes only when they are
+  set (and only with `LV_USE_CHECK_ARG`). A display call that changes what
+  is rendered into them (resolution, rotation, color format, render mode)
+  goes through `Display::change_geometry` (`display.rs`): `Geometry::fits`
+  mirrors `lv_refr.c` and `_calculate_draw_buf_size`, and
+  `lvgl_sys_display_reshape_buffers` gives every buffer the new shape,
+  since direct mode with two buffers copies areas between them with their
+  stored shapes. Drivers sit right after their header (`layout::trailing`)
+  in a `repr(C)` cell or an `LvBox` block; keep both layouts in step.
 - **New LVGL calls in the core** go through `base/ffi.rs`, with a matching
   model in `base/ffi_stub.rs`, or Miri cannot run the tests.
 - **Bindgen output lints.** Generated code lives in the `bindings` module in
