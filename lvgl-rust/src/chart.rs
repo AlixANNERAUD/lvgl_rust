@@ -299,6 +299,15 @@ impl Chart {
         buf: &mut [i32],
     ) -> Result<usize, Error> {
         let s = self.series_ptr(series)?;
+        // SAFETY: shared access, live chart.
+        let chart_type = unsafe { sys::lv_chart_get_type(self.as_ptr()) };
+        // X arrays follow the point count only in scatter charts: one left
+        // by a failed `lv_chart_set_type` would be shorter
+        // (`lv_chart.c:133-139, 158-160`).
+        #[allow(clippy::unnecessary_cast)] // the bindgen alias may already match
+        if chart_type as u32 != sys::lv_chart_type_t_LV_CHART_TYPE_SCATTER as u32 {
+            return Ok(0);
+        }
         // SAFETY: a series of this chart.
         let points = unsafe { sys::lv_chart_get_series_x_array(self.as_ptr(), s) };
         Ok(self.copy_points(points, buf))
