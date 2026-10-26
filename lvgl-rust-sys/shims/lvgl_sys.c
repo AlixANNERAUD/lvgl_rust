@@ -52,6 +52,30 @@ void lvgl_sys_obj_set_id_raw(lv_obj_t * obj, void * id)
 }
 #endif
 
+bool lvgl_sys_display_reshape_buffers(lv_display_t * disp)
+{
+    if(disp->render_mode == LV_DISPLAY_RENDER_MODE_PARTIAL) return true;
+
+    /* The buffer area of refr_area (lv_refr.c:908-925). */
+    int32_t w = lv_display_get_horizontal_resolution(disp);
+    int32_t h = lv_display_get_vertical_resolution(disp);
+#if LV_DRAW_TRANSFORM_USE_MATRIX
+    if(lv_display_get_matrix_rotation(disp)) {
+        w = lv_display_get_original_horizontal_resolution(disp);
+        h = lv_display_get_original_vertical_resolution(disp);
+    }
+#endif
+    lv_draw_buf_t * buffers[3] = {disp->buf_1, disp->buf_2, disp->buf_3};
+    bool fits = true;
+    for(int i = 0; i < 3; i++) {
+        lv_draw_buf_t * buffer = buffers[i];
+        if(buffer == NULL) continue;
+        uint32_t stride = disp->stride_is_auto ? LV_STRIDE_AUTO : buffer->header.stride;
+        if(lv_draw_buf_reshape(buffer, disp->color_format, (uint32_t)w, (uint32_t)h, stride) == NULL) fits = false;
+    }
+    return fits;
+}
+
 void lvgl_sys_image_cache_drop(const void * src)
 {
     lv_image_cache_drop(src);

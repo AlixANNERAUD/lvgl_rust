@@ -40,6 +40,18 @@ extern "C"
     void lvgl_sys_obj_set_id_raw(lv_obj_t * obj, void * id);
 #endif
 
+    /**
+     * Gives every draw buffer of `disp` the shape the next refresh renders
+     * into (the whole screen in full and direct modes, `lv_refr.c:908-925`),
+     * after a change of resolution, rotation, color format or render mode.
+     * LVGL reshapes only the active buffer, when it renders into it; in
+     * direct mode with two buffers it first copies areas between them with
+     * their previous shapes (`lv_refr.c:780`). Nothing to do in partial
+     * mode, where each area is reshaped before rendering. Returns false if
+     * a buffer is too small for the new shape (it is then left unchanged).
+     */
+    bool lvgl_sys_display_reshape_buffers(lv_display_t * disp);
+
     /** Removes the image cache entries decoded from `src` (forwards to
      *  `lv_image_cache_drop`, which LVGL declares in a private header). */
     void lvgl_sys_image_cache_drop(const void * src);
