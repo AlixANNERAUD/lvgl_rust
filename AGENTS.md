@@ -388,7 +388,13 @@ soundness:
   (`_lv_label_t` is `_lv_obj_t`); two roots differ only if neither starts
   with a union or byte buffer. The held-region analysis uses the same keys:
   the animation `lv_anim_start` keeps across its callbacks is freed only by
-  removals that match it, across the codes its callbacks send;
+  removals that match it, across the codes its callbacks send; the one
+  `remove_concurrent_anims` compares against (`concurrent_removal`) only
+  across the codes of the `deleted_cb`s of animations the removal matches
+  (they share its `exec_cb` and `var`); and an animation the frame itself
+  unlinked from the running list (`unlink`: a must analysis over the
+  blocks, the local not written since) by no other removal, since every
+  removal frees only what it finds in that list;
 - `[infeasible.<name>]` removes calls that cannot happen in one calling
   context (`context = "caller -> callee"`, `calls`), with the LVGL lines
   that prove it: the callee is specialised for that caller;

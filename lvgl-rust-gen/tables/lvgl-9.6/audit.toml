@@ -234,6 +234,18 @@ delete_var_arg = 0
 delete_exec_arg = 1
 delete_carry = ["lv_anim_delete", "misc/lv_anim::remove_anim"]
 start_carry = ["lv_anim_start", "misc/lv_anim::remove_concurrent_anims"]
+# Runs a->deleted_cb(a) only for a running animation whose exec_cb (not
+# NULL) and var equal those of a_current, and reads a_current again on the
+# next iteration (lv_anim.c:841-866).
+concurrent_removal = "misc/lv_anim::remove_concurrent_anims"
+# Animations are freed only at lv_anim.c:736, 859 and 886, each right after
+# the same frame unlinked them from anim_ll (lv_anim.c:723, 851, 878), and
+# every removal finds what it frees by walking anim_ll (lv_anim.c:186-199,
+# 208, 841-866; lv_ll.c:165-186); insertions allocate new nodes
+# (lv_ll_ins_head, lv_anim.c:129), so an unlinked node is never linked
+# again. A frame that keeps an animation it unlinked across a callback is
+# the only one that can free it. Only lv_anim.c names anim_ll.
+unlink = { function = "lv_ll_remove", list_arg = 0, node_arg = 1, list_field = "lv_anim_state_t.4" }
 var_slot = "_lv_anim_t.0"
 exec_slot = "_lv_anim_t.1"
 deleted_slot = "_lv_anim_t.5"
@@ -408,3 +420,4 @@ why = "adding a handler to a display (lv_label_mark_need_refr_text, lv_label.c:1
 context = "lv_obj_class_init_obj -> lv_group_add_obj"
 calls = ["lv_group_remove_obj"]
 why = "a new object is in no group"
+

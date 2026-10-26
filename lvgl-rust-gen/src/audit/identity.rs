@@ -57,6 +57,16 @@ pub struct AnimationConfig {
     /// that runs the `deleted_cb` and frees the animation.
     pub delete_carry: Vec<String>,
     pub start_carry: Vec<String>,
+    /// Removes the running animations a starting one replaces: runs the
+    /// `deleted_cb` of each running animation with the same `exec_cb` and
+    /// `var` as its parameter 0, which it reads again afterwards
+    /// (`remove_concurrent_anims`).
+    #[serde(default)]
+    pub concurrent_removal: Option<String>,
+    /// Unlinks a node from the running list: an animation unlinked by a
+    /// frame is freed only by that frame (`held.rs`).
+    #[serde(default)]
+    pub unlink: Option<Unlink>,
     /// The `var` field.
     pub var_slot: String,
     /// The `exec_cb` field, which removals compare.
@@ -69,6 +79,17 @@ pub struct AnimationConfig {
     /// animation passed there is only read by LVGL's handlers.
     #[serde(default)]
     pub event_parameter: BTreeMap<String, usize>,
+}
+
+/// `unlink(list, node)` on the running list of animations.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Unlink {
+    pub function: String,
+    pub list_arg: usize,
+    pub node_arg: usize,
+    /// The last step of the running list's field path (`T.k`).
+    pub list_field: String,
 }
 
 /// The animations a removal can reach.
@@ -477,6 +498,8 @@ impl Animations {
         .into_iter()
         .chain(&config.delete_carry)
         .chain(&config.start_carry)
+        .chain(&config.concurrent_removal)
+        .chain(config.unlink.as_ref().map(|u| &u.function))
         {
             if !module.functions.contains_key(name) {
                 return Err(format!(

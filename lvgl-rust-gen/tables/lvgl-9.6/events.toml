@@ -236,7 +236,7 @@ handler = "restricted"
 deleting = false
 param = ["lv_event_get_param", "lv_event_set_ext_draw_size"]
 sendable = "no"
-why = "reads the parameter: core/lv_obj_draw::set_ext_draw_size_event_cb -> lv_event_set_ext_draw_size; handler restricted (blockable): lv_anim_timeline_delete frees Obj(_lv_anim_t), held: misc/lv_anim::remove_concurrent_anims keeps %4 across an indirect call through _lv_anim_t.5 (frees Obj(_lv_anim_t)[exec=misc/lv_anim_timeline::anim_timeline_exec_cb] in misc/lv_anim::remove_anim for lv_anim_delete)"
+why = "reads the parameter: core/lv_obj_draw::set_ext_draw_size_event_cb -> lv_event_set_ext_draw_size; handler restricted (blockable): lv_indev_delete frees Obj(_lv_indev_t), held: core/lv_obj_tree::obj_delete_core keeps %6 across core/lv_obj_tree::obj_indev_reset (frees Obj(_lv_indev_t) in lv_indev_delete)"
 
 [code.LV_EVENT_DRAW_MAIN_BEGIN]
 value = 32
@@ -583,8 +583,8 @@ value = 76
 handler = "none"
 deleting = false
 param = []
-sendable = "exclusive"
-why = "handler: display event (lv_obj_pos.c:354): sent to displays, not objects; send frees held memory: frees Obj(_lv_anim_t)[exec=widgets/label/lv_label::set_ofs_x_anim,var=_lv_obj_t] in misc/lv_anim::remove_anim for lv_anim_delete; held by lv_anim_start keeps %3 across misc/lv_anim::remove_concurrent_anims"
+sendable = "shared"
+why = "handler: display event (lv_obj_pos.c:354): sent to displays, not objects"
 
 [code.LV_EVENT_VSYNC]
 value = 77

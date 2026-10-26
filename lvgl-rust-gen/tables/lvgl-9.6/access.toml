@@ -174,7 +174,7 @@ access = "shared"
 
 [fn.lv_anim_timeline_delete]
 access = "exclusive"
-why = "frees Obj(_lv_anim_t), held by misc/lv_anim::remove_concurrent_anims keeps %4 across an indirect call through _lv_anim_t.5 (frees Obj(_lv_anim_t)[exec=misc/lv_anim_timeline::anim_timeline_exec_cb] in misc/lv_anim::remove_anim for lv_anim_delete) (codes SCROLL_BEGIN SCROLL_END SCROLL FOCUSED DEFOCUSED INDEV_RESET VALUE_CHANGED INSERT and 14 more)"
+why = "frees Buf(_lv_anim_timeline_t.0), held by misc/lv_anim_timeline::anim_timeline_set_act_time keeps %7 across an indirect call through _lv_anim_t.3 (via lv_anim_timeline_set_progress, site 2) (via core/lv_obj::play_timeline_on_trigger_event_cb, site 3) (frees Buf(_lv_anim_timeline_t.0) in lv_anim_timeline_delete) (codes SCROLL_BEGIN SCROLL_END SCROLL FOCUSED DEFOCUSED INDEV_RESET VALUE_CHANGED INSERT and 14 more)"
 
 [fn.lv_anim_timeline_get_delay]
 access = "shared"
@@ -202,12 +202,10 @@ access = "exclusive"
 why = "frees Buf(_lv_anim_timeline_t.0), held by misc/lv_anim_timeline::anim_timeline_set_act_time keeps %7 across an indirect call through _lv_anim_t.3 (via lv_anim_timeline_set_progress, site 2) (via core/lv_obj::play_timeline_on_trigger_event_cb, site 3) (frees Buf(_lv_anim_timeline_t.0) in lv_anim_timeline_add for lv_anim_timeline_merge) (codes SCROLL_BEGIN SCROLL_END SCROLL FOCUSED DEFOCUSED INDEV_RESET VALUE_CHANGED INSERT and 14 more)"
 
 [fn.lv_anim_timeline_pause]
-access = "exclusive"
-why = "frees Obj(_lv_anim_t), held by misc/lv_anim::remove_concurrent_anims keeps %4 across an indirect call through _lv_anim_t.5 (frees Obj(_lv_anim_t)[exec=misc/lv_anim_timeline::anim_timeline_exec_cb] in misc/lv_anim::remove_anim for lv_anim_delete) (codes SCROLL_BEGIN SCROLL_END SCROLL FOCUSED DEFOCUSED VALUE_CHANGED INSERT READY and 9 more)"
+access = "shared"
 
 [fn.lv_anim_timeline_restart]
-access = "exclusive"
-why = "frees Obj(_lv_anim_t), held by misc/lv_anim::remove_concurrent_anims keeps %4 across an indirect call through _lv_anim_t.5 (frees Obj(_lv_anim_t)[exec=misc/lv_anim_timeline::anim_timeline_exec_cb,var=_lv_anim_timeline_t] in misc/lv_anim::remove_concurrent_anims) (codes SCROLL_BEGIN SCROLL_END SCROLL FOCUSED DEFOCUSED VALUE_CHANGED INSERT READY and 9 more)"
+access = "shared"
 
 [fn.lv_anim_timeline_set_delay]
 access = "shared"
@@ -228,8 +226,7 @@ access = "shared"
 access = "shared"
 
 [fn.lv_anim_timeline_start]
-access = "exclusive"
-why = "frees Obj(_lv_anim_t), held by misc/lv_anim::remove_concurrent_anims keeps %4 across an indirect call through _lv_anim_t.5 (frees Obj(_lv_anim_t)[exec=misc/lv_anim_timeline::anim_timeline_exec_cb,var=_lv_anim_timeline_t] in misc/lv_anim::remove_concurrent_anims) (codes SCROLL_BEGIN SCROLL_END SCROLL FOCUSED DEFOCUSED VALUE_CHANGED INSERT READY and 9 more)"
+access = "shared"
 
 [fn.lv_animimg_create]
 access = "exclusive"
@@ -528,12 +525,10 @@ access = "shared"
 access = "shared"
 
 [fn.lv_bar_set_max_value]
-access = "exclusive"
-why = "frees Obj(_lv_anim_t), held by misc/lv_anim::remove_concurrent_anims keeps %4 across an indirect call through _lv_anim_t.5 (frees Obj(_lv_anim_t)[var=_lv_bar_anim_t] in misc/lv_anim::remove_anim for lv_anim_delete) (codes SCROLL_BEGIN SCROLL_END SCROLL FOCUSED DEFOCUSED VALUE_CHANGED INSERT READY and 9 more)"
+access = "shared"
 
 [fn.lv_bar_set_min_value]
-access = "exclusive"
-why = "frees Obj(_lv_anim_t), held by misc/lv_anim::remove_concurrent_anims keeps %4 across an indirect call through _lv_anim_t.5 (frees Obj(_lv_anim_t)[var=_lv_bar_anim_t] in misc/lv_anim::remove_anim for lv_anim_delete) (codes SCROLL_BEGIN SCROLL_END SCROLL FOCUSED DEFOCUSED VALUE_CHANGED INSERT READY and 9 more)"
+access = "shared"
 
 [fn.lv_bar_set_mode]
 access = "shared"
@@ -542,16 +537,13 @@ access = "shared"
 access = "shared"
 
 [fn.lv_bar_set_range]
-access = "exclusive"
-why = "frees Obj(_lv_anim_t), held by misc/lv_anim::remove_concurrent_anims keeps %4 across an indirect call through _lv_anim_t.5 (frees Obj(_lv_anim_t)[var=_lv_bar_anim_t] in misc/lv_anim::remove_anim for lv_anim_delete) (codes SCROLL_BEGIN SCROLL_END SCROLL FOCUSED DEFOCUSED VALUE_CHANGED INSERT READY and 9 more)"
+access = "shared"
 
 [fn.lv_bar_set_start_value]
-access = "exclusive"
-why = "frees Obj(_lv_anim_t), held by misc/lv_anim::remove_concurrent_anims keeps %4 across an indirect call through _lv_anim_t.5 (frees Obj(_lv_anim_t)[var=_lv_bar_anim_t] in misc/lv_anim::remove_anim for lv_anim_delete) (codes SCROLL_BEGIN SCROLL_END SCROLL FOCUSED DEFOCUSED VALUE_CHANGED INSERT READY and 9 more)"
+access = "shared"
 
 [fn.lv_bar_set_value]
-access = "exclusive"
-why = "frees Obj(_lv_anim_t), held by misc/lv_anim::remove_concurrent_anims keeps %4 across an indirect call through _lv_anim_t.5 (frees Obj(_lv_anim_t)[var=_lv_bar_anim_t] in misc/lv_anim::remove_anim for lv_anim_delete) (codes SCROLL_BEGIN SCROLL_END SCROLL FOCUSED DEFOCUSED VALUE_CHANGED INSERT READY and 9 more)"
+access = "shared"
 
 [fn.lv_bezier3]
 access = "shared"
@@ -2483,8 +2475,7 @@ access = "shared"
 access = "shared"
 
 [fn.lv_label_set_long_mode]
-access = "exclusive"
-why = "frees Obj(_lv_anim_t), held by misc/lv_anim::remove_concurrent_anims keeps %4 across an indirect call through _lv_anim_t.5 (frees Obj(_lv_anim_t)[exec=widgets/label/lv_label::set_ofs_x_anim,var=_lv_obj_t] in misc/lv_anim::remove_anim for lv_anim_delete) (codes SCROLL_BEGIN SCROLL_END SCROLL FOCUSED DEFOCUSED VALUE_CHANGED INSERT READY and 9 more)"
+access = "shared"
 
 [fn.lv_label_set_max_lines]
 access = "shared"
@@ -5118,12 +5109,10 @@ access = "shared"
 access = "shared"
 
 [fn.lv_slider_set_max_value]
-access = "exclusive"
-why = "frees Obj(_lv_anim_t), held by misc/lv_anim::remove_concurrent_anims keeps %4 across an indirect call through _lv_anim_t.5 (frees Obj(_lv_anim_t)[var=_lv_bar_anim_t] in misc/lv_anim::remove_anim for lv_anim_delete) (codes SCROLL_BEGIN SCROLL_END SCROLL FOCUSED DEFOCUSED VALUE_CHANGED INSERT READY and 9 more)"
+access = "shared"
 
 [fn.lv_slider_set_min_value]
-access = "exclusive"
-why = "frees Obj(_lv_anim_t), held by misc/lv_anim::remove_concurrent_anims keeps %4 across an indirect call through _lv_anim_t.5 (frees Obj(_lv_anim_t)[var=_lv_bar_anim_t] in misc/lv_anim::remove_anim for lv_anim_delete) (codes SCROLL_BEGIN SCROLL_END SCROLL FOCUSED DEFOCUSED VALUE_CHANGED INSERT READY and 9 more)"
+access = "shared"
 
 [fn.lv_slider_set_mode]
 access = "shared"
@@ -5132,16 +5121,13 @@ access = "shared"
 access = "shared"
 
 [fn.lv_slider_set_range]
-access = "exclusive"
-why = "frees Obj(_lv_anim_t), held by misc/lv_anim::remove_concurrent_anims keeps %4 across an indirect call through _lv_anim_t.5 (frees Obj(_lv_anim_t)[var=_lv_bar_anim_t] in misc/lv_anim::remove_anim for lv_anim_delete) (codes SCROLL_BEGIN SCROLL_END SCROLL FOCUSED DEFOCUSED VALUE_CHANGED INSERT READY and 9 more)"
+access = "shared"
 
 [fn.lv_slider_set_start_value]
-access = "exclusive"
-why = "frees Obj(_lv_anim_t), held by misc/lv_anim::remove_concurrent_anims keeps %4 across an indirect call through _lv_anim_t.5 (frees Obj(_lv_anim_t)[var=_lv_bar_anim_t] in misc/lv_anim::remove_anim for lv_anim_delete) (codes SCROLL_BEGIN SCROLL_END SCROLL FOCUSED DEFOCUSED VALUE_CHANGED INSERT READY and 9 more)"
+access = "shared"
 
 [fn.lv_slider_set_value]
-access = "exclusive"
-why = "frees Obj(_lv_anim_t), held by misc/lv_anim::remove_concurrent_anims keeps %4 across an indirect call through _lv_anim_t.5 (frees Obj(_lv_anim_t)[var=_lv_bar_anim_t] in misc/lv_anim::remove_anim for lv_anim_delete) (codes SCROLL_BEGIN SCROLL_END SCROLL FOCUSED DEFOCUSED VALUE_CHANGED INSERT READY and 9 more)"
+access = "shared"
 
 [fn.lv_snprintf]
 access = "shared"
@@ -6179,16 +6165,13 @@ access = "exclusive"
 why = "lv_textarea_set_one_line -> lv_obj_scroll_to -> lv_obj_scroll_to_x -> lv_obj_scroll_by_bounded -> lv_obj_scroll_by -> widgets/tabview/lv_tabview::cont_scroll_end_event_cb -> core/lv_observer::obj_value_changed_event_cb -> lv_subject_set_int -> core/lv_observer::lv_subject_notify_if_changed -> lv_subject_notify -> core/lv_observer::obj_flag_observer_cb -> lv_obj_add_flag -> lv_obj_set_hidden -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child"
 
 [fn.lv_textarea_set_password_bullet]
-access = "exclusive"
-why = "frees Obj(_lv_anim_t), held by misc/lv_anim::remove_concurrent_anims keeps %4 across an indirect call through _lv_anim_t.5 (frees Obj(_lv_anim_t)[exec=widgets/textarea/lv_textarea::pwd_char_hider_anim] in misc/lv_anim::remove_anim for lv_anim_delete) (codes SCROLL_BEGIN SCROLL_END SCROLL FOCUSED DEFOCUSED VALUE_CHANGED INSERT READY and 9 more)"
+access = "shared"
 
 [fn.lv_textarea_set_password_mode]
-access = "exclusive"
-why = "frees Obj(_lv_anim_t), held by misc/lv_anim::remove_concurrent_anims keeps %4 across an indirect call through _lv_anim_t.5 (frees Obj(_lv_anim_t)[exec=widgets/textarea/lv_textarea::pwd_char_hider_anim] in misc/lv_anim::remove_anim for lv_anim_delete) (codes SCROLL_BEGIN SCROLL_END SCROLL FOCUSED DEFOCUSED VALUE_CHANGED INSERT READY and 9 more)"
+access = "shared"
 
 [fn.lv_textarea_set_password_show_time]
-access = "exclusive"
-why = "frees Obj(_lv_anim_t), held by misc/lv_anim::remove_concurrent_anims keeps %4 across an indirect call through _lv_anim_t.5 (frees Obj(_lv_anim_t)[exec=widgets/textarea/lv_textarea::pwd_char_hider_anim] in misc/lv_anim::remove_anim for lv_anim_delete) (codes SCROLL_BEGIN SCROLL_END SCROLL FOCUSED DEFOCUSED VALUE_CHANGED INSERT READY and 9 more)"
+access = "shared"
 
 [fn.lv_textarea_set_placeholder_text]
 access = "shared"
