@@ -152,7 +152,7 @@ fn main() {
     let slider = slider.handle().unwrap();
     {
         let mut s = slider.get_mut(&mut lv).unwrap();
-        s.set_value(70, false);
+        s.view().set_value(70, false);
         let mut base = s.as_base::<Obj>();
         base.set_width(206);
         base.align(Align::TOP_LEFT, 252, 166);
