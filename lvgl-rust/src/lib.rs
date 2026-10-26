@@ -49,6 +49,7 @@ mod heap_align {
 }
 mod indev;
 mod manual;
+mod query;
 #[cfg(feature = "async")]
 mod queue;
 mod screen;
@@ -95,6 +96,10 @@ pub use group::Group;
 pub use image::{ImageColorkey, ImageData, ImageDsc, ImageSrc, PixelFormat};
 pub use indev::{Indev, IndevCell, IndevData, IndevKind, Read};
 pub use lvgl_rust_sys as sys;
+pub use query::{
+    CoverCheck, CoverResult, DrawTask, ExtDrawSize, HitTest, Layer, QueryEvent, SelfSize,
+    query_handler_allowed,
+};
 #[cfg(feature = "async")]
 pub use queue::{Receiver, Recv, StaticQueue, StaticRx, next_event};
 pub use screen::{ScreenAnim, ScreenLoadAnim};

@@ -5,7 +5,9 @@
 //! shared access only ([`Event::lv`]): deletions they request are deferred
 //! ([`Obj::delete_later`]) and exclusive work can be posted
 //! ([`Lvgl::post`]). Codes sent while LVGL holds pointers a shared call
-//! could free are never delivered (see [`handler_allowed`]).
+//! could free are never delivered to them (see [`handler_allowed`]): query
+//! and draw codes go to restricted handlers instead
+//! ([`Obj::on_query`](crate::Obj::on_query)).
 
 use crate::{
     Error, Lvgl, Obj, ObjMut, Widget,
@@ -152,8 +154,10 @@ impl<'cb> Event<'cb> {
 /// and layout codes, `DELETE`), plus codes registered with
 /// `lv_event_register_id` (only applications send them). Refused: query
 /// and draw codes, sent in the middle of layout or rendering (a queued
-/// label draw task keeps `label->text`, `lv_label.c:936`); `CREATE`, sent
-/// before the object is complete; display and input-device codes.
+/// label draw task keeps `label->text`, `lv_label.c:936`), which go to
+/// restricted handlers instead ([`query_handler_allowed`](crate::query_handler_allowed));
+/// `CREATE`, sent before the object is complete; display and input-device
+/// codes.
 pub fn handler_allowed(code: EventCode) -> bool {
     use EventCode as C;
     let bits = code.bits();
@@ -385,6 +389,17 @@ impl Obj {
         if code != EventCode::ALL && !handler_allowed(code) {
             return Err(Error::InvalidArg);
         }
+        self.register_handler(code, cb, user_data)
+    }
+
+    /// Adds `cb` for `code` without checking the code against a tier: the
+    /// caller's trampoline only runs code that tier allows.
+    pub(crate) fn register_handler(
+        &self,
+        code: EventCode,
+        cb: unsafe extern "C" fn(*mut sys::lv_event_t),
+        user_data: *mut c_void,
+    ) -> Result<*mut sys::lv_event_dsc_t, Error> {
         // Inside a handler, LVGL may be sending to this object: growing its
         // list then reallocates it under a copy of the header that LVGL
         // frees if the object is deleted during that send

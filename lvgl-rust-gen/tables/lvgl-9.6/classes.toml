@@ -35,6 +35,11 @@ manual = [
     "lvgl_sys_obj_is_deleting",
     "lvgl_sys_obj_events_traversing",
     "lvgl_sys_keyboard_forget_textarea",
+    # Hit test parameter accessors; valid only for a HIT_TEST event's
+    # parameter (query.rs).
+    "lvgl_sys_hit_test_point",
+    "lvgl_sys_hit_test_result",
+    "lvgl_sys_hit_test_set_result",
     "lv_deinit",
     "lv_timer_handler",
 ]

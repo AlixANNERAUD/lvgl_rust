@@ -335,8 +335,10 @@ cfgs mirror the `LV_USE_*` values for hand-written code.
   the bitmask `handler_allowed` (`event.rs`) tests, and the code types
   `SafeEventCode` (sendable with shared access: `Obj::send_event`) and
   `SendableEventCode` (deleting codes too: `ObjMut::send_event`, which
-  consumes the access and returns it if the object survived). Neither
-  has a public constructor.
+  consumes the access and returns it if the object survived), plus
+  `HANDLER_RESTRICTED` (`query_handler_allowed`, `query.rs`) and
+  `QueryCode`, the codes restricted handlers (`Obj::on_query`) take.
+  None has a public constructor.
 - Table errors always fail the build. Entries for functions missing from a
   build's bindings warn (they may be disabled by that `lv_conf.h`) unless
   `universe.txt` lists them; `LVGL_RUST_GEN_STRICT=1`, set for every mise
@@ -427,10 +429,11 @@ are left out):
 - `handler`: `[event_policy]` hand decisions first (`"none"` for display
   codes and `CREATE`, with a `why`; `sendable = "no"` for `DELETE`), then
   `"restricted"` for `blockable_codes` (draw and query codes: handlers
-  there would run in the middle of layout or rendering; restricted
-  behaves as none until that tier exists), else `"shared"`. A shared code
-  becomes restricted only if a hazard cannot be resolved by making its
-  freer exclusive (a freer with a hand-fixed access): the audit warns.
+  there would run in the middle of layout or rendering; their handlers
+  get a `QueryEvent`, which reaches only the typed parameter), else
+  `"shared"`. A shared code becomes restricted only if a hazard cannot be
+  resolved by making its freer exclusive (a freer with a hand-fixed
+  access): the audit warns.
 
 ### Held-region analysis (`held.rs`)
 
@@ -503,8 +506,15 @@ review the `access.toml` and `events.toml` diffs.
   on an object LVGL is sending to is refused
   (`lvgl_sys_obj_events_traversing`, the `[guarded.event_list_add_obj]`
   entry of `audit.toml`), and views and handles of objects under a
-  deleting ancestor are refused (`in_deletion`). Change the tiers through
-  `audit.toml` and `mise run audit`, never by hand.
+  deleting ancestor are refused (`in_deletion`). Restricted handlers
+  (`query.rs`) get a `QueryEvent`: no `Lvgl` access, no views, only the
+  code's parameter, read and written in place. Give it only accessors
+  whose every value is valid for LVGL (colors, opacities, the answer of
+  a query); sizes, radii, pointers and drawing stay raw. Never add a way
+  to get a `'static` `Lvgl` or view (a `DepthGuard` or session that can be
+  leaked safely): a thread-local would carry it into restricted handlers,
+  which is why `LvglAccess` forbids `'static` guards. Change the tiers
+  through `audit.toml` and `mise run audit`, never by hand.
 - **Registry atomics.** No read-modify-write anywhere (thumbv6m and
   riscv32imc have no compare-and-swap): code without a token only stores
   `req`, `any_req` and `ticks`. `Registry::request_drop` and `drain` pair
