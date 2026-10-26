@@ -30,6 +30,34 @@ manual = [
     "lv_scale_set_range",
     "lv_scale_set_min_value",
     "lv_scale_set_max_value",
+    # Keeps the labels (scale_labels.rs): the C parameter is not const,
+    # though LVGL only reads it.
+    "lv_scale_set_text_src",
+    # One layout per mode for every keyboard, with its control map
+    # (KeyboardMap, button_map.rs).
+    "lv_keyboard_set_map",
+    # Copies the mode's control map for the buttons shown, whatever map
+    # they come from: the mode's layout is shown again first (button_map.rs).
+    "lv_keyboard_set_popovers",
+    # A grid container without templates takes LVGL's unchecked subgrid
+    # path (lv_grid.c:321-325): the grid layout is set only with both
+    # templates, in the local style (grid.rs), and no other setter takes
+    # LV_LAYOUT_GRID or removes a template (manual.rs). The template style
+    # setters stay raw: they accept NULL (@nullable), which would hide the
+    # local templates.
+    "lv_obj_set_grid_dsc_array",
+    "lv_obj_set_layout",
+    "lv_obj_set_style_layout",
+    "lv_style_set_layout",
+    "lv_obj_remove_local_style_prop",
+    # LVGL clamps a child's span with `pos + span` in an int32_t
+    # (lv_grid.c:550-558), which overflows for spans near INT32_MAX: spans
+    # are bounded (grid.rs).
+    "lv_obj_set_grid_cell",
+    "lv_obj_set_style_grid_cell_column_span",
+    "lv_obj_set_style_grid_cell_row_span",
+    "lv_style_set_grid_cell_column_span",
+    "lv_style_set_grid_cell_row_span",
     # Shims the core uses; they assume the object's class.
     "lvgl_sys_menu_part",
     "lvgl_sys_obj_is_deleting",
