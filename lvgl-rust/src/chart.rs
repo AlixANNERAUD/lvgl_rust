@@ -5,10 +5,15 @@
 //!
 //! A [`ChartSeries`] is a token for one series: it is not `Clone`,
 //! [`Chart::remove_series`] consumes it, and every call first checks that
-//! the series is still in the list of the chart it is used with, so a
-//! series of a deleted chart, of another chart or already removed is
-//! refused ([`Error::InvalidArg`]) instead of dereferenced. The token is
-//! one pointer; LVGL's own list node is the only allocation.
+//! the series is still in the list of the chart it is used with, so LVGL
+//! is only ever given a live series of that chart: a series of another
+//! chart or already removed is refused ([`Error::InvalidArg`]) instead of
+//! dereferenced. The check compares addresses: a token that outlived its
+//! series (removed through `sys`, or freed with its chart) is refused
+//! too, unless the allocator has since put a newer series of the same
+//! chart at that address, which the token then designates. That is a
+//! logic error, never a memory one. The token is one pointer; LVGL's own
+//! list node is the only allocation.
 //!
 //! The audit finds no deletion and no hold of a series across event sends
 //! in these functions (`access.toml`: all shared), so they take shared
@@ -38,7 +43,9 @@ use crate::{Error, sys, widgets::Chart};
 use core::ptr::NonNull;
 
 /// One series of a chart, from [`Chart::add_series`]. Usable only with
-/// that chart, until [`Chart::remove_series`] or the chart's deletion.
+/// that chart, until [`Chart::remove_series`] or the chart's deletion
+/// (after which it may alias a newer series at the same address: see the
+/// module).
 #[derive(Debug, PartialEq, Eq)]
 pub struct ChartSeries(NonNull<sys::lv_chart_series_t>);
 

@@ -131,7 +131,9 @@ impl TileView {
 
     /// The active tile: the last one shown by `set_tile`,
     /// `set_tile_by_index` or scrolling, if it is still one of this tile
-    /// view's tiles.
+    /// view's tiles. The check compares addresses: after the active tile
+    /// is deleted, a tile added at the same address is reported as the
+    /// active one (LVGL keeps the stale pointer, `lv_tileview.c:192`).
     ///
     /// `lv_tileview_get_tile_active`.
     pub fn get_tile_active(&self) -> Option<&Obj> {

@@ -139,7 +139,9 @@ fn chart_series_belong_to_their_chart() {
     first.remove_series(scatter).unwrap();
 
     // The first chart's series die with it: a token of a deleted chart is
-    // refused by the chart that is left.
+    // refused by the chart that is left. The check compares addresses, so
+    // this holds only because no series is allocated in between (a newer
+    // series at the same address would match; see `chart.rs`).
     let leftover = first
         .add_series(color::hex(0), ChartAxis::SECONDARY_Y)
         .unwrap();
