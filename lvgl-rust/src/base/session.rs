@@ -15,6 +15,14 @@ use core::{marker::PhantomData, ops::Deref, ops::DerefMut, ptr::NonNull};
 /// synchronize-with the start of the next one, on any thread (Release/Acquire
 /// or stronger, as mutexes provide): this orders the crate's state and LVGL's
 /// own C globals between successive holders.
+///
+/// No value may ever be borrowed for `'static` by [`init`] or
+/// [`Lvgl::enter`] (a guard leaked with `Box::leak`, or kept in a `static`):
+/// the session would then give a `&'static Lvgl`, which a thread-local could
+/// hand to a restricted handler ([`QueryEvent`](crate::QueryEvent)) running
+/// in the middle of layout or rendering, where shared calls may free what
+/// LVGL holds. Keep the type private to the code that locks LVGL and drop
+/// each value when its access ends, as mutex guards are used.
 pub unsafe trait LvglAccess {}
 
 /// Shared (`&Lvgl`) or exclusive (`&mut Lvgl`) access to LVGL. Zero-sized,
@@ -66,7 +74,8 @@ impl Drop for Session<'_> {
 ///
 /// Fails with [`Error::Reentrant`] if LVGL is already initialized or a
 /// session is active, and with [`Error::NotInitialized`] after
-/// [`Lvgl::deinit`].
+/// [`Lvgl::deinit`]. `guard` is never borrowed for `'static` (see
+/// [`LvglAccess`]).
 #[inline]
 pub fn init<'g, A: LvglAccess>(guard: &'g mut A) -> Result<Session<'g>, Error> {
     let _ = guard;
@@ -122,7 +131,8 @@ impl Lvgl {
     /// session is active or a callback is running (a recursive lock).
     ///
     /// Requests recorded since the previous session (dropped `Owned`
-    /// handles, `delete_later`, ...) are carried out first.
+    /// handles, `delete_later`, ...) are carried out first. `guard` is never
+    /// borrowed for `'static` (see [`LvglAccess`]).
     #[inline]
     pub fn enter<'g, A: LvglAccess>(guard: &'g mut A) -> Result<Session<'g>, Error> {
         let _ = guard;

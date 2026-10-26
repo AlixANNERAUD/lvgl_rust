@@ -510,7 +510,10 @@ review the `access.toml` and `events.toml` diffs.
   (`query.rs`) get a `QueryEvent`: no `Lvgl` access, no views, only the
   code's parameter, read and written in place. Give it only accessors
   whose every value is valid for LVGL (colors, opacities, the answer of
-  a query); sizes, radii, pointers and drawing stay raw. Change the tiers
+  a query); sizes, radii, pointers and drawing stay raw. Never add a way
+  to get a `'static` `Lvgl` or view (a `DepthGuard` or session that can be
+  leaked safely): a thread-local would carry it into restricted handlers,
+  which is why `LvglAccess` forbids `'static` guards. Change the tiers
   through `audit.toml` and `mise run audit`, never by hand.
 - **Registry atomics.** No read-modify-write anywhere (thumbv6m and
   riscv32imc have no compare-and-swap): code without a token only stores
