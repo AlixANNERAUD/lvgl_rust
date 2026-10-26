@@ -231,7 +231,11 @@ checks:
 - the full test suite with default features, plus library and build-config
   tests for `shadcn-theme`, `color_depth_32`, `color_depth_8` and without string
   functions;
-- cross builds for `wasm32-unknown-unknown` and `riscv32imc-unknown-none-elf`;
+- cross builds for `wasm32-unknown-unknown` and `riscv32imc-unknown-none-elf`,
+  and `lvgl-rust` firmware for Cortex-M4/M7 and Cortex-M33 (`mise run
+  cross-arm`: thumbv7em and thumbv8m.main, with handles and views only);
+- `lvgl-rust` with 16-bit color, and with 32-bit color and the shadcn
+  theme (`mise run test-matrix`);
 - `cargo check` with the minimum Rust version (`mise run msrv`) on the host
   and both cross targets; raise the version in the task and in the root
   `rust-version` together;
@@ -371,8 +375,36 @@ soundness:
 - widget code reaches only handlers registered by core code, by itself, by
   widgets it creates or that create it, and by its `peers`;
 - animation callbacks are attributed to whoever installs them
-  (`caller_slots`), and `lv_anim_delete` with a constant `exec_cb` reaches
-  only the `deleted_cb`s installed with it (`anim_delete`);
+  (`caller_slots`);
+- animations are told apart (`[animation]`, `identity.rs`): each local
+  `lv_anim_t` a function fills through setters and starts is a profile
+  (its callbacks per field, the struct type of its `var`, whether
+  `early_apply` is off); a local whose address goes anywhere else matches
+  everything. `lv_anim_delete(var, exec_cb)` and the replacement in
+  `lv_anim_start` are specialised per key (a constant `exec_cb`, the type
+  of `var`) and reach only the `deleted_cb`s of the animations the key can
+  match. Pointer types come from uses (`getelementptr`, forwarding to a
+  typed parameter), generalised to the root of the first-member chain
+  (`_lv_label_t` is `_lv_obj_t`); two roots differ only if neither starts
+  with a union or byte buffer. The held-region analysis uses the same keys:
+  the animation `lv_anim_start` keeps across its callbacks is freed only by
+  removals that match it, across the codes its callbacks send; the one
+  `remove_concurrent_anims` compares against (`concurrent_removal`) only
+  across the codes of the `deleted_cb`s of animations the removal matches
+  (they share its `exec_cb` and `var`); and an animation the frame itself
+  unlinked from the running list (`unlink`: a must analysis over the
+  blocks, the local not written since and its address never stored or
+  passed to a call) by no other removal, since every
+  removal frees only what it finds in that list;
+- object creation is specialised by class (`[construction]`): an
+  `lv_obj_class_init_obj(obj)` call whose argument is a local holding only
+  the result of `lv_obj_class_create_obj(&class, ...)`, with no call and
+  no store through a pointer on any path between them, runs only the
+  constructors of that class and its bases (read from the class globals'
+  initializers);
+- `[infeasible.<name>]` removes calls that cannot happen in one calling
+  context (`context = "caller -> callee"`, `calls`), with the LVGL lines
+  that prove it: the callee is specialised for that caller;
 - `exceptions` holds hand decisions (pure functions), with a reason.
 
 ### Event codes (`events.toml`)

@@ -91,7 +91,7 @@ handler = "shared"
 deleting = true
 param = []
 sendable = "exclusive"
-why = "deletes: lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> core/lv_obj::lv_obj_event -> lv_obj_add_state -> core/lv_obj::update_obj_state -> core/lv_obj::obj_transition_states -> lv_obj_style_create_transition -> lv_anim_start -> misc/lv_anim::remove_concurrent_anims -> core/lv_obj_scroll::scroll_end_cb -> widgets/tabview/lv_tabview::cont_scroll_end_event_cb -> core/lv_observer::obj_value_changed_event_cb -> lv_subject_set_int -> core/lv_observer::lv_subject_notify_if_changed -> lv_subject_notify -> core/lv_observer::obj_flag_observer_cb -> lv_obj_add_flag -> lv_obj_set_hidden -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child"
+why = "deletes: lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> core/lv_obj::lv_obj_event -> lv_obj_add_state -> core/lv_obj::update_obj_state -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/switch/lv_switch::lv_switch_event -> widgets/switch/lv_switch::lv_switch_trigger_anim -> lv_anim_delete#animation(var=_lv_obj_t) -> misc/lv_anim::remove_anim#animation(var=_lv_obj_t) -> core/lv_obj_scroll::scroll_end_cb -> widgets/tabview/lv_tabview::cont_scroll_end_event_cb -> core/lv_observer::obj_value_changed_event_cb -> lv_subject_set_int -> core/lv_observer::lv_subject_notify_if_changed -> lv_subject_notify -> core/lv_observer::obj_flag_observer_cb -> lv_obj_add_flag -> lv_obj_set_hidden -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child"
 
 [code.LV_EVENT_SCROLL_THROW_BEGIN]
 value = 13
@@ -106,7 +106,7 @@ handler = "shared"
 deleting = true
 param = []
 sendable = "exclusive"
-why = "deletes: lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> core/lv_obj::lv_obj_event -> lv_obj_remove_state -> core/lv_obj::update_obj_state -> core/lv_obj::obj_transition_states -> lv_obj_style_create_transition -> lv_anim_start -> misc/lv_anim::remove_concurrent_anims -> core/lv_obj_scroll::scroll_end_cb -> widgets/tabview/lv_tabview::cont_scroll_end_event_cb -> core/lv_observer::obj_value_changed_event_cb -> lv_subject_set_int -> core/lv_observer::lv_subject_notify_if_changed -> lv_subject_notify -> core/lv_observer::obj_flag_observer_cb -> lv_obj_add_flag -> lv_obj_set_hidden -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child"
+why = "deletes: lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> core/lv_obj::lv_obj_event -> lv_obj_remove_state -> core/lv_obj::update_obj_state -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/switch/lv_switch::lv_switch_event -> widgets/switch/lv_switch::lv_switch_trigger_anim -> lv_anim_delete#animation(var=_lv_obj_t) -> misc/lv_anim::remove_anim#animation(var=_lv_obj_t) -> core/lv_obj_scroll::scroll_end_cb -> widgets/tabview/lv_tabview::cont_scroll_end_event_cb -> core/lv_observer::obj_value_changed_event_cb -> lv_subject_set_int -> core/lv_observer::lv_subject_notify_if_changed -> lv_subject_notify -> core/lv_observer::obj_flag_observer_cb -> lv_obj_add_flag -> lv_obj_set_hidden -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child"
 
 [code.LV_EVENT_SCROLL]
 value = 15
@@ -196,7 +196,7 @@ handler = "restricted"
 deleting = false
 param = ["lv_event_get_param"]
 sendable = "no"
-why = "reads the parameter: lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/arc/lv_arc::lv_arc_event -> lv_event_get_param; handler restricted (blockable): lv_anim_timeline_delete frees Copy(_lv_event_list_t.0/*), held: lv_event_send keeps %8 across an indirect call through _lv_event_dsc_t.0 (via core/lv_obj_event::event_send_core, site 1) (frees Buf(_lv_obj_spec_attr_t.2/_lv_event_list_t.0/_lv_array_t.0) in lv_array_resize for lv_array_push_back for lv_event_add for lv_obj_add_event_cb)"
+why = "reads the parameter: lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/arc/lv_arc::lv_arc_event -> lv_event_get_param; handler restricted (blockable): lv_event_add frees Copy(_lv_event_list_t.0/*), held: lv_event_send keeps %8 across an indirect call through _lv_event_dsc_t.0 (via core/lv_obj_event::event_send_core, site 1) (frees Buf(_lv_event_list_t.0/_lv_array_t.0) in lv_array_resize for lv_array_push_back for lv_event_add)"
 
 [code.LV_EVENT_INDEV_RESET]
 value = 27
@@ -204,7 +204,7 @@ handler = "shared"
 deleting = true
 param = []
 sendable = "exclusive"
-why = "deletes: lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> core/lv_obj::lv_obj_event -> lv_obj_remove_state -> core/lv_obj::update_obj_state -> core/lv_obj::obj_transition_states -> lv_obj_style_create_transition -> lv_anim_start -> misc/lv_anim::remove_concurrent_anims -> core/lv_obj_scroll::scroll_end_cb -> widgets/tabview/lv_tabview::cont_scroll_end_event_cb -> core/lv_observer::obj_value_changed_event_cb -> lv_subject_set_int -> core/lv_observer::lv_subject_notify_if_changed -> lv_subject_notify -> core/lv_observer::obj_flag_observer_cb -> lv_obj_add_flag -> lv_obj_set_hidden -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child"
+why = "deletes: lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> core/lv_obj::lv_obj_event -> lv_obj_remove_state -> core/lv_obj::update_obj_state -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/switch/lv_switch::lv_switch_event -> widgets/switch/lv_switch::lv_switch_trigger_anim -> lv_anim_delete#animation(var=_lv_obj_t) -> misc/lv_anim::remove_anim#animation(var=_lv_obj_t) -> core/lv_obj_scroll::scroll_end_cb -> widgets/tabview/lv_tabview::cont_scroll_end_event_cb -> core/lv_observer::obj_value_changed_event_cb -> lv_subject_set_int -> core/lv_observer::lv_subject_notify_if_changed -> lv_subject_notify -> core/lv_observer::obj_flag_observer_cb -> lv_obj_add_flag -> lv_obj_set_hidden -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child"
 
 [code.LV_EVENT_HOVER_OVER]
 value = 28
@@ -212,7 +212,7 @@ handler = "shared"
 deleting = true
 param = []
 sendable = "exclusive"
-why = "deletes: lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> core/lv_obj::lv_obj_event -> lv_obj_add_state -> core/lv_obj::update_obj_state -> core/lv_obj::obj_transition_states -> lv_obj_style_create_transition -> lv_anim_start -> misc/lv_anim::remove_concurrent_anims -> core/lv_obj_scroll::scroll_end_cb -> widgets/tabview/lv_tabview::cont_scroll_end_event_cb -> core/lv_observer::obj_value_changed_event_cb -> lv_subject_set_int -> core/lv_observer::lv_subject_notify_if_changed -> lv_subject_notify -> core/lv_observer::obj_flag_observer_cb -> lv_obj_add_flag -> lv_obj_set_hidden -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child"
+why = "deletes: lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> core/lv_obj::lv_obj_event -> lv_obj_add_state -> core/lv_obj::update_obj_state -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/switch/lv_switch::lv_switch_event -> widgets/switch/lv_switch::lv_switch_trigger_anim -> lv_anim_delete#animation(var=_lv_obj_t) -> misc/lv_anim::remove_anim#animation(var=_lv_obj_t) -> core/lv_obj_scroll::scroll_end_cb -> widgets/tabview/lv_tabview::cont_scroll_end_event_cb -> core/lv_observer::obj_value_changed_event_cb -> lv_subject_set_int -> core/lv_observer::lv_subject_notify_if_changed -> lv_subject_notify -> core/lv_observer::obj_flag_observer_cb -> lv_obj_add_flag -> lv_obj_set_hidden -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child"
 
 [code.LV_EVENT_HOVER_LEAVE]
 value = 29
@@ -220,7 +220,7 @@ handler = "shared"
 deleting = true
 param = []
 sendable = "exclusive"
-why = "deletes: lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> core/lv_obj::lv_obj_event -> lv_obj_remove_state -> core/lv_obj::update_obj_state -> core/lv_obj::obj_transition_states -> lv_obj_style_create_transition -> lv_anim_start -> misc/lv_anim::remove_concurrent_anims -> core/lv_obj_scroll::scroll_end_cb -> widgets/tabview/lv_tabview::cont_scroll_end_event_cb -> core/lv_observer::obj_value_changed_event_cb -> lv_subject_set_int -> core/lv_observer::lv_subject_notify_if_changed -> lv_subject_notify -> core/lv_observer::obj_flag_observer_cb -> lv_obj_add_flag -> lv_obj_set_hidden -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child"
+why = "deletes: lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> core/lv_obj::lv_obj_event -> lv_obj_remove_state -> core/lv_obj::update_obj_state -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/switch/lv_switch::lv_switch_event -> widgets/switch/lv_switch::lv_switch_trigger_anim -> lv_anim_delete#animation(var=_lv_obj_t) -> misc/lv_anim::remove_anim#animation(var=_lv_obj_t) -> core/lv_obj_scroll::scroll_end_cb -> widgets/tabview/lv_tabview::cont_scroll_end_event_cb -> core/lv_observer::obj_value_changed_event_cb -> lv_subject_set_int -> core/lv_observer::lv_subject_notify_if_changed -> lv_subject_notify -> core/lv_observer::obj_flag_observer_cb -> lv_obj_add_flag -> lv_obj_set_hidden -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child"
 
 [code.LV_EVENT_COVER_CHECK]
 value = 30
@@ -236,7 +236,7 @@ handler = "restricted"
 deleting = false
 param = ["lv_event_get_param", "lv_event_set_ext_draw_size"]
 sendable = "no"
-why = "reads the parameter: core/lv_obj_draw::set_ext_draw_size_event_cb -> lv_event_set_ext_draw_size; handler restricted (blockable): lv_anim_timeline_delete frees Obj(_lv_anim_t), held: lv_anim_start keeps %4 across an indirect call through _lv_anim_t.1 (frees Obj(_lv_anim_t) in misc/lv_anim::remove_anim for lv_anim_delete)"
+why = "reads the parameter: core/lv_obj_draw::set_ext_draw_size_event_cb -> lv_event_set_ext_draw_size; handler restricted (blockable): lv_indev_delete frees Obj(_lv_indev_t), held: core/lv_obj_tree::obj_delete_core keeps %6 across core/lv_obj_tree::obj_indev_reset (frees Obj(_lv_indev_t) in lv_indev_delete)"
 
 [code.LV_EVENT_DRAW_MAIN_BEGIN]
 value = 32
@@ -336,7 +336,7 @@ handler = "shared"
 deleting = true
 param = []
 sendable = "exclusive"
-why = "deletes: lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/switch/lv_switch::lv_switch_event -> widgets/switch/lv_switch::lv_switch_trigger_anim -> lv_anim_delete -> misc/lv_anim::remove_anim -> core/lv_obj_scroll::scroll_end_cb -> widgets/tabview/lv_tabview::cont_scroll_end_event_cb -> core/lv_observer::obj_value_changed_event_cb -> lv_subject_set_int -> core/lv_observer::lv_subject_notify_if_changed -> lv_subject_notify -> core/lv_observer::obj_flag_observer_cb -> lv_obj_add_flag -> lv_obj_set_hidden -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child"
+why = "deletes: lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/switch/lv_switch::lv_switch_event -> widgets/switch/lv_switch::lv_switch_trigger_anim -> lv_anim_delete#animation(var=_lv_obj_t) -> misc/lv_anim::remove_anim#animation(var=_lv_obj_t) -> core/lv_obj_scroll::scroll_end_cb -> widgets/tabview/lv_tabview::cont_scroll_end_event_cb -> core/lv_observer::obj_value_changed_event_cb -> lv_subject_set_int -> core/lv_observer::lv_subject_notify_if_changed -> lv_subject_notify -> core/lv_observer::obj_flag_observer_cb -> lv_obj_add_flag -> lv_obj_set_hidden -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child"
 
 [code.LV_EVENT_CHECKED]
 value = 45
@@ -424,7 +424,7 @@ handler = "shared"
 deleting = true
 param = []
 sendable = "exclusive"
-why = "deletes: lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/roller/lv_roller::lv_roller_event -> widgets/roller/lv_roller::refr_position -> lv_anim_start -> misc/lv_anim::remove_concurrent_anims -> core/lv_obj_scroll::scroll_end_cb -> widgets/tabview/lv_tabview::cont_scroll_end_event_cb -> core/lv_observer::obj_value_changed_event_cb -> lv_subject_set_int -> core/lv_observer::lv_subject_notify_if_changed -> lv_subject_notify -> core/lv_observer::obj_flag_observer_cb -> lv_obj_add_flag -> lv_obj_set_hidden -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child"
+why = "deletes: lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/tabview/lv_tabview::lv_tabview_event -> lv_tabview_set_active -> lv_obj_scroll_to_x -> lv_obj_scroll_by_bounded -> lv_obj_scroll_by -> widgets/tabview/lv_tabview::cont_scroll_end_event_cb -> core/lv_observer::obj_value_changed_event_cb -> lv_subject_set_int -> core/lv_observer::lv_subject_notify_if_changed -> lv_subject_notify -> core/lv_observer::obj_flag_observer_cb -> lv_obj_add_flag -> lv_obj_set_hidden -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child"
 
 [code.LV_EVENT_STYLE_CHANGED]
 value = 57
@@ -432,7 +432,7 @@ handler = "shared"
 deleting = true
 param = []
 sendable = "exclusive"
-why = "deletes: lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/roller/lv_roller::lv_roller_event -> widgets/roller/lv_roller::refr_position -> lv_anim_start -> misc/lv_anim::remove_concurrent_anims -> core/lv_obj_scroll::scroll_end_cb -> widgets/tabview/lv_tabview::cont_scroll_end_event_cb -> core/lv_observer::obj_value_changed_event_cb -> lv_subject_set_int -> core/lv_observer::lv_subject_notify_if_changed -> lv_subject_notify -> core/lv_observer::obj_flag_observer_cb -> lv_obj_add_flag -> lv_obj_set_hidden -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child"
+why = "deletes: lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/image/lv_image::lv_image_event -> lv_image_set_src -> widgets/image/lv_image::update_align -> lv_obj_update_layout -> core/lv_obj_pos::layout_update_core -> lv_obj_readjust_scroll -> lv_obj_scroll_by -> widgets/tabview/lv_tabview::cont_scroll_end_event_cb -> core/lv_observer::obj_value_changed_event_cb -> lv_subject_set_int -> core/lv_observer::lv_subject_notify_if_changed -> lv_subject_notify -> core/lv_observer::obj_flag_observer_cb -> lv_obj_add_flag -> lv_obj_set_hidden -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child"
 
 [code.LV_EVENT_LAYOUT_CHANGED]
 value = 58
@@ -464,7 +464,7 @@ handler = "none"
 deleting = true
 param = []
 sendable = "exclusive"
-why = "deletes: themes/default/lv_theme_default::resolution_change_event_cb -> lv_theme_default_init -> lv_obj_report_style_change -> core/lv_obj_style::report_style_change_core -> lv_obj_refresh_style -> widgets/textarea/lv_textarea::label_event_cb -> widgets/textarea/lv_textarea::start_cursor_blink -> lv_anim_start -> misc/lv_anim::remove_concurrent_anims -> core/lv_obj_scroll::scroll_end_cb -> widgets/tabview/lv_tabview::cont_scroll_end_event_cb -> core/lv_observer::obj_value_changed_event_cb -> lv_subject_set_int -> core/lv_observer::lv_subject_notify_if_changed -> lv_subject_notify -> core/lv_observer::obj_flag_observer_cb -> lv_obj_add_flag -> lv_obj_set_hidden -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child; handler: display event (lv_display.c): sent to displays, not objects"
+why = "deletes: themes/default/lv_theme_default::resolution_change_event_cb -> lv_theme_default_init -> lv_obj_report_style_change -> core/lv_obj_style::report_style_change_core -> lv_obj_refresh_style -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/image/lv_image::lv_image_event -> lv_image_set_src -> widgets/image/lv_image::update_align -> lv_obj_update_layout -> core/lv_obj_pos::layout_update_core -> lv_obj_readjust_scroll -> lv_obj_scroll_by -> widgets/tabview/lv_tabview::cont_scroll_end_event_cb -> core/lv_observer::obj_value_changed_event_cb -> lv_subject_set_int -> core/lv_observer::lv_subject_notify_if_changed -> lv_subject_notify -> core/lv_observer::obj_flag_observer_cb -> lv_obj_add_flag -> lv_obj_set_hidden -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child; handler: display event (lv_display.c): sent to displays, not objects"
 
 [code.LV_EVENT_COLOR_FORMAT_CHANGED]
 value = 62
@@ -581,10 +581,10 @@ why = "handler: display event: sent to displays, not objects"
 [code.LV_EVENT_UPDATE_LAYOUT_COMPLETED]
 value = 76
 handler = "none"
-deleting = true
+deleting = false
 param = []
-sendable = "exclusive"
-why = "deletes: widgets/label/lv_label::update_layout_completed_cb -> widgets/label/lv_label::lv_label_refr_text -> lv_anim_start -> misc/lv_anim::remove_concurrent_anims -> core/lv_obj_scroll::scroll_end_cb -> widgets/tabview/lv_tabview::cont_scroll_end_event_cb -> core/lv_observer::obj_value_changed_event_cb -> lv_subject_set_int -> core/lv_observer::lv_subject_notify_if_changed -> lv_subject_notify -> core/lv_observer::obj_flag_observer_cb -> lv_obj_add_flag -> lv_obj_set_hidden -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child; handler: display event (lv_obj_pos.c:354): sent to displays, not objects"
+sendable = "shared"
+why = "handler: display event (lv_obj_pos.c:354): sent to displays, not objects"
 
 [code.LV_EVENT_VSYNC]
 value = 77

@@ -127,6 +127,8 @@ pub struct Site {
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Alloca {
+    /// The allocated type, as written (`%struct._lv_anim_t`, `ptr`, ...).
+    pub ty: String,
     /// Holds a pointer or an aggregate (structs, arrays): could keep one.
     pub pointer: bool,
     /// Values stored in it, whole or into its fields.
@@ -135,6 +137,9 @@ pub struct Alloca {
     pub types: std::collections::BTreeSet<String>,
     /// Its address is stored somewhere: live until the function returns.
     pub escaped: bool,
+    /// Fields written with non-pointer values (`""`: the whole local);
+    /// these stores are in `stores` too, as `Unknown`.
+    pub scalar_fields: Vec<String>,
 }
 
 /// The per-instruction facts of a function, for the held-region analysis.
@@ -153,6 +158,9 @@ pub struct Held {
     pub stores: Vec<(Val, Val, usize)>,
     /// Values returned (`ret ptr`).
     pub returns: Vec<Val>,
+    /// Addresses written by stores of non-pointer values (integers,
+    /// bitfields) that are not locals.
+    pub scalar_stores: Vec<Val>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -198,6 +206,12 @@ pub struct Module {
     pub global_slots: Vec<(String, String)>,
     /// Functions referenced by other global initializers.
     pub global_refs: Vec<String>,
+    /// Struct initializers of globals: the symbols (functions and globals,
+    /// qualified) of each field.
+    pub global_inits: BTreeMap<String, Vec<Vec<String>>>,
+    /// Member types of every struct (`%struct.` prefix removed from the
+    /// name), as written in the IR (`ptr`, `i32`, `%struct._lv_obj_t`, ...).
+    pub types: BTreeMap<String, Vec<String>>,
 }
 
 pub struct CompileOptions<'a> {
@@ -487,6 +501,26 @@ impl Module {
                 }
             }
         }
+        for (name, members) in &types {
+            self.types
+                .entry(name.clone())
+                .or_insert_with(|| members.clone());
+        }
+        // Packed structs (`<{ ... }>`) too, for the identity analysis only:
+        // field paths keep their current normalisation.
+        for line in ir.lines() {
+            if let Some(rest) = line.strip_prefix("%struct.")
+                && let Some((name, body)) = rest.split_once(" = type ")
+                && let Some(packed) = body.trim().strip_prefix('<')
+                && packed.starts_with('{')
+            {
+                let members = split_args(balanced(packed))
+                    .into_iter()
+                    .map(str::to_owned)
+                    .collect();
+                self.types.entry(struct_name(name)).or_insert(members);
+            }
+        }
 
         let mut current: Option<(String, Function, Reader)> = None;
         for line in ir.lines() {
@@ -564,12 +598,15 @@ impl Module {
         let init = init.trim();
         match strukt {
             Some(s) if init.starts_with('{') => {
+                let mut fields = Vec::new();
                 for (i, element) in split_args(balanced(init)).into_iter().enumerate() {
-                    for symbol in symbols(element) {
-                        self.global_slots
-                            .push((format!("{s}.{i}"), qualify(&symbol)));
+                    let symbols: Vec<String> = symbols(element).map(|x| qualify(&x)).collect();
+                    for symbol in &symbols {
+                        self.global_slots.push((format!("{s}.{i}"), symbol.clone()));
                     }
+                    fields.push(symbols);
                 }
+                self.global_inits.insert(qualify(name), fields);
             }
             _ => self.global_refs.extend(symbols(init).map(|s| qualify(&s))),
         }
@@ -1012,6 +1049,7 @@ impl Reader<'_> {
                 self.held.allocas.insert(
                     def.clone(),
                     Alloca {
+                        ty: split_args(ty).first().map_or("", |t| t.trim()).to_owned(),
                         pointer,
                         ..Alloca::default()
                     },
@@ -1051,17 +1089,23 @@ impl Reader<'_> {
                     self.event(Ev::Store(a.clone()));
                     if let Some(alloca) = self.held.allocas.get_mut(&a) {
                         alloca.stores.push(value);
+                        if !pointer {
+                            alloca.scalar_fields.push(String::new());
+                        }
                     }
                 }
-                Val::Field(b, _) if matches!(**b, Val::Local(_)) => {
+                Val::Field(b, path) if matches!(**b, Val::Local(_)) => {
                     if let Val::Local(a) = &**b
                         && let Some(alloca) = self.held.allocas.get_mut(a)
                     {
                         alloca.stores.push(value);
+                        if !pointer {
+                            alloca.scalar_fields.push(path.join("/"));
+                        }
                     }
                 }
                 _ if pointer => self.held.stores.push((address, value, self.order)),
-                _ => {}
+                _ => self.held.scalar_stores.push(address),
             }
             return;
         } else if inst.starts_with("getelementptr ") {
@@ -1217,9 +1261,14 @@ impl Reader<'_> {
             Origin::Function(g) => Arg::Function(g),
             Origin::Param(k) => Arg::Param(k),
             Origin::Ints(values) => Arg::Ints(values),
-            _ => match text.rsplit(' ').next().and_then(|v| v.parse().ok()) {
-                Some(v) => Arg::Int(v),
-                None => Arg::Other,
+            _ => match text.rsplit(' ').next() {
+                // `i1` constants (`bool` arguments).
+                Some("false") => Arg::Int(0),
+                Some("true") => Arg::Int(1),
+                v => match v.and_then(|v| v.parse().ok()) {
+                    Some(v) => Arg::Int(v),
+                    None => Arg::Other,
+                },
             },
         }
     }
@@ -1380,7 +1429,7 @@ fn gep_steps(strukt: &str, indices: &[&str], types: &HashMap<String, Vec<String>
 }
 
 /// `_lv_anim_t` for `_lv_anim_t.123` (LLVM renames clashing types).
-fn struct_name(name: &str) -> String {
+pub(crate) fn struct_name(name: &str) -> String {
     let name = name.trim_matches('"');
     match name.rsplit_once('.') {
         Some((base, suffix)) if suffix.chars().all(|c| c.is_ascii_digit()) => base.to_owned(),

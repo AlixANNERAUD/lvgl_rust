@@ -7,7 +7,7 @@ min_version = "2026.9.2"
 # `targets` are the cross targets built in CI (`cross-*` tasks).
 # `mr_boxington` routes Cargo through mbx, a shared build cache: LVGL's C
 # objects and the build script output are restored instead of recompiled.
-rust = { version = "stable", components = "rustfmt,clippy,llvm-tools", targets = "wasm32-unknown-unknown,riscv32imc-unknown-none-elf,thumbv6m-none-eabi", mr_boxington = true }
+rust = { version = "stable", components = "rustfmt,clippy,llvm-tools", targets = "wasm32-unknown-unknown,riscv32imc-unknown-none-elf,thumbv6m-none-eabi,thumbv7em-none-eabihf,thumbv8m.main-none-eabihf", mr_boxington = true }
 mr-boxington = "latest"
 # Coverage (`mise run coverage`).
 "aqua:taiki-e/cargo-llvm-cov" = "latest"
@@ -33,6 +33,14 @@ CC_thumbv6m_none_eabi = "arm-none-eabi-gcc"
 AR_thumbv6m_none_eabi = "arm-none-eabi-ar"
 CFLAGS_thumbv6m_none_eabi = "-isystem /usr/include/newlib"
 BINDGEN_EXTRA_CLANG_ARGS_thumbv6m_none_eabi = "-isystem /usr/include/newlib"
+CC_thumbv7em_none_eabihf = "arm-none-eabi-gcc"
+AR_thumbv7em_none_eabihf = "arm-none-eabi-ar"
+CFLAGS_thumbv7em_none_eabihf = "-isystem /usr/include/newlib"
+BINDGEN_EXTRA_CLANG_ARGS_thumbv7em_none_eabihf = "-isystem /usr/include/newlib"
+# thumbv8m.main has a dot in its name: `CFLAGS_<target>` & co. would not
+# survive mbx's build-script wrapper (a POSIX sh script, and dash drops such
+# names), so `cross-arm` passes these through the generic TARGET_* variables.
+ARM_NEWLIB_FLAGS = "-isystem /usr/include/newlib"
 
 [tasks.submodules]
 description = "Check out the LVGL and shadcn theme submodules"
@@ -113,6 +121,16 @@ description = "Build lvgl-rust-sys for riscv32imc-unknown-none-elf (C toolchain 
 env.RUSTFLAGS = "-D warnings"
 run = "cargo build -p lvgl-rust-sys --target riscv32imc-unknown-none-elf"
 
+[tasks.cross-arm]
+description = "Build lvgl-rust firmware for Cortex-M4/M7 (thumbv7em) and Cortex-M33 (thumbv8m.main), with handles and views only"
+env.RUSTFLAGS = "-D warnings"
+run = [
+  "DEP_LV_CONFIG_PATH={{config_root}}/lvgl-rust/conf CARGO_TARGET_DIR=target/cross-arm cargo build -q -p lvgl-rust-size-gate --profile size --target thumbv7em-none-eabihf",
+  # Generic TARGET_* variables: see ARM_NEWLIB_FLAGS.
+  "TARGET_CC=arm-none-eabi-gcc TARGET_AR=arm-none-eabi-ar TARGET_CFLAGS=\"$ARM_NEWLIB_FLAGS\" BINDGEN_EXTRA_CLANG_ARGS=\"$ARM_NEWLIB_FLAGS\" DEP_LV_CONFIG_PATH={{config_root}}/lvgl-rust/conf CARGO_TARGET_DIR=target/cross-arm cargo build -q -p lvgl-rust-size-gate --profile size --target thumbv8m.main-none-eabihf",
+  "DEP_LV_CONFIG_PATH={{config_root}}/lvgl-rust-sys/conf LVGL_RUST_HANDLE_SLOTS=0 CARGO_TARGET_DIR=target/cross-arm-views cargo build -q -p lvgl-rust-size-gate --profile size --target thumbv7em-none-eabihf",
+]
+
 [tasks.size-gate]
 description = "Check lvgl-rust's footprint in thumbv6m and riscv32imc firmware (see lvgl-rust/size-gate/gate.sh)"
 env.RUSTFLAGS = "-D warnings"
@@ -192,6 +210,15 @@ env.RUSTFLAGS = "-D warnings"
 env.DEP_LV_CONFIG_PATH = "{{config_root}}/lvgl-rust/conf"
 env.CARGO_TARGET_DIR = "target/safe"
 run = "cargo run -q -p lvgl-rust --example desktop"
+
+[tasks.test-matrix]
+description = "Test lvgl-rust with 16-bit color, and with 32-bit color and the shadcn theme"
+env.RUSTFLAGS = "-D warnings"
+env.DEP_LV_CONFIG_PATH = "{{config_root}}/lvgl-rust/conf"
+run = [
+  "CARGO_TARGET_DIR=target/matrix-16 cargo test -q -p lvgl-rust --features color_depth_16,async,heap,fmt",
+  "CARGO_TARGET_DIR=target/matrix-32 cargo test -q -p lvgl-rust --features color_depth_32,shadcn-theme,async,heap,fmt",
+]
 
 [tasks.test-allocator]
 description = "Lint and test lvgl-rust's allocator feature, on a configuration whose heap is the Rust allocator (LV_STDLIB_CUSTOM)"

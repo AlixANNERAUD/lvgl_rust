@@ -45,12 +45,13 @@ fn labels_take_copied_and_static_text() {
     label.set_text_static(Some(c"static")).unwrap();
     drop(lv);
     let mut lv = Lvgl::enter(&mut guard).unwrap();
-    // Deletes the label's animations, which other frames may be running:
-    // exclusive access.
-    lv.edit(|lv| lv.screen_active()?.child(-1)?.downcast::<Label>())
+    // Deletes only the label's own scrolling animations, which no frame
+    // keeps across a callback that could reach this call: shared access.
+    let label = lv.screen_active().unwrap().child(-1).unwrap();
+    label
+        .downcast::<Label>()
         .unwrap()
         .set_long_mode(LabelLongMode::DOTS);
-    let label = lv.screen_active().unwrap().child(-1).unwrap();
     assert_eq!(
         label.downcast::<Label>().unwrap().get_long_mode(),
         LabelLongMode::DOTS
@@ -68,13 +69,11 @@ fn sliders_are_bars() {
     let mut guard = guard();
     let mut lv = session(&mut guard);
     let slider = Slider::create_owned(lv.screen_active().unwrap()).unwrap();
-    {
-        // Value setters may run animation callbacks: exclusive access.
-        let mut edit = slider.get_mut(&mut lv).unwrap();
-        edit.set_range(0, 100);
-        edit.set_value(42, false);
-    }
+    // Value setters delete and start only the bar's own animations, which
+    // install no deleted callback: shared access.
     let view = slider.get(&lv).unwrap();
+    view.set_range(0, 100);
+    view.set_value(42, false);
     assert_eq!(view.get_value(), 42);
     // Bar methods through `Deref`.
     let bar: &Bar = view;
@@ -110,12 +109,10 @@ fn slider_views_are_bar_views() {
     fn last_slider(lv: &Lvgl) -> Option<&Slider> {
         lv.screen_active()?.child(-1)?.downcast()
     }
-    {
-        let mut edit = lv.edit(last_slider).unwrap();
-        edit.set_range(0, 10);
-        edit.set_value(7, false);
-    }
-    let bar: &Bar = last_slider(&lv).unwrap();
+    let slider = last_slider(&lv).unwrap();
+    slider.set_range(0, 10);
+    slider.set_value(7, false);
+    let bar: &Bar = slider;
     assert_eq!(bar.get_value(), 7);
     let object = lv.screen_active().unwrap().child(-1).unwrap();
     assert!(object.downcast::<Bar>().is_some() && object.downcast::<Button>().is_none());

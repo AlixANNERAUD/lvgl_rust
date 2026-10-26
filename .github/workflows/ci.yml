@@ -106,7 +106,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        task: [clippy-safe, test-safe, test-views-only, test-asan, test-allocator, example, miri, loom]
+        task: [clippy-safe, test-safe, test-views-only, test-asan, test-allocator, test-matrix, example, miri, loom]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -130,6 +130,8 @@ jobs:
             task: cross-riscv32
           - target: thumbv6m and riscv32imc firmware
             task: size-gate
+          - target: thumbv7em and thumbv8m.main firmware
+            task: cross-arm
     steps:
       - uses: actions/checkout@v4
         with:

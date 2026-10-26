@@ -13,7 +13,10 @@ else stays reachable through `lvgl_rust::sys`.
 - **No dangling objects.** Views (`&Obj`) borrow the session; deleting needs
   exclusive access. `Handle`s (4 bytes) report deleted objects as
   `Error::Dead`, whatever deleted them. `Owned` deletes its object when
-  dropped, from any thread.
+  dropped, from any thread. A generated function the access audit finds
+  shared is a view method only (from an `ObjMut`, call it through
+  `.view()`), an exclusive one an `ObjMut` method only: when a new audit
+  moves a function from exclusive to shared, its method moves too.
 - **Styles without RAM.** `const_style![...]` builds a `ConstStyle` in
   `.rodata`; a `Style` is a 12-byte static changed through
   `lv.style(&STYLE)`, which refreshes the objects using it. Styles and fonts
