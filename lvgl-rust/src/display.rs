@@ -106,6 +106,9 @@ impl DisplayFormat {
     }
 }
 
+/// `LV_COORD_MAX` (`lv_area.h:216`): the largest coordinate LVGL stores.
+const COORD_MAX: u32 = (1 << 29) - 1;
+
 /// What the next refresh renders: the inputs of the buffer size checks.
 #[derive(Clone, Copy)]
 struct Geometry {
@@ -155,6 +158,45 @@ impl Geometry {
         }
     }
 
+    /// Whether LVGL's `uint32_t` arithmetic on this geometry cannot wrap:
+    /// both sizes at most `LV_COORD_MAX` (`lv_area.h:216`), the stride of
+    /// either side (`width * bpp`, rounded, `lv_draw_buf.c:702-709`) and
+    /// the screen's buffer size in either orientation
+    /// (`_calculate_draw_buf_size`, `lv_draw_buf.c:730-746`, used by the
+    /// reshape) and pixel count times pixel size (the tile maths of
+    /// `refr_area`, `lv_refr.c:933-937`) all within `u32`. A wrapped stride
+    /// would pass the buffer checks with a tiny value while LVGL renders
+    /// rows as wide as the screen.
+    ///
+    /// # Safety
+    ///
+    /// Under the token.
+    unsafe fn addressable(&self) -> bool {
+        use sys::*;
+        let coord_max = u64::from(COORD_MAX);
+        let (width, height) = (u64::from(self.width), u64::from(self.height));
+        if !(1..=coord_max).contains(&width) || !(1..=coord_max).contains(&height) {
+            return false;
+        }
+        // SAFETY: under the token; a pure lookup.
+        let bpp = u64::from(unsafe { lv_color_format_get_bpp(self.format) });
+        let stride_align = u64::from(LV_DRAW_BUF_STRIDE_ALIGN).max(1);
+        let align = u64::from(LV_DRAW_BUF_ALIGN).max(1);
+        let limit = u64::from(u32::MAX);
+        // Every value is below 2^29 * 2^5, so nothing here wraps in u64.
+        let stride = |side: u64| (side * bpp).div_ceil(8).next_multiple_of(stride_align);
+        let fits_u32 = |side: u64, rows: u64| {
+            side * bpp + 7 <= limit
+                && stride(side) <= limit
+                && (stride(side) as u128 * rows as u128 * 3 / 2 + 1024)
+                    .next_multiple_of(align as u128)
+                    <= limit as u128
+        };
+        fits_u32(width, height)
+            && fits_u32(height, width)
+            && width as u128 * height as u128 * bpp.div_ceil(8).max(1) as u128 <= limit as u128
+    }
+
     /// Whether buffers of `size` bytes (a multiple of `LV_DRAW_BUF_ALIGN`)
     /// hold what LVGL renders: in partial mode one row of the rotated width
     /// (`get_max_row`, `lv_refr.c:1353-1364`, then the reshape of each area,
@@ -167,6 +209,10 @@ impl Geometry {
     /// Under the token (the stride comes from LVGL's draw buffer handlers).
     unsafe fn fits(&self, size: usize) -> bool {
         use sys::*;
+        // SAFETY: under the token.
+        if !unsafe { self.addressable() } {
+            return false;
+        }
         let (width, rows) = match self.mode {
             RenderMode::Partial => (self.rotated().0, 1),
             RenderMode::Direct | RenderMode::Full if self.matrix_rotation => {
@@ -579,7 +625,7 @@ impl Display {
         let (Ok(w), Ok(h)) = (i32::try_from(width), i32::try_from(height)) else {
             return Err(Error::InvalidArg);
         };
-        if w == 0 || h == 0 {
+        if w == 0 || h == 0 || width > COORD_MAX || height > COORD_MAX {
             return Err(Error::InvalidArg);
         }
         let align = (sys::LV_DRAW_BUF_ALIGN as usize).max(1);
@@ -662,7 +708,8 @@ impl Display {
     }
 
     /// Applies a change of the geometry if the buffers hold what LVGL then
-    /// renders, and reshapes them; [`Error::TooSmall`] otherwise.
+    /// renders, and reshapes them; [`Error::InvalidArg`] if LVGL's sizes
+    /// would wrap, [`Error::TooSmall`] if the buffers are too small.
     fn change_geometry(
         &self,
         change: impl FnOnce(&mut Geometry),
@@ -674,6 +721,9 @@ impl Display {
         unsafe {
             let mut geometry = Geometry::of(d);
             change(&mut geometry);
+            if !geometry.addressable() {
+                return Err(Error::InvalidArg);
+            }
             if !geometry.fits(sys::lv_display_get_draw_buf_size(d) as usize) {
                 return Err(Error::TooSmall);
             }
@@ -687,7 +737,9 @@ impl Display {
     }
 
     /// Changes the resolution (before rotation). Fails with
-    /// [`Error::InvalidArg`] for a zero or huge size, and with
+    /// [`Error::InvalidArg`] for a zero size, a size above `LV_COORD_MAX`
+    /// or one whose buffer sizes would wrap LVGL's 32-bit arithmetic, and
+    /// with
     /// [`Error::TooSmall`] if the draw buffers cannot hold a row of the
     /// new width (partial mode) or the new screen (full and direct modes).
     ///
@@ -758,11 +810,15 @@ impl Display {
     }
 
     /// Splits each rendered area into at most `count` tiles, for parallel
-    /// draw units. Fails with [`Error::InvalidArg`] outside `1..=255` (a
-    /// count of 0 divides by zero, `lv_refr.c:937`).
+    /// draw units. Fails with [`Error::InvalidArg`] outside `1..=255` or
+    /// above the draw buffer size in bytes: LVGL divides by
+    /// `buffer size / count` (`lv_refr.c:933-937`), which is zero then.
+    /// The geometry setters never change the buffer size.
     pub fn set_tile_count(&self, lv: &mut Lvgl, count: u32) -> Result<(), Error> {
         let _ = lv;
-        if !(1..256).contains(&count) {
+        // SAFETY: under the token, a live display with its buffers.
+        let size = unsafe { sys::lv_display_get_draw_buf_size(self.disp.as_ptr()) };
+        if !(1..256).contains(&count) || count > size {
             return Err(Error::InvalidArg);
         }
         // SAFETY: exclusive access, a live display.
@@ -835,5 +891,50 @@ mod tests {
         indev(&IndevCell::<u16>::new());
         indev(&IndevCell::<u64>::new());
         indev(&IndevCell::<Wide>::new());
+    }
+
+    /// Boxed drivers (`LvBox`, feature `heap`) put the driver at
+    /// `trailing` in a block of `block_size` bytes. Under Miri, writing
+    /// the header and the driver through a pointer whose provenance covers
+    /// only those bytes, at every block address the heap can return,
+    /// checks that both fit and are aligned (the miri task builds without
+    /// `heap`, so it never runs `LvBox` itself).
+    #[test]
+    fn boxed_drivers_fit_their_blocks() {
+        use crate::layout::block_size;
+        use core::mem::MaybeUninit;
+
+        #[repr(C, align(32))]
+        struct Arena([MaybeUninit<u8>; 256]);
+
+        fn check<H, T>(header: impl Fn() -> H, value: impl Fn() -> T) {
+            // What every allocator LVGL uses guarantees (`HEAP_ALIGN`).
+            let block_align = size_of::<usize>();
+            let size = block_size::<H, T>(block_align);
+            let mut arena = Arena([MaybeUninit::uninit(); 256]);
+            for offset in (0..32).step_by(block_align) {
+                let block = arena.0[offset..offset + size].as_mut_ptr().cast::<H>();
+                let driver = trailing::<H, T>(block);
+                // SAFETY: what `LvBox::new` and `free` do; Miri reports
+                // any access outside the block or misaligned.
+                unsafe {
+                    block.write(header());
+                    driver.write(value());
+                    ptr::drop_in_place(driver);
+                    ptr::drop_in_place(block);
+                }
+            }
+        }
+        check(DisplayCore::new, || ());
+        check(DisplayCore::new, || 7u8);
+        check(DisplayCore::new, || 7u64);
+        check(DisplayCore::new, || 7.0f64);
+        check(DisplayCore::new, || Wide(7));
+        check(DisplayCore::new, || [7u8; 13]);
+        check(|| Cell::new(false), || ());
+        check(|| Cell::new(false), || 7u16);
+        check(|| Cell::new(false), || 7u64);
+        check(|| Cell::new(false), || Wide(7));
+        check(|| Cell::new(false), || [7u8; 13]);
     }
 }

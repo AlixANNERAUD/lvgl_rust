@@ -52,7 +52,9 @@ else stays reachable through `lvgl_rust::sys`.
   `set_color_format` (`DisplayFormat`) and `set_render_mode` check that
   the draw buffers hold what LVGL will render (a row in partial mode, the
   screen in full and direct modes) and return `Error::TooSmall`
-  otherwise. Button devices (`Indev::create_button(lv, &CELL, reader,
+  otherwise, or `Error::InvalidArg` for sizes that would wrap LVGL's
+  32-bit size arithmetic; `set_tile_count` refuses counts above the
+  buffer size in bytes. Button devices (`Indev::create_button(lv, &CELL, reader,
   &POINTS)`) report a button id (`IndevData::set_button`) and press
   `POINTS[id]`, a `'static` array; an id past it reads as released.
 - **Focus groups.** `lv.create_group()` returns an `Owned<Group>`;

@@ -4,19 +4,34 @@
 
 use lvgl_rust::{
     Display, DisplayCell, DisplayFormat, DrawBuf, DrawBuffers, Error, Flush, FlushRequest, Lvgl,
-    LvglAccess, RenderMode, Rotation, sys, tick_inc, widgets::Button,
+    LvglAccess, RenderMode, Rotation, Session, sys, tick_inc, widgets::Button,
 };
 use std::sync::{
     Mutex, MutexGuard,
     atomic::{AtomicU32, Ordering::Relaxed},
 };
 
-static LOCK: Mutex<()> = Mutex::new(());
+/// Whether LVGL is initialized, under the lock.
+static LOCK: Mutex<bool> = Mutex::new(false);
 
-struct Guard(#[allow(dead_code)] MutexGuard<'static, ()>);
+struct Guard(MutexGuard<'static, bool>);
 
 // SAFETY: a guard of the mutex serializing every LVGL call of this process.
 unsafe impl LvglAccess for Guard {}
+
+fn guard() -> Guard {
+    Guard(LOCK.lock().unwrap_or_else(|p| p.into_inner()))
+}
+
+/// The first test initializes LVGL, the others enter it.
+fn session(guard: &mut Guard) -> Session<'_> {
+    if !*guard.0 {
+        *guard.0 = true;
+        lvgl_rust::init(guard).unwrap()
+    } else {
+        Lvgl::enter(guard).unwrap()
+    }
+}
 
 /// Checks every flush against the display's resolution and buffer.
 struct Panel {
@@ -68,8 +83,8 @@ static SCREEN_ID: AtomicU32 = AtomicU32::new(2);
 
 #[test]
 fn geometry_changes_are_checked_against_the_buffers() {
-    let mut guard = Guard(LOCK.lock().unwrap());
-    let mut lv = lvgl_rust::init(&mut guard).unwrap();
+    let mut guard = guard();
+    let mut lv = session(&mut guard);
 
     // Partial mode, one row of buffer.
     let line = Display::create(
@@ -215,4 +230,140 @@ fn geometry_changes_are_checked_against_the_buffers() {
     );
     assert!(SCREEN_FLUSHES.load(Relaxed) > before);
     screen.try_delete(&mut lv).map_err(|e| e.1).unwrap();
+}
+
+/// A row of 100 RGB565 pixels.
+static ROW_BUFFER: DrawBuf<200> = DrawBuf::new();
+static ROW_CELL: DisplayCell<Panel> = DisplayCell::new();
+static ROW_FLUSHES: AtomicU32 = AtomicU32::new(0);
+static ROW_ID: AtomicU32 = AtomicU32::new(3);
+
+/// Sizes whose stride or buffer size wraps LVGL's `uint32_t` arithmetic
+/// (`width * bpp`, `lv_draw_buf.c:705`) and tile counts above the buffer
+/// size (a zero divisor, `lv_refr.c:935-937`) are refused.
+#[test]
+fn wrapping_sizes_and_tile_counts_are_refused() {
+    let mut guard = guard();
+    let mut lv = session(&mut guard);
+    let row = Display::create(
+        &mut lv,
+        &ROW_CELL,
+        Panel {
+            display: &ROW_ID,
+            flushes: &ROW_FLUSHES,
+            buffer_len: 200,
+        },
+        50,
+        10,
+        DrawBuffers::single(&ROW_BUFFER),
+        RenderMode::Partial,
+    )
+    .unwrap();
+    row.set_color_format(&mut lv, DisplayFormat::Rgb565)
+        .unwrap();
+    row.set_resolution(&mut lv, 100, 10).unwrap();
+    // 16 * (2^28 + 1) wraps to 16 bits: a stride of 2 bytes.
+    assert_eq!(
+        row.set_resolution(&mut lv, (1 << 28) + 1, 1),
+        Err(Error::InvalidArg)
+    );
+    // Above LV_COORD_MAX.
+    assert_eq!(
+        row.set_resolution(&mut lv, 1 << 29, 1),
+        Err(Error::InvalidArg)
+    );
+    row.set_resolution(&mut lv, 50, 10).unwrap();
+    row.set_color_format(&mut lv, DisplayFormat::Xrgb8888)
+        .unwrap();
+    // 32 * (2^27 + 1) wraps to 32 bits (a stride of 4 bytes), below
+    // LV_COORD_MAX.
+    assert_eq!(
+        row.set_resolution(&mut lv, (1 << 27) + 1, 1),
+        Err(Error::InvalidArg)
+    );
+    assert_eq!(
+        row.set_resolution(&mut lv, 1, (1 << 27) + 1),
+        Err(Error::InvalidArg)
+    );
+    assert_eq!(row.set_resolution(&mut lv, 51, 10), Err(Error::TooSmall));
+    assert_eq!(row.resolution(&lv), (50, 10));
+
+    // 200 bytes: at most 200 tiles.
+    assert_eq!(row.set_tile_count(&mut lv, 201), Err(Error::InvalidArg));
+    assert_eq!(row.set_tile_count(&mut lv, 255), Err(Error::InvalidArg));
+    row.set_tile_count(&mut lv, 200).unwrap();
+    run(&mut lv, 2);
+    row.set_tile_count(&mut lv, 1).unwrap();
+    row.try_delete(&mut lv).map_err(|e| e.1).unwrap();
+}
+
+static TWICE: DrawBuf<SCREEN> = DrawBuf::new();
+static TWICE_CELL: DisplayCell<Panel> = DisplayCell::new();
+/// One byte short of a row of 101 RGB565 pixels rounded up to
+/// `LV_DRAW_BUF_ALIGN` (4): 202 bytes, 204 once rounded.
+static SHORT: DrawBuf<203> = DrawBuf::new();
+static SHORT_CELL: DisplayCell<Panel> = DisplayCell::new();
+
+/// Creation refuses the same buffer twice (LVGL would render into the
+/// buffer a deferred flush still reads) and buffers that fit only before
+/// LVGL rounds sizes to `LV_DRAW_BUF_ALIGN`.
+#[test]
+fn creation_refuses_shared_and_unaligned_buffers() {
+    let mut guard = guard();
+    let mut lv = session(&mut guard);
+    let panel = |len| Panel {
+        display: &SCREEN_ID,
+        flushes: &SCREEN_FLUSHES,
+        buffer_len: len,
+    };
+    assert!(matches!(
+        Display::create(
+            &mut lv,
+            &TWICE_CELL,
+            panel(SCREEN),
+            200,
+            100,
+            DrawBuffers::double(&TWICE, &TWICE),
+            RenderMode::Partial,
+        ),
+        Err(Error::AlreadyOwned)
+    ));
+    // Neither the buffer nor the cell stays claimed.
+    let twice = Display::create(
+        &mut lv,
+        &TWICE_CELL,
+        panel(SCREEN),
+        200,
+        100,
+        DrawBuffers::single(&TWICE),
+        RenderMode::Partial,
+    )
+    .unwrap();
+    twice.try_delete(&mut lv).map_err(|e| e.1).unwrap();
+
+    // Refused at any color depth: 203 bytes hold 202 but not 204 (16
+    // bits), nor 404 (32 bits).
+    assert!(matches!(
+        Display::create(
+            &mut lv,
+            &SHORT_CELL,
+            panel(203),
+            101,
+            10,
+            DrawBuffers::single(&SHORT),
+            RenderMode::Partial,
+        ),
+        Err(Error::InvalidArg)
+    ));
+    let short = Display::create(
+        &mut lv,
+        &SHORT_CELL,
+        panel(203),
+        50,
+        10,
+        DrawBuffers::single(&SHORT),
+        RenderMode::Partial,
+    )
+    .unwrap();
+    short.try_delete(&mut lv).map_err(|e| e.1).unwrap();
 }

@@ -59,6 +59,19 @@ mod layout {
         let padding = start.addr().wrapping_neg() & (align_of::<T>() - 1);
         start.wrapping_add(padding).cast_mut().cast()
     }
+
+    /// The bytes of a block holding `H` then `T` (`trailing`) at any
+    /// address aligned to `block_align` (and to `H`): a `T` no more
+    /// aligned than the block sits at a fixed offset; a more aligned one
+    /// needs up to `align - 1` more bytes.
+    #[cfg_attr(not(any(feature = "heap", test)), allow(dead_code))]
+    pub(crate) const fn block_size<H, T>(block_align: usize) -> usize {
+        if align_of::<T>() <= block_align {
+            size_of::<H>().next_multiple_of(align_of::<T>()) + size_of::<T>()
+        } else {
+            size_of::<H>() + align_of::<T>() - 1 + size_of::<T>()
+        }
+    }
 }
 mod manual;
 #[cfg(feature = "async")]
