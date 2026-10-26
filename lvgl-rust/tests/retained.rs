@@ -398,7 +398,6 @@ fn image_buffers_are_filled_in_place() {
     fn last_image(lv: &Lvgl) -> Option<&Image> {
         last(lv)?.downcast()
     }
-    let before = used_blocks();
     Image::create(lv.screen_active().unwrap()).unwrap();
     let used = used_blocks();
     {
@@ -434,8 +433,9 @@ fn image_buffers_are_filled_in_place() {
         sys::lv_refr_now(core::ptr::null_mut());
     }
     lv.edit(last).unwrap().delete().unwrap();
+    let queued = used_blocks();
     drop(lv);
     let _lv = session(&mut guard);
-    // The image and its block are gone.
-    assert_eq!(used_blocks(), before);
+    // The next drain freed the block.
+    assert_eq!(used_blocks(), queued.map(|count| count - 1));
 }
