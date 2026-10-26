@@ -251,3 +251,36 @@ fn a_queue_closed_while_recording_is_freed_by_the_recording_frame() {
     send(object, EventCode::CLICKED);
     lv.edit(last).unwrap().delete().unwrap();
 }
+
+static REFUSED: StaticQueue<u32, 1> = StaticQueue::new(capture);
+
+fn bubbles(object: &Obj) -> bool {
+    // SAFETY: session held, live object.
+    unsafe { sys::lv_obj_has_flag(object.as_ptr(), sys::lv_obj_flag_t_LV_OBJ_FLAG_EVENT_BUBBLE) }
+}
+
+#[test]
+fn refused_subscriptions_leave_children_alone() {
+    let mut guard = guard();
+    let mut lv = session(&mut guard);
+    let parent = Obj::create(lv.screen_active().unwrap()).unwrap();
+    let child = Obj::create(parent).unwrap();
+    let before = event_count(parent);
+    // A code handlers never receive: refused before anything changes.
+    let options = SubscribeOptions::new(EventCode::DRAW_MAIN).bubble_children();
+    assert_eq!(
+        parent.subscribe(options, &REFUSED),
+        Err(lvgl_rust::Error::InvalidArg)
+    );
+    assert!(
+        parent
+            .subscribe_owned::<u32, 1>(options, capture)
+            .is_err_and(|error| error == lvgl_rust::Error::InvalidArg)
+    );
+    assert_eq!(event_count(parent), before);
+    assert!(!bubbles(child));
+    // Children created later do not bubble either.
+    let late = Obj::create(parent).unwrap();
+    assert!(!bubbles(late));
+    lv.edit(last).unwrap().delete().unwrap();
+}

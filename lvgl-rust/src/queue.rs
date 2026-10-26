@@ -308,45 +308,96 @@ impl Obj {
         queue: &'static StaticQueue<E, N>,
     ) -> Result<(), Error> {
         let options = options.into();
-        self.bubble_children(options)?;
         let data = core::ptr::from_ref(queue).cast_mut().cast();
-        self.add_handler(options.code, push_trampoline::<E, N>, data)?;
-        self.add_handler(EventCode::DELETE, close_trampoline::<E, N>, data)?;
+        self.attach(
+            options,
+            [
+                (options.code, push_trampoline::<E, N>, data),
+                (EventCode::DELETE, close_trampoline::<E, N>, data),
+            ],
+        )?;
+        self.bubble_current_children(options);
         Ok(())
     }
 
-    /// Sets up `bubble_children`: one `CHILD_CREATED` handler per object,
-    /// and the flag on the current children.
-    fn bubble_children(&self, options: SubscribeOptions) -> Result<(), Error> {
-        if !options.bubble_children {
-            return Ok(());
+    /// Adds `handlers` in order, then `bubble_children`'s `CHILD_CREATED`
+    /// handler (one per object). If one is refused, removes those already
+    /// added, so a refused subscription changes nothing; on success,
+    /// returns them for [`Obj::detach`].
+    fn attach(
+        &self,
+        options: SubscribeOptions,
+        handlers: [(EventCode, Callback, *mut core::ffi::c_void); 2],
+    ) -> Result<Attached, Error> {
+        let mut added: Attached = [core::ptr::null_mut(); 3];
+        let mut add = || -> Result<(), Error> {
+            for (dsc, (code, cb, data)) in added.iter_mut().zip(handlers) {
+                *dsc = self.add_handler(code, cb, data)?;
+            }
+            if options.bubble_children && !self.has_bubble_handler() {
+                added[2] = self.add_handler(
+                    EventCode::CHILD_CREATED,
+                    bubble_trampoline,
+                    core::ptr::null_mut(),
+                )?;
+            }
+            Ok(())
+        };
+        match add() {
+            Ok(()) => Ok(added),
+            Err(error) => {
+                self.detach(&added);
+                Err(error)
+            }
         }
+    }
+
+    /// Removes the handlers [`Obj::attach`] added.
+    fn detach(&self, added: &Attached) {
+        for &dsc in added.iter().rev().filter(|dsc| !dsc.is_null()) {
+            // SAFETY: descriptors this call added to a live object, under
+            // the token. `add_handler` succeeded, so LVGL is not walking
+            // this object's handlers (it checks that in callbacks; outside
+            // them nothing sends): removing one frees nothing anyone holds.
+            unsafe { sys::lv_obj_remove_event_dsc(self.as_ptr(), dsc) };
+        }
+    }
+
+    /// Whether `bubble_children` already installed its handler here.
+    fn has_bubble_handler(&self) -> bool {
         let o = self.as_ptr();
         // SAFETY: a live object under the token; descriptors are only
         // read.
-        let present = unsafe {
+        unsafe {
             (0..sys::lv_obj_get_event_count(o)).any(|i| {
                 sys::lv_event_dsc_get_cb(sys::lv_obj_get_event_dsc(o, i)).is_some_and(|cb| {
                     core::ptr::fn_addr_eq(cb, bubble_trampoline as unsafe extern "C" fn(_))
                 })
             })
-        };
-        if !present {
-            self.add_handler(
-                EventCode::CHILD_CREATED,
-                bubble_trampoline,
-                core::ptr::null_mut(),
-            )?;
         }
-        // SAFETY: as above; setting the flag only writes a bit.
+    }
+
+    /// The last step of `bubble_children`, once the subscription can no
+    /// longer fail: the flag on the current children.
+    fn bubble_current_children(&self, options: SubscribeOptions) {
+        if !options.bubble_children {
+            return;
+        }
+        let o = self.as_ptr();
+        // SAFETY: a live object under the token; setting the flag only
+        // writes a bit (`lv_obj.c:644-648`).
         unsafe {
             for i in 0..sys::lv_obj_get_child_count(o) {
                 sys::lv_obj_set_event_bubble(sys::lv_obj_get_child(o, i as i32), true);
             }
         }
-        Ok(())
     }
 }
+
+type Callback = unsafe extern "C" fn(*mut sys::lv_event_t);
+
+/// The descriptors one subscription added (null where none was needed).
+type Attached = [*mut sys::lv_event_dsc_t; 3];
 
 /// A queue on LVGL's heap, attached to one object by
 /// [`Obj::subscribe_owned`] (features `async` and `heap`): the receiver
@@ -428,8 +479,6 @@ impl Obj {
         use crate::WidgetExt;
         const { assert!(N >= 1 && N <= 255, "a queue holds 1 to 255 events") };
         let options = options.into();
-        let object = self.handle()?;
-        self.bubble_children(options)?;
         let queue = EventQueue::<E, N> {
             head: 0,
             len: 0,
@@ -442,27 +491,33 @@ impl Obj {
         let block = QueueBox::new((), queue)
             .map_err(|_| Error::OutOfMemory)?
             .into_raw();
-        let push = match self.add_handler(options.code, owned_push_trampoline::<E, N>, block) {
-            Ok(dsc) => dsc,
+        // The handle comes last: a slot, once taken, stays until the
+        // object is deleted, so a refused subscription must not take one.
+        let attached = self
+            .attach(
+                options,
+                [
+                    (options.code, owned_push_trampoline::<E, N>, block),
+                    (EventCode::DELETE, owned_delete_trampoline::<E, N>, block),
+                ],
+            )
+            .and_then(|attached| match self.handle() {
+                Ok(object) => Ok(object),
+                Err(error) => {
+                    self.detach(&attached);
+                    Err(error)
+                }
+            });
+        let object = match attached {
+            Ok(object) => object,
             Err(error) => {
-                // SAFETY: not attached: nothing else has the block.
+                // SAFETY: not attached (or detached again): nothing else
+                // has the block.
                 unsafe { QueueBox::<E, N>::free(block) };
                 return Err(error);
             }
         };
-        if let Err(error) =
-            self.add_handler(EventCode::DELETE, owned_delete_trampoline::<E, N>, block)
-        {
-            // SAFETY: the push descriptor was just added, so LVGL is not
-            // walking this object's handlers (`add_handler` checks it in
-            // callbacks): removing it frees nothing anyone holds. Then
-            // nothing else has the block.
-            unsafe {
-                sys::lv_obj_remove_event_dsc(self.as_ptr(), push);
-                QueueBox::<E, N>::free(block);
-            }
-            return Err(error);
-        }
+        self.bubble_current_children(options);
         Ok(OwnedQueue {
             object,
             // SAFETY: `into_raw` returns the non-null block.
