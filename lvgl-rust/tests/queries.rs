@@ -107,7 +107,10 @@ fn self_size_answers_reach_layout() {
         .on_query(QueryCode::GET_SELF_SIZE, |e: &QueryEvent<'_>| {
             // Only the code's own parameter is typed.
             assert!(e.hit_test().is_none() && e.layer().is_none());
-            e.self_size().unwrap().extend(120, 40);
+            let size = e.self_size().unwrap();
+            size.extend(120, 40);
+            // A smaller answer does not shrink the first one.
+            size.extend(10, 10);
         })
         .unwrap();
     // SAFETY: session held, live object.
@@ -117,8 +120,9 @@ fn self_size_answers_reach_layout() {
             sys::lv_obj_get_self_height(object.as_ptr()),
         )
     };
-    assert!(width >= 120, "{width}");
-    assert!(height >= 40, "{height}");
+    // LVGL starts the asked dimension at 0 (`lv_obj_pos.c:649, 657`) and the
+    // base object adds nothing.
+    assert_eq!((width, height), (120, 40));
     lv.edit(last).unwrap().delete().unwrap();
 }
 
@@ -227,9 +231,10 @@ fn draw_and_cover_codes_reach_restricted_handlers() {
             {
                 let red = color::hex(0xff0000);
                 assert!(task.set_color(red));
-                assert!(task.set_opa(200));
+                assert!(task.set_opacity(200));
                 let read = task.color().unwrap();
-                if (read.red, read.green, read.blue) == (0xff, 0, 0) && task.opa() == Some(200) {
+                if (read.red, read.green, read.blue) == (0xff, 0, 0) && task.opacity() == Some(200)
+                {
                     RECOLORED.fetch_add(1, Relaxed);
                 }
             }
@@ -274,5 +279,35 @@ fn safe_sends_reach_restricted_handlers_without_a_layer() {
         .send_event(lvgl_rust::enums::SafeEventCode::DRAW_MAIN_BEGIN)
         .unwrap();
     assert_eq!(WITHOUT.load(Relaxed), 1);
+    lv.edit(last).unwrap().delete().unwrap();
+}
+
+#[test]
+fn restricted_handlers_block_sessions_without_one_active() {
+    static ATTEMPTS: AtomicU32 = AtomicU32::new(0);
+    static REFUSED: AtomicU32 = AtomicU32::new(0);
+    let mut guard = guard();
+    let lv = session(&mut guard);
+    let object = Obj::create(lv.screen_active().unwrap()).unwrap();
+    object
+        .on_query(QueryCode::GET_SELF_SIZE, |_: &QueryEvent<'_>| {
+            ATTEMPTS.fetch_add(1, Relaxed);
+            // No session is active here: only the callback level the
+            // trampoline entered refuses it.
+            if let Err(Error::Reentrant) = Lvgl::enter(&mut Probe) {
+                REFUSED.fetch_add(1, Relaxed);
+            }
+        })
+        .unwrap();
+    let object = object.as_ptr();
+    drop(lv);
+    // Raw code holding the lock without a session (`Lvgl::assume`).
+    // SAFETY: the test lock is held and no session is active; live object.
+    let _ = unsafe { Lvgl::assume() };
+    // SAFETY: as above.
+    unsafe { sys::lv_obj_get_self_width(object) };
+    assert_eq!(ATTEMPTS.load(Relaxed), 1);
+    assert_eq!(REFUSED.load(Relaxed), 1);
+    let mut lv = session(&mut guard);
     lv.edit(last).unwrap().delete().unwrap();
 }
