@@ -395,6 +395,12 @@ soundness:
   unlinked from the running list (`unlink`: a must analysis over the
   blocks, the local not written since) by no other removal, since every
   removal frees only what it finds in that list;
+- object creation is specialised by class (`[construction]`): an
+  `lv_obj_class_init_obj(obj)` call whose argument is a local holding only
+  the result of `lv_obj_class_create_obj(&class, ...)`, with no call and
+  no store through a pointer on any path between them, runs only the
+  constructors of that class and its bases (read from the class globals'
+  initializers);
 - `[infeasible.<name>]` removes calls that cannot happen in one calling
   context (`context = "caller -> callee"`, `calls`), with the LVGL lines
   that prove it: the callee is specialised for that caller;

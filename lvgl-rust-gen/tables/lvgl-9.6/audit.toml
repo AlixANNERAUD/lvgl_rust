@@ -257,6 +257,25 @@ early_apply_setter = "lv_anim_set_early_apply"
 # obligation.
 event_parameter = { lv_obj_send_event = 2 }
 
+# lv_<widget>_create calls lv_obj_class_init_obj(obj) right after
+# obj = lv_obj_class_create_obj(&class, parent), which sets obj->class_p
+# (lv_obj_class.c:53); lv_obj_construct runs the constructor_cb of
+# obj->class_p after recursing into its base_class with obj->class_p set to
+# each base in turn (lv_obj_class.c:219-232). Nothing in between writes
+# class_p: lv_theme_apply, which runs first (lv_obj_class.c:111), only
+# removes and adds styles (lv_theme.c:66-76), and the audit requires the
+# creation and the init call to be consecutive calls of one block with no
+# store through a pointer between them. The class chain is read from the
+# initializers of the class globals.
+[construction]
+create = "lv_obj_class_create_obj"
+init = "lv_obj_class_init_obj"
+construct = "core/lv_obj_class::lv_obj_construct"
+class_structure = "_lv_obj_class_t"
+base_field = 0
+constructor_field = 1
+why = "an object built right after lv_obj_class_create_obj has that class"
+
 # Hand decisions on event codes.
 [event_policy.LV_EVENT_CREATE]
 handler = "none"

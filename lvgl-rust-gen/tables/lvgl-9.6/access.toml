@@ -230,7 +230,7 @@ access = "shared"
 
 [fn.lv_animimg_create]
 access = "exclusive"
-why = "lv_animimg_create -> lv_obj_class_init_obj -> core/lv_obj_class::lv_obj_construct -> widgets/menu/lv_menu::lv_menu_page_constructor -> lv_obj_set_parent -> lv_obj_remove_child"
+why = "lv_animimg_create -> lv_obj_class_init_obj#class(lv_animimg_class) -> lv_group_add_obj#infeasible(fresh_object_group) -> core/lv_group::lv_group_refocus -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child"
 
 [fn.lv_animimg_delete]
 access = "exclusive"
@@ -289,7 +289,7 @@ why = "lv_arc_bind_value -> lv_subject_add_observer_obj -> core/lv_observer::obj
 
 [fn.lv_arc_create]
 access = "exclusive"
-why = "lv_arc_create -> lv_obj_class_init_obj -> core/lv_obj_class::lv_obj_construct -> widgets/menu/lv_menu::lv_menu_page_constructor -> lv_obj_set_parent -> lv_obj_remove_child"
+why = "lv_arc_create -> lv_obj_class_init_obj#class(lv_arc_class) -> lv_group_add_obj#infeasible(fresh_object_group) -> core/lv_group::lv_group_refocus -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child"
 
 [fn.lv_arc_get_angle_end]
 access = "shared"
@@ -372,7 +372,7 @@ access = "shared"
 
 [fn.lv_arclabel_create]
 access = "exclusive"
-why = "lv_arclabel_create -> lv_obj_class_init_obj -> core/lv_obj_class::lv_obj_construct -> widgets/menu/lv_menu::lv_menu_page_constructor -> lv_obj_set_parent -> lv_obj_remove_child"
+why = "lv_arclabel_create -> lv_obj_class_init_obj#class(lv_arclabel_class) -> lv_group_add_obj#infeasible(fresh_object_group) -> core/lv_group::lv_group_refocus -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child"
 
 [fn.lv_arclabel_get_angle_size]
 access = "shared"
@@ -501,7 +501,7 @@ why = "lv_bar_bind_value -> lv_subject_add_observer_obj -> core/lv_observer::obj
 
 [fn.lv_bar_create]
 access = "exclusive"
-why = "lv_bar_create -> lv_obj_class_init_obj -> core/lv_obj_class::lv_obj_construct -> widgets/menu/lv_menu::lv_menu_page_constructor -> lv_obj_set_parent -> lv_obj_remove_child"
+why = "lv_bar_create -> lv_obj_class_init_obj#class(lv_bar_class) -> lv_group_add_obj#infeasible(fresh_object_group) -> core/lv_group::lv_group_refocus -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child"
 
 [fn.lv_bar_get_max_value]
 access = "shared"
@@ -578,7 +578,7 @@ access = "shared"
 
 [fn.lv_button_create]
 access = "exclusive"
-why = "lv_button_create -> lv_obj_class_init_obj -> core/lv_obj_class::lv_obj_construct -> widgets/menu/lv_menu::lv_menu_page_constructor -> lv_obj_set_parent -> lv_obj_remove_child"
+why = "lv_button_create -> lv_obj_class_init_obj#class(lv_button_class) -> lv_group_add_obj#infeasible(fresh_object_group) -> core/lv_group::lv_group_refocus -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child"
 
 [fn.lv_buttonmatrix_clear_button_ctrl]
 access = "shared"
@@ -588,7 +588,7 @@ access = "shared"
 
 [fn.lv_buttonmatrix_create]
 access = "exclusive"
-why = "lv_buttonmatrix_create -> lv_obj_class_init_obj -> core/lv_obj_class::lv_obj_construct -> widgets/menu/lv_menu::lv_menu_page_constructor -> lv_obj_set_parent -> lv_obj_remove_child"
+why = "lv_buttonmatrix_create -> lv_obj_class_init_obj#class(lv_buttonmatrix_class) -> lv_group_add_obj#infeasible(fresh_object_group) -> core/lv_group::lv_group_refocus -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child"
 
 [fn.lv_buttonmatrix_get_button_text]
 access = "shared"
@@ -628,15 +628,15 @@ access = "shared"
 
 [fn.lv_calendar_add_header_arrow]
 access = "exclusive"
-why = "lv_calendar_add_header_arrow -> lv_obj_class_init_obj -> core/lv_obj_class::lv_obj_construct -> widgets/menu/lv_menu::lv_menu_page_constructor -> lv_obj_set_parent -> lv_obj_remove_child"
+why = "lv_calendar_add_header_arrow -> lv_obj_class_init_obj#class(lv_calendar_header_arrow_class) -> lv_group_add_obj#infeasible(fresh_object_group) -> core/lv_group::lv_group_refocus -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child"
 
 [fn.lv_calendar_add_header_dropdown]
 access = "exclusive"
-why = "lv_calendar_add_header_dropdown -> lv_obj_class_init_obj -> core/lv_obj_class::lv_obj_construct -> widgets/menu/lv_menu::lv_menu_page_constructor -> lv_obj_set_parent -> lv_obj_remove_child"
+why = "lv_calendar_add_header_dropdown -> lv_obj_class_init_obj#class(lv_calendar_header_dropdown_class) -> lv_group_add_obj#infeasible(fresh_object_group) -> core/lv_group::lv_group_refocus -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child"
 
 [fn.lv_calendar_create]
 access = "exclusive"
-why = "lv_calendar_create -> lv_obj_class_init_obj -> core/lv_obj_class::lv_obj_construct -> widgets/menu/lv_menu::lv_menu_page_constructor -> lv_obj_set_parent -> lv_obj_remove_child"
+why = "lv_calendar_create -> lv_obj_class_init_obj#class(lv_calendar_class) -> lv_group_add_obj#infeasible(fresh_object_group) -> core/lv_group::lv_group_refocus -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child"
 
 [fn.lv_calendar_get_btnmatrix]
 access = "shared"
@@ -700,7 +700,7 @@ access = "shared"
 
 [fn.lv_canvas_create]
 access = "exclusive"
-why = "lv_canvas_create -> lv_obj_class_init_obj -> core/lv_obj_class::lv_obj_construct -> widgets/menu/lv_menu::lv_menu_page_constructor -> lv_obj_set_parent -> lv_obj_remove_child"
+why = "lv_canvas_create -> lv_obj_class_init_obj#class(lv_canvas_class) -> lv_group_add_obj#infeasible(fresh_object_group) -> core/lv_group::lv_group_refocus -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child"
 
 [fn.lv_canvas_fill_bg]
 access = "shared"
@@ -745,7 +745,7 @@ access = "shared"
 
 [fn.lv_chart_create]
 access = "exclusive"
-why = "lv_chart_create -> lv_obj_class_init_obj -> core/lv_obj_class::lv_obj_construct -> widgets/menu/lv_menu::lv_menu_page_constructor -> lv_obj_set_parent -> lv_obj_remove_child"
+why = "lv_chart_create -> lv_obj_class_init_obj#class(lv_chart_class) -> lv_group_add_obj#infeasible(fresh_object_group) -> core/lv_group::lv_group_refocus -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child"
 
 [fn.lv_chart_get_cursor_point]
 access = "shared"
@@ -876,7 +876,7 @@ access = "shared"
 
 [fn.lv_checkbox_create]
 access = "exclusive"
-why = "lv_checkbox_create -> lv_obj_class_init_obj -> core/lv_obj_class::lv_obj_construct -> widgets/menu/lv_menu::lv_menu_page_constructor -> lv_obj_set_parent -> lv_obj_remove_child"
+why = "lv_checkbox_create -> lv_obj_class_init_obj#class(lv_checkbox_class) -> lv_group_add_obj#infeasible(fresh_object_group) -> core/lv_group::lv_group_refocus -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child"
 
 [fn.lv_checkbox_get_text]
 access = "shared"
@@ -1013,7 +1013,7 @@ access = "shared"
 
 [fn.lv_display_create]
 access = "exclusive"
-why = "lv_display_create -> lv_obj_create -> lv_obj_class_init_obj -> core/lv_obj_class::lv_obj_construct -> widgets/menu/lv_menu::lv_menu_page_constructor -> lv_obj_set_parent -> lv_obj_remove_child"
+why = "lv_display_create -> lv_obj_create -> lv_obj_class_init_obj#class(lv_obj_class) -> lv_group_add_obj#infeasible(fresh_object_group) -> core/lv_group::lv_group_refocus -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child"
 
 [fn.lv_display_delete]
 access = "exclusive"
@@ -1589,7 +1589,7 @@ why = "lv_dropdown_close -> lv_obj_set_hidden -> lv_group_focus_next -> core/lv_
 
 [fn.lv_dropdown_create]
 access = "exclusive"
-why = "lv_dropdown_create -> lv_obj_class_init_obj -> core/lv_obj_class::lv_obj_construct -> widgets/menu/lv_menu::lv_menu_page_constructor -> lv_obj_set_parent -> lv_obj_remove_child"
+why = "lv_dropdown_create -> lv_obj_class_init_obj#class(lv_dropdown_class) -> lv_group_add_obj#infeasible(fresh_object_group) -> core/lv_group::lv_group_refocus -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child"
 
 [fn.lv_dropdown_get_dir]
 access = "shared"
@@ -2027,7 +2027,7 @@ access = "shared"
 
 [fn.lv_image_create]
 access = "exclusive"
-why = "lv_image_create -> lv_obj_class_init_obj -> core/lv_obj_class::lv_obj_construct -> widgets/menu/lv_menu::lv_menu_page_constructor -> lv_obj_set_parent -> lv_obj_remove_child"
+why = "lv_image_create -> lv_obj_class_init_obj#class(lv_image_class) -> lv_group_add_obj#infeasible(fresh_object_group) -> core/lv_group::lv_group_refocus -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child"
 
 [fn.lv_image_decoder_close]
 access = "shared"
@@ -2173,7 +2173,7 @@ access = "shared"
 
 [fn.lv_imagebutton_create]
 access = "exclusive"
-why = "lv_imagebutton_create -> lv_obj_class_init_obj -> core/lv_obj_class::lv_obj_construct -> widgets/menu/lv_menu::lv_menu_page_constructor -> lv_obj_set_parent -> lv_obj_remove_child"
+why = "lv_imagebutton_create -> lv_obj_class_init_obj#class(lv_imagebutton_class) -> lv_group_add_obj#infeasible(fresh_object_group) -> core/lv_group::lv_group_refocus -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child"
 
 [fn.lv_imagebutton_get_src_left]
 access = "shared"
@@ -2396,7 +2396,7 @@ access = "shared"
 
 [fn.lv_keyboard_create]
 access = "exclusive"
-why = "lv_keyboard_create -> lv_obj_class_init_obj -> core/lv_obj_class::lv_obj_construct -> widgets/menu/lv_menu::lv_menu_page_constructor -> lv_obj_set_parent -> lv_obj_remove_child"
+why = "lv_keyboard_create -> lv_obj_class_init_obj#class(lv_keyboard_class) -> lv_group_add_obj#infeasible(fresh_object_group) -> core/lv_group::lv_group_refocus -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child"
 
 [fn.lv_keyboard_def_event_cb]
 access = "exclusive"
@@ -2439,7 +2439,7 @@ why = "lv_label_bind_text -> lv_subject_add_observer_obj -> core/lv_observer::ob
 
 [fn.lv_label_create]
 access = "exclusive"
-why = "lv_label_create -> lv_obj_class_init_obj -> core/lv_obj_class::lv_obj_construct -> widgets/menu/lv_menu::lv_menu_page_constructor -> lv_obj_set_parent -> lv_obj_remove_child"
+why = "lv_label_create -> lv_obj_class_init_obj#class(lv_label_class) -> lv_group_add_obj#infeasible(fresh_object_group) -> core/lv_group::lv_group_refocus -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child"
 
 [fn.lv_label_cut_text]
 access = "shared"
@@ -2524,7 +2524,7 @@ access = "shared"
 
 [fn.lv_led_create]
 access = "exclusive"
-why = "lv_led_create -> lv_obj_class_init_obj -> core/lv_obj_class::lv_obj_construct -> widgets/menu/lv_menu::lv_menu_page_constructor -> lv_obj_set_parent -> lv_obj_remove_child"
+why = "lv_led_create -> lv_obj_class_init_obj#class(lv_led_class) -> lv_group_add_obj#infeasible(fresh_object_group) -> core/lv_group::lv_group_refocus -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child"
 
 [fn.lv_led_get_brightness]
 access = "shared"
@@ -2549,7 +2549,7 @@ access = "shared"
 
 [fn.lv_line_create]
 access = "exclusive"
-why = "lv_line_create -> lv_obj_class_init_obj -> core/lv_obj_class::lv_obj_construct -> widgets/menu/lv_menu::lv_menu_page_constructor -> lv_obj_set_parent -> lv_obj_remove_child"
+why = "lv_line_create -> lv_obj_class_init_obj#class(lv_line_class) -> lv_group_add_obj#infeasible(fresh_object_group) -> core/lv_group::lv_group_refocus -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child"
 
 [fn.lv_line_get_point_count]
 access = "shared"
@@ -2577,15 +2577,15 @@ access = "shared"
 
 [fn.lv_list_add_button]
 access = "exclusive"
-why = "lv_list_add_button -> lv_obj_class_init_obj -> core/lv_obj_class::lv_obj_construct -> widgets/menu/lv_menu::lv_menu_page_constructor -> lv_obj_set_parent -> lv_obj_remove_child"
+why = "lv_list_add_button -> lv_obj_class_init_obj#class(lv_list_button_class) -> lv_group_add_obj#infeasible(fresh_object_group) -> core/lv_group::lv_group_refocus -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child"
 
 [fn.lv_list_add_text]
 access = "exclusive"
-why = "lv_list_add_text -> lv_obj_class_init_obj -> core/lv_obj_class::lv_obj_construct -> widgets/menu/lv_menu::lv_menu_page_constructor -> lv_obj_set_parent -> lv_obj_remove_child"
+why = "lv_list_add_text -> lv_obj_class_init_obj#class(lv_list_text_class) -> lv_group_add_obj#infeasible(fresh_object_group) -> core/lv_group::lv_group_refocus -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child"
 
 [fn.lv_list_create]
 access = "exclusive"
-why = "lv_list_create -> lv_obj_class_init_obj -> core/lv_obj_class::lv_obj_construct -> widgets/menu/lv_menu::lv_menu_page_constructor -> lv_obj_set_parent -> lv_obj_remove_child"
+why = "lv_list_create -> lv_obj_class_init_obj#class(lv_list_class) -> lv_group_add_obj#infeasible(fresh_object_group) -> core/lv_group::lv_group_refocus -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child"
 
 [fn.lv_list_get_button_text]
 access = "shared"
@@ -2702,11 +2702,11 @@ access = "shared"
 
 [fn.lv_menu_cont_create]
 access = "exclusive"
-why = "lv_menu_cont_create -> lv_obj_class_init_obj -> core/lv_obj_class::lv_obj_construct -> widgets/menu/lv_menu::lv_menu_page_constructor -> lv_obj_set_parent -> lv_obj_remove_child"
+why = "lv_menu_cont_create -> lv_obj_class_init_obj#class(lv_menu_cont_class) -> lv_group_add_obj#infeasible(fresh_object_group) -> core/lv_group::lv_group_refocus -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child"
 
 [fn.lv_menu_create]
 access = "exclusive"
-why = "lv_menu_create -> lv_obj_class_init_obj -> core/lv_obj_class::lv_obj_construct -> widgets/menu/lv_menu::lv_menu_page_constructor -> lv_obj_set_parent -> lv_obj_remove_child"
+why = "lv_menu_create -> lv_obj_class_init_obj#class(lv_menu_class) -> lv_group_add_obj#infeasible(fresh_object_group) -> core/lv_group::lv_group_refocus -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child"
 
 [fn.lv_menu_get_cur_main_page]
 access = "shared"
@@ -2734,15 +2734,15 @@ access = "shared"
 
 [fn.lv_menu_page_create]
 access = "exclusive"
-why = "lv_menu_page_create -> lv_obj_class_init_obj -> core/lv_obj_class::lv_obj_construct -> widgets/menu/lv_menu::lv_menu_page_constructor -> lv_obj_set_parent -> lv_obj_remove_child"
+why = "lv_menu_page_create -> lv_obj_class_init_obj#class(lv_menu_page_class) -> core/lv_obj_class::lv_obj_construct#class(lv_menu_page_class) -> widgets/menu/lv_menu::lv_menu_page_constructor -> lv_obj_set_parent -> lv_obj_remove_child"
 
 [fn.lv_menu_section_create]
 access = "exclusive"
-why = "lv_menu_section_create -> lv_obj_class_init_obj -> core/lv_obj_class::lv_obj_construct -> widgets/menu/lv_menu::lv_menu_page_constructor -> lv_obj_set_parent -> lv_obj_remove_child"
+why = "lv_menu_section_create -> lv_obj_class_init_obj#class(lv_menu_section_class) -> lv_group_add_obj#infeasible(fresh_object_group) -> core/lv_group::lv_group_refocus -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child"
 
 [fn.lv_menu_separator_create]
 access = "exclusive"
-why = "lv_menu_separator_create -> lv_obj_class_init_obj -> core/lv_obj_class::lv_obj_construct -> widgets/menu/lv_menu::lv_menu_page_constructor -> lv_obj_set_parent -> lv_obj_remove_child"
+why = "lv_menu_separator_create -> lv_obj_class_init_obj#class(lv_menu_separator_class) -> lv_group_add_obj#infeasible(fresh_object_group) -> core/lv_group::lv_group_refocus -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child"
 
 [fn.lv_menu_set_load_page_event]
 access = "exclusive"
@@ -2785,11 +2785,11 @@ why = "lv_msgbox_add_header_button -> lv_obj_class_init_obj -> core/lv_obj_class
 
 [fn.lv_msgbox_add_text]
 access = "exclusive"
-why = "lv_msgbox_add_text -> lv_label_create -> lv_obj_class_init_obj -> core/lv_obj_class::lv_obj_construct -> widgets/menu/lv_menu::lv_menu_page_constructor -> lv_obj_set_parent -> lv_obj_remove_child"
+why = "lv_msgbox_add_text -> lv_label_create -> lv_obj_class_init_obj#class(lv_label_class) -> lv_group_add_obj#infeasible(fresh_object_group) -> core/lv_group::lv_group_refocus -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child"
 
 [fn.lv_msgbox_add_text_fmt]
 access = "exclusive"
-why = "lv_msgbox_add_text_fmt -> lv_label_create -> lv_obj_class_init_obj -> core/lv_obj_class::lv_obj_construct -> widgets/menu/lv_menu::lv_menu_page_constructor -> lv_obj_set_parent -> lv_obj_remove_child"
+why = "lv_msgbox_add_text_fmt -> lv_label_create -> lv_obj_class_init_obj#class(lv_label_class) -> lv_group_add_obj#infeasible(fresh_object_group) -> core/lv_group::lv_group_refocus -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child"
 
 [fn.lv_msgbox_add_title]
 access = "exclusive"
@@ -2996,7 +2996,7 @@ consumes = true
 
 [fn.lv_obj_create]
 access = "exclusive"
-why = "lv_obj_create -> lv_obj_class_init_obj -> core/lv_obj_class::lv_obj_construct -> widgets/menu/lv_menu::lv_menu_page_constructor -> lv_obj_set_parent -> lv_obj_remove_child"
+why = "lv_obj_create -> lv_obj_class_init_obj#class(lv_obj_class) -> lv_group_add_obj#infeasible(fresh_object_group) -> core/lv_group::lv_group_refocus -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child"
 
 [fn.lv_obj_delete]
 access = "exclusive"
@@ -4914,7 +4914,7 @@ why = "lv_roller_bind_value -> lv_subject_add_observer_obj -> core/lv_observer::
 
 [fn.lv_roller_create]
 access = "exclusive"
-why = "lv_roller_create -> lv_obj_class_init_obj -> core/lv_obj_class::lv_obj_construct -> widgets/menu/lv_menu::lv_menu_page_constructor -> lv_obj_set_parent -> lv_obj_remove_child"
+why = "lv_roller_create -> lv_obj_class_init_obj#class(lv_roller_class) -> lv_group_add_obj#infeasible(fresh_object_group) -> core/lv_group::lv_group_refocus -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child"
 
 [fn.lv_roller_get_option_count]
 access = "shared"
@@ -4968,7 +4968,7 @@ why = "lv_scale_bind_section_min_value -> lv_subject_add_observer_obj -> core/lv
 
 [fn.lv_scale_create]
 access = "exclusive"
-why = "lv_scale_create -> lv_obj_class_init_obj -> core/lv_obj_class::lv_obj_construct -> widgets/menu/lv_menu::lv_menu_page_constructor -> lv_obj_set_parent -> lv_obj_remove_child"
+why = "lv_scale_create -> lv_obj_class_init_obj#class(lv_scale_class) -> lv_group_add_obj#infeasible(fresh_object_group) -> core/lv_group::lv_group_refocus -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child"
 
 [fn.lv_scale_get_angle_range]
 access = "shared"
@@ -5082,7 +5082,7 @@ why = "lv_slider_bind_value -> lv_subject_add_observer_obj -> core/lv_observer::
 
 [fn.lv_slider_create]
 access = "exclusive"
-why = "lv_slider_create -> lv_obj_class_init_obj -> core/lv_obj_class::lv_obj_construct -> widgets/menu/lv_menu::lv_menu_page_constructor -> lv_obj_set_parent -> lv_obj_remove_child"
+why = "lv_slider_create -> lv_obj_class_init_obj#class(lv_slider_class) -> lv_group_add_obj#infeasible(fresh_object_group) -> core/lv_group::lv_group_refocus -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child"
 
 [fn.lv_slider_get_left_value]
 access = "shared"
@@ -5164,7 +5164,7 @@ why = "lv_spangroup_bind_span_text -> lv_subject_add_observer_obj -> core/lv_obs
 
 [fn.lv_spangroup_create]
 access = "exclusive"
-why = "lv_spangroup_create -> lv_obj_class_init_obj -> core/lv_obj_class::lv_obj_construct -> widgets/menu/lv_menu::lv_menu_page_constructor -> lv_obj_set_parent -> lv_obj_remove_child"
+why = "lv_spangroup_create -> lv_obj_class_init_obj#class(lv_spangroup_class) -> lv_group_add_obj#infeasible(fresh_object_group) -> core/lv_group::lv_group_refocus -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child"
 
 [fn.lv_spangroup_delete_span]
 access = "shared"
@@ -5243,7 +5243,7 @@ why = "lv_spinbox_bind_value -> lv_subject_add_observer_obj -> core/lv_observer:
 
 [fn.lv_spinbox_create]
 access = "exclusive"
-why = "lv_spinbox_create -> lv_obj_class_init_obj -> core/lv_obj_class::lv_obj_construct -> widgets/menu/lv_menu::lv_menu_page_constructor -> lv_obj_set_parent -> lv_obj_remove_child"
+why = "lv_spinbox_create -> lv_obj_class_init_obj#class(lv_spinbox_class) -> lv_group_add_obj#infeasible(fresh_object_group) -> core/lv_group::lv_group_refocus -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child"
 
 [fn.lv_spinbox_decrement]
 access = "exclusive"
@@ -5330,7 +5330,7 @@ why = "lv_spinbox_step_prev -> widgets/spinbox/lv_spinbox::lv_spinbox_updatevalu
 
 [fn.lv_spinner_create]
 access = "exclusive"
-why = "lv_spinner_create -> lv_obj_class_init_obj -> core/lv_obj_class::lv_obj_construct -> widgets/menu/lv_menu::lv_menu_page_constructor -> lv_obj_set_parent -> lv_obj_remove_child"
+why = "lv_spinner_create -> lv_obj_class_init_obj#class(lv_spinner_class) -> lv_group_add_obj#infeasible(fresh_object_group) -> core/lv_group::lv_group_refocus -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child"
 
 [fn.lv_spinner_get_anim_duration]
 access = "shared"
@@ -5954,7 +5954,7 @@ why = "lv_subject_snprintf -> core/lv_observer::lv_subject_notify_if_changed -> 
 
 [fn.lv_switch_create]
 access = "exclusive"
-why = "lv_switch_create -> lv_obj_class_init_obj -> core/lv_obj_class::lv_obj_construct -> widgets/menu/lv_menu::lv_menu_page_constructor -> lv_obj_set_parent -> lv_obj_remove_child"
+why = "lv_switch_create -> lv_obj_class_init_obj#class(lv_switch_class) -> lv_group_add_obj#infeasible(fresh_object_group) -> core/lv_group::lv_group_refocus -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child"
 
 [fn.lv_switch_get_orientation]
 access = "shared"
@@ -5967,7 +5967,7 @@ access = "shared"
 
 [fn.lv_table_create]
 access = "exclusive"
-why = "lv_table_create -> lv_obj_class_init_obj -> core/lv_obj_class::lv_obj_construct -> widgets/menu/lv_menu::lv_menu_page_constructor -> lv_obj_set_parent -> lv_obj_remove_child"
+why = "lv_table_create -> lv_obj_class_init_obj#class(lv_table_class) -> lv_group_add_obj#infeasible(fresh_object_group) -> core/lv_group::lv_group_refocus -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child"
 
 [fn.lv_table_get_cell_user_data]
 access = "shared"
@@ -6021,7 +6021,7 @@ why = "lv_tabview_add_tab -> lv_group_add_obj -> lv_group_remove_obj"
 
 [fn.lv_tabview_create]
 access = "exclusive"
-why = "lv_tabview_create -> lv_obj_class_init_obj -> core/lv_obj_class::lv_obj_construct -> widgets/menu/lv_menu::lv_menu_page_constructor -> lv_obj_set_parent -> lv_obj_remove_child"
+why = "lv_tabview_create -> lv_obj_class_init_obj#class(lv_tabview_class) -> lv_group_add_obj#infeasible(fresh_object_group) -> core/lv_group::lv_group_refocus -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child"
 
 [fn.lv_tabview_get_content]
 access = "shared"
@@ -6072,7 +6072,7 @@ access = "shared"
 
 [fn.lv_textarea_create]
 access = "exclusive"
-why = "lv_textarea_create -> lv_obj_class_init_obj -> core/lv_obj_class::lv_obj_construct -> widgets/menu/lv_menu::lv_menu_page_constructor -> lv_obj_set_parent -> lv_obj_remove_child"
+why = "lv_textarea_create -> lv_obj_class_init_obj#class(lv_textarea_class) -> lv_group_add_obj#infeasible(fresh_object_group) -> core/lv_group::lv_group_refocus -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child"
 
 [fn.lv_textarea_cursor_down]
 access = "exclusive"
@@ -6293,11 +6293,11 @@ why = "crate-owned (classes.toml)"
 
 [fn.lv_tileview_add_tile]
 access = "exclusive"
-why = "lv_tileview_add_tile -> lv_obj_class_init_obj -> core/lv_obj_class::lv_obj_construct -> widgets/menu/lv_menu::lv_menu_page_constructor -> lv_obj_set_parent -> lv_obj_remove_child"
+why = "lv_tileview_add_tile -> lv_obj_class_init_obj#class(lv_tileview_tile_class) -> lv_group_add_obj#infeasible(fresh_object_group) -> core/lv_group::lv_group_refocus -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child"
 
 [fn.lv_tileview_create]
 access = "exclusive"
-why = "lv_tileview_create -> lv_obj_class_init_obj -> core/lv_obj_class::lv_obj_construct -> widgets/menu/lv_menu::lv_menu_page_constructor -> lv_obj_set_parent -> lv_obj_remove_child"
+why = "lv_tileview_create -> lv_obj_class_init_obj#class(lv_tileview_class) -> lv_group_add_obj#infeasible(fresh_object_group) -> core/lv_group::lv_group_refocus -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child"
 
 [fn.lv_tileview_get_tile_active]
 access = "shared"
@@ -6402,15 +6402,15 @@ access = "shared"
 
 [fn.lv_win_add_button]
 access = "exclusive"
-why = "lv_win_add_button -> lv_button_create -> lv_obj_class_init_obj -> core/lv_obj_class::lv_obj_construct -> widgets/menu/lv_menu::lv_menu_page_constructor -> lv_obj_set_parent -> lv_obj_remove_child"
+why = "lv_win_add_button -> lv_button_create -> lv_obj_class_init_obj#class(lv_button_class) -> lv_group_add_obj#infeasible(fresh_object_group) -> core/lv_group::lv_group_refocus -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child"
 
 [fn.lv_win_add_title]
 access = "exclusive"
-why = "lv_win_add_title -> lv_label_create -> lv_obj_class_init_obj -> core/lv_obj_class::lv_obj_construct -> widgets/menu/lv_menu::lv_menu_page_constructor -> lv_obj_set_parent -> lv_obj_remove_child"
+why = "lv_win_add_title -> lv_label_create -> lv_obj_class_init_obj#class(lv_label_class) -> lv_group_add_obj#infeasible(fresh_object_group) -> core/lv_group::lv_group_refocus -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child"
 
 [fn.lv_win_create]
 access = "exclusive"
-why = "lv_win_create -> lv_obj_class_init_obj -> core/lv_obj_class::lv_obj_construct -> widgets/menu/lv_menu::lv_menu_page_constructor -> lv_obj_set_parent -> lv_obj_remove_child"
+why = "lv_win_create -> lv_obj_class_init_obj#class(lv_win_class) -> lv_group_add_obj#infeasible(fresh_object_group) -> core/lv_group::lv_group_refocus -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child"
 
 [fn.lv_win_get_content]
 access = "shared"

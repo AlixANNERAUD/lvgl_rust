@@ -206,6 +206,9 @@ pub struct Module {
     pub global_slots: Vec<(String, String)>,
     /// Functions referenced by other global initializers.
     pub global_refs: Vec<String>,
+    /// Struct initializers of globals: the symbols (functions and globals,
+    /// qualified) of each field.
+    pub global_inits: BTreeMap<String, Vec<Vec<String>>>,
     /// Member types of every struct (`%struct.` prefix removed from the
     /// name), as written in the IR (`ptr`, `i32`, `%struct._lv_obj_t`, ...).
     pub types: BTreeMap<String, Vec<String>>,
@@ -595,12 +598,15 @@ impl Module {
         let init = init.trim();
         match strukt {
             Some(s) if init.starts_with('{') => {
+                let mut fields = Vec::new();
                 for (i, element) in split_args(balanced(init)).into_iter().enumerate() {
-                    for symbol in symbols(element) {
-                        self.global_slots
-                            .push((format!("{s}.{i}"), qualify(&symbol)));
+                    let symbols: Vec<String> = symbols(element).map(|x| qualify(&x)).collect();
+                    for symbol in &symbols {
+                        self.global_slots.push((format!("{s}.{i}"), symbol.clone()));
                     }
+                    fields.push(symbols);
                 }
+                self.global_inits.insert(qualify(name), fields);
             }
             _ => self.global_refs.extend(symbols(init).map(|s| qualify(&s))),
         }
