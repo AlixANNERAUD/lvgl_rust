@@ -8,7 +8,11 @@
 //!
 //! These wrappers check indexes against the current counts (getters) and
 //! sizes against [`TABLE_CELL_LIMIT`] (setters and counts) before LVGL
-//! sees them. Strings follow the rule of borrowed text: a copy out of a
+//! sees them. A table keeps at least one row and one column, as LVGL's
+//! constructor makes it: the key handler selects cell `(0, 0)` and
+//! computes its area (`lv_table.c:616-623`), which reads the cell array,
+//! the row heights and the column widths at index 0 and loops to
+//! `col_cnt - 1` (1131), all out of bounds in an empty table. Strings follow the rule of borrowed text: a copy out of a
 //! view, since a shared setter can free a cell, and a borrow under
 //! exclusive access.
 
@@ -64,11 +68,12 @@ impl Table {
     }
 
     /// Sets the number of rows (cells of removed rows are freed). Refused
-    /// past [`TABLE_CELL_LIMIT`] cells ([`Error::InvalidArg`]).
+    /// for 0 (see the module) and past [`TABLE_CELL_LIMIT`] cells
+    /// ([`Error::InvalidArg`]).
     ///
     /// `lv_table_set_row_count`.
     pub fn set_row_count(&self, rows: u32) -> Result<(), Error> {
-        if !fits(rows, self.counts().1) {
+        if rows == 0 || !fits(rows, self.counts().1) {
             return Err(Error::InvalidArg);
         }
         // SAFETY: shared access, live table; the sizes fit in 32 bits.
@@ -80,7 +85,7 @@ impl Table {
     ///
     /// `lv_table_set_column_count`.
     pub fn set_column_count(&self, columns: u32) -> Result<(), Error> {
-        if !fits(self.counts().0, columns) {
+        if columns == 0 || !fits(self.counts().0, columns) {
             return Err(Error::InvalidArg);
         }
         // SAFETY: as above.

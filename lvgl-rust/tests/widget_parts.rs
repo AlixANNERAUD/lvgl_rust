@@ -176,6 +176,12 @@ fn table_cells_are_bounds_checked() {
     );
     assert_eq!(table.get_cell_user_data(0, 1), Err(Error::InvalidArg));
     assert_eq!(table.get_cell_user_data(0, 0), Ok(core::ptr::null_mut()));
+    // LVGL's key handler and cell areas need at least one row and one
+    // column (`lv_table.c:616-623, 1131`).
+    assert_eq!(table.set_row_count(0), Err(Error::InvalidArg));
+    assert_eq!(table.set_column_count(0), Err(Error::InvalidArg));
+    assert_eq!(table.get_row_count(), 1);
+    assert_eq!(table.get_column_count(), 1);
     // Setters grow the table.
     table.set_cell_value(2, 1, c"cell").unwrap();
     assert_eq!(table.get_row_count(), 3);

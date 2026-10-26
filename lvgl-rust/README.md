@@ -48,7 +48,8 @@ else stays reachable through `lvgl_rust::sys`.
   deleted chart or already removed is `Error::InvalidArg`, and point
   counts whose arrays would wrap the address space are refused. Table cell
   getters and setters check rows and columns against the table and its
-  size against `TABLE_CELL_LIMIT`; cell text is copied out of views and
+  size against `TABLE_CELL_LIMIT` (and at least one row and one column);
+  cell text is copied out of views and
   borrowed under `ObjMut`. Tile views take children only from `add_tile`,
   `get_tile_active` forgets a deleted tile, and LVGL's scroll handler
   runs only while the content size it divides by is positive (checked
