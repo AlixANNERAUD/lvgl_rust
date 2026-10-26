@@ -1,10 +1,12 @@
 //! The deferred-free list (feature `heap`): blocks of LVGL's heap that
-//! LVGL may still know by address (owned image sources), freed at the next
-//! drain, after the deletions that retired them have finished.
+//! LVGL may still reach (owned image sources, by address in its caches;
+//! owned event queues and boxed event handlers, through handlers it still
+//! runs until a deletion ends), freed at the next drain, after the
+//! deletions that retired them have finished.
 //!
-//! Each block starts with its link (`*mut c_void`, the header of an
-//! `LvBox<*mut c_void, T>` whose `T` needs no drop). One static pointer,
-//! touched only by the token holder: 4 B on 32-bit targets.
+//! Each block starts with its link (a `*mut c_void`, first field of the
+//! box's header); what follows needs no drop once queued. One static
+//! pointer, touched only by the token holder: 4 B on 32-bit targets.
 
 use super::ffi;
 use core::{cell::Cell, ffi::c_void, ptr};
@@ -31,7 +33,10 @@ fn deinit_marker() -> *mut c_void {
 /// Token held. `block` comes from `lv_malloc`, starts with a writable
 /// `*mut c_void` link, holds nothing that needs a drop, is not queued
 /// already, and nothing reads it once the current deletion or replacement
-/// has finished.
+/// has finished (only its first word changes until the drain). During
+/// `lv_deinit` it is freed at once: every object then dies with all its
+/// ancestors, so no handler can send to an ancestor that trickles events
+/// back to it.
 pub(crate) unsafe fn defer_free(block: *mut c_void) {
     let head = HEAD.0.get();
     if head == deinit_marker() {

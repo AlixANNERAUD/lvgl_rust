@@ -192,8 +192,8 @@ fn children_bubble_into_queues_when_asked() {
 }
 
 /// Deletes its target from inside the recording frame (raw code that
-/// breaks the deferral rules on purpose): DELETE then finds the queue busy
-/// and leaves the free to that frame (AddressSanitizer checks the order).
+/// breaks the deferral rules on purpose): the block outlives that frame,
+/// freed at the next drain (AddressSanitizer checks the order).
 fn delete_target(e: &Event<'_>) -> Option<u32> {
     if e.code() == EventCode::CLICKED {
         let target = e.target()?.as_ptr();
@@ -205,7 +205,7 @@ fn delete_target(e: &Event<'_>) -> Option<u32> {
 }
 
 #[test]
-fn a_queue_deleted_while_recording_is_freed_by_the_recording_frame() {
+fn a_queue_deleted_while_recording_outlives_the_frame() {
     let mut guard = guard();
     let lv = session(&mut guard);
     let object = Obj::create(lv.screen_active().unwrap()).unwrap();
@@ -225,7 +225,7 @@ static CLOSING: Mutex<Option<lvgl_rust::OwnedQueue<u32, 2>>> = Mutex::new(None);
 
 /// Closes the queue it records into (through `Lvgl::assume`, as raw code
 /// may): the handlers are only marked removed while LVGL walks them, and
-/// the frame frees the queue once it returns.
+/// the block outlives the frame.
 fn close_own_queue(e: &Event<'_>) -> Option<u32> {
     if let Some(queue) = CLOSING.lock().unwrap().take() {
         // SAFETY: test only: the session holder runs this callback, and no
@@ -236,7 +236,7 @@ fn close_own_queue(e: &Event<'_>) -> Option<u32> {
 }
 
 #[test]
-fn a_queue_closed_while_recording_is_freed_by_the_recording_frame() {
+fn a_queue_closed_while_recording_outlives_the_frame() {
     let mut guard = guard();
     let mut lv = session(&mut guard);
     let object = Obj::create(lv.screen_active().unwrap()).unwrap();
@@ -282,5 +282,148 @@ fn refused_subscriptions_leave_children_alone() {
     // Children created later do not bubble either.
     let late = Obj::create(parent).unwrap();
     assert!(!bubbles(late));
+    lv.edit(last).unwrap().delete().unwrap();
+}
+
+static TRICKLED: AtomicU32 = AtomicU32::new(0);
+
+fn count_ready(e: &Event<'_>) -> Option<u32> {
+    if e.code() == EventCode::READY {
+        TRICKLED.fetch_add(1, Relaxed);
+    }
+    Some(e.code().bits())
+}
+
+/// DELETE handler sending READY to the object's parent, which trickles it
+/// back down to the object while LVGL still holds its handlers (safe code
+/// can do the same: `set_event_trickle(true)` on the parent, then
+/// `Obj::send_event(SafeEventCode::READY)` through a handle).
+unsafe extern "C" fn send_to_parent(e: *mut sys::lv_event_t) {
+    // SAFETY: a live event of a live object, under the session.
+    unsafe {
+        let object = sys::lv_event_get_current_target(e).cast::<sys::lv_obj_t>();
+        let parent = sys::lv_obj_get_parent(object);
+        sys::lv_obj_send_event(
+            parent,
+            sys::lv_event_code_t_LV_EVENT_READY,
+            core::ptr::null_mut(),
+        );
+    }
+}
+
+#[test]
+fn owned_queues_ignore_events_trickled_after_delete() {
+    let mut guard = guard();
+    let mut lv = session(&mut guard);
+    let parent = Obj::create(lv.screen_active().unwrap()).unwrap();
+    // SAFETY: session held, live object.
+    unsafe {
+        sys::lv_obj_add_flag(
+            parent.as_ptr(),
+            sys::lv_obj_flag_t_LV_OBJ_FLAG_EVENT_TRICKLE,
+        )
+    };
+    let child = Obj::create(parent).unwrap();
+    let queue = child
+        .subscribe_owned::<u32, 4>(EventCode::ALL, count_ready)
+        .unwrap();
+    // SAFETY: session held, live object; the callback needs no data.
+    unsafe {
+        sys::lv_obj_add_event_cb(
+            child.as_ptr(),
+            Some(send_to_parent),
+            sys::lv_event_code_t_LV_EVENT_DELETE,
+            core::ptr::null_mut(),
+        )
+    };
+    send(parent, EventCode::READY);
+    assert_eq!(TRICKLED.load(Relaxed), 1);
+    lv.edit(|lv| last(lv)?.child(0)).unwrap().delete().unwrap();
+    // The closed queue recorded nothing more; its block waited for the
+    // drain (AddressSanitizer checks the order).
+    assert_eq!(TRICKLED.load(Relaxed), 1);
+    assert_eq!(queue.try_recv(&lv), Recv::Closed);
+    lv.edit(last).unwrap().delete().unwrap();
+}
+
+/// Blocks in use on LVGL's builtin heap (`None` with another allocator).
+fn used_blocks() -> Option<usize> {
+    // SAFETY: session held; the monitor only reads the heap.
+    let monitor = unsafe {
+        let mut monitor = core::mem::zeroed::<sys::lv_mem_monitor_t>();
+        sys::lv_mem_monitor(&mut monitor);
+        monitor
+    };
+    (monitor.total_size != 0).then_some(monitor.used_cnt)
+}
+
+unsafe extern "C" fn nothing(_: *mut sys::lv_event_t) {}
+
+#[test]
+fn a_full_registry_refuses_subscriptions_without_a_trace() {
+    use lvgl_rust::WidgetExt;
+    let mut guard = guard();
+    let mut lv = session(&mut guard);
+    let screen = lv.screen_active().unwrap();
+    // Every free slot goes to a child of `holders`.
+    let holders = Obj::create(screen).unwrap();
+    let mut handles = Vec::new();
+    loop {
+        let holder = Obj::create(holders).unwrap();
+        match holder.handle() {
+            Ok(handle) => handles.push(handle),
+            Err(error) => {
+                assert_eq!(error, lvgl_rust::Error::RegistryFull);
+                break;
+            }
+        }
+        assert!(handles.len() < 4096, "the registry never filled");
+    }
+    let target = Obj::create(screen).unwrap();
+    let child = Obj::create(target).unwrap();
+    // One handler for good: the object's event list exists before and
+    // after, so the heap is comparable.
+    // SAFETY: session held, live object; the callback needs no data.
+    unsafe {
+        sys::lv_obj_add_event_cb(
+            target.as_ptr(),
+            Some(nothing),
+            sys::lv_event_code_t_LV_EVENT_CLICKED,
+            core::ptr::null_mut(),
+        )
+    };
+    let before = event_count(target);
+    let used = used_blocks();
+    let options = SubscribeOptions::new(EventCode::CLICKED).bubble_children();
+    // Every handler was added, then the slot was refused: all removed.
+    assert!(
+        target
+            .subscribe_owned::<u32, 4>(options, capture)
+            .is_err_and(|error| error == lvgl_rust::Error::RegistryFull)
+    );
+    assert_eq!(event_count(target), before);
+    assert_eq!(used_blocks(), used);
+    assert!(!bubbles(child));
+    let late = Obj::create(target).unwrap();
+    assert!(!bubbles(late));
+    drop(handles);
+    lv.edit(last).unwrap().delete().unwrap();
+    lv.edit(last).unwrap().delete().unwrap();
+}
+
+#[test]
+fn owned_queues_drop_on_other_threads() {
+    let mut guard = guard();
+    let mut lv = session(&mut guard);
+    let object = Obj::create(lv.screen_active().unwrap()).unwrap();
+    let queue = object
+        .subscribe_owned::<u32, 2>(EventCode::CLICKED, capture)
+        .unwrap();
+    // Dropping needs no token: the queue stays attached.
+    std::thread::spawn(move || drop(queue)).join().unwrap();
+    let object = last(&lv).unwrap();
+    let before = event_count(object);
+    send(object, EventCode::CLICKED);
+    assert_eq!(event_count(object), before);
     lv.edit(last).unwrap().delete().unwrap();
 }

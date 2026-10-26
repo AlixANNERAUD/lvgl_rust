@@ -60,7 +60,10 @@ else stays reachable through `lvgl_rust::sys`.
   of the object's children (they get `EVENT_BUBBLE`, now and when created).
 - **Closures and owned values (feature `heap`).** `obj.on_boxed(code, move
   |e| ...)` and `lv.timer_boxed(period, move |ctx| ...)` keep the closure on
-  LVGL's own heap (a 4-byte header), freed with the object or the timer.
+  LVGL's own heap (a header of 4 bytes on 32-bit targets for timers, 8 for
+  handlers), dropped with the object or the timer; a handler's block is
+  freed at the next `enter` or `timer_handler`, as LVGL may still call it
+  during the deletion.
   `image.set_src_owned(ImageBuffer::new(format, w, h, 0, pixels)?)` moves
   an image (or an `ImageDsc`) there: when it is replaced or the image is
   deleted, LVGL's image caches drop it and the block is freed at the next
@@ -68,7 +71,8 @@ else stays reachable through `lvgl_rust::sys`.
   `async` too, `obj.subscribe_owned::<E, N>(code, capture)` puts the queue
   there and returns its `OwnedQueue` receiver (8 bytes, using the object's
   registry slot); the queue goes with the object, or with
-  `OwnedQueue::close`.
+  `OwnedQueue::close`, and its block is freed at the next drain too.
+  `bubble_children` cannot be undone: it stays for the object's lifetime.
 - **Your allocator (feature `allocator`).** With
   `LV_USE_STDLIB_MALLOC LV_STDLIB_CUSTOM`, `lvgl_allocator!(HEAP)` makes
   LVGL allocate from a static implementing `LvglAllocator`;
