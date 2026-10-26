@@ -322,7 +322,7 @@ mod handles {
         let mut edit = tileview.get_mut(&mut lv).unwrap();
         edit.add_tile(0, 0, Dir::ALL).unwrap();
         // LVGL's handler would divide by the content width or height: the
-        // guard stops the SCROLL_END sent by an unanimated scroll.
+        // check skips it on the SCROLL_END sent by an unanimated scroll.
         edit.set_width(0);
         edit.update_layout();
         edit.scroll_by(0, 10, false);
@@ -334,6 +334,41 @@ mod handles {
         // active.
         assert!(edit.view().get_tile_active().is_none());
         edit.set_height(100);
+        edit.update_layout();
+        edit.scroll_by(10, 0, false);
+        assert!(edit.view().get_tile_active().is_some());
+        draw();
+        tileview.get_mut(&mut lv).unwrap().delete().unwrap();
+    }
+
+    #[test]
+    fn tile_views_check_the_size_their_handler_divides_by() {
+        use lvgl_rust::enums::{Part, State};
+        let mut guard = guard();
+        let mut lv = session(&mut guard);
+        let screen = lv.screen_active().unwrap();
+        let tileview = TileView::create(screen).unwrap().handle().unwrap();
+        let mut edit = tileview.get_mut(&mut lv).unwrap();
+        edit.add_tile(0, 0, Dir::ALL).unwrap();
+        edit.set_width(100);
+        edit.set_height(100);
+        // The content width is 0 in the default state and 100 while
+        // scrolling. LVGL removes SCROLLED in its class handler, between
+        // the preprocessed handlers and the tile view's: a check made
+        // before the class handler would see 100, the division 0.
+        let scrolled = Part::MAIN | State::SCROLLED;
+        edit.set_style_pad_left(50, lvgl_rust::Selector::DEFAULT);
+        edit.set_style_pad_right(50, lvgl_rust::Selector::DEFAULT);
+        edit.set_style_pad_left(0, scrolled);
+        edit.set_style_pad_right(0, scrolled);
+        edit.set_style_border_width(0, lvgl_rust::Selector::DEFAULT);
+        edit.update_layout();
+        edit.scroll_by(10, 0, false);
+        // The handler did not run: it would have made the tile at (0, 0)
+        // active.
+        assert!(edit.view().get_tile_active().is_none());
+        edit.set_style_pad_left(0, lvgl_rust::Selector::DEFAULT);
+        edit.set_style_pad_right(0, lvgl_rust::Selector::DEFAULT);
         edit.update_layout();
         edit.scroll_by(10, 0, false);
         assert!(edit.view().get_tile_active().is_some());

@@ -70,7 +70,8 @@ manual = [
     "lv_tileview_get_tile_active",
     # The SCROLL_END handler divides by the content width and height
     # (lv_tileview.c:181-182), which layout or styles can bring to 0: the
-    # wrapper installs a guard that stops the event first (tileview.rs).
+    # wrapper replaces LVGL's descriptor with one that checks both sizes
+    # right before calling LVGL's handler (tileview.rs).
     "lv_tileview_create",
     "lv_tileview_set_tile",
     # The arrow header indexes month names with the shown month, unchecked

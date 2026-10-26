@@ -50,9 +50,9 @@ else stays reachable through `lvgl_rust::sys`.
   getters and setters check rows and columns against the table and its
   size against `TABLE_CELL_LIMIT`; cell text is copied out of views and
   borrowed under `ObjMut`. Tile views take children only from `add_tile`,
-  `get_tile_active` forgets a deleted tile, and a guard (one event
-  descriptor per tile view) stops the scroll handler that would divide
-  by a zero content size; calendar headers keep
+  `get_tile_active` forgets a deleted tile, and LVGL's scroll handler
+  runs only while the content size it divides by is positive (checked
+  in the same descriptor, no extra cost); calendar headers keep
   their parts and their calendar, and the shown month stays in `1..=12`.
 - **Timers.** `lv.timer(period_ms, data, f)` returns an `Owned<Timer>`
   (dropping it deletes the timer); `Handle<Timer>` pauses, resumes and
