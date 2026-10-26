@@ -40,6 +40,7 @@
 //! every value stored into it anywhere in the function.
 
 use super::graph::{AuditConfig, Edge, Graph, Out};
+use super::identity::AnimationKey;
 use super::ir::{Ev, Function, Module, SiteKind, Val};
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::fmt;
@@ -66,6 +67,27 @@ pub struct Reg {
     pub copy: bool,
     /// The struct type of the memory, when known.
     pub ty: Option<String>,
+    /// Which animations, for an animation object (see `identity.rs`).
+    pub animation: Option<AnimationMark>,
+}
+
+/// Which animations an animation region is.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum AnimationMark {
+    /// Freed by a removal that matches only these.
+    Key(AnimationKey),
+    /// The animation `lv_anim_start` is starting: one whose callbacks run
+    /// there and can send events.
+    Started,
+    /// The animation the concurrent removal compares against
+    /// (`concurrent_removal` in `[animation]`), held across the
+    /// `deleted_cb` of a running animation with the same `exec_cb` and
+    /// `var`.
+    Concurrent,
+    /// An animation its frame unlinked from the running list (`unlink` in
+    /// `[animation]`): every other free of an animation is of one found in
+    /// the list, so only that frame frees it.
+    Unlinked,
 }
 
 impl Reg {
@@ -80,7 +102,17 @@ impl Reg {
             path,
             copy,
             ty,
+            animation: None,
         }
+    }
+
+    /// The same region with the animation mark of `from` (object regions
+    /// only: a buffer is never an animation).
+    fn marked(mut self, from: &Reg) -> Reg {
+        if self.path.is_empty() && !self.copy {
+            self.animation = from.animation.clone();
+        }
+        self
     }
 
     fn abs(path: Vec<String>, copy: bool, ty: Option<String>) -> Reg {
@@ -95,6 +127,19 @@ impl Reg {
 
 impl fmt::Display for Reg {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.fmt_region(f)?;
+        match &self.animation {
+            Some(AnimationMark::Key(k)) => write!(f, "[{k}]"),
+            Some(AnimationMark::Started) => write!(f, "[started]"),
+            Some(AnimationMark::Concurrent) => write!(f, "[concurrent]"),
+            Some(AnimationMark::Unlinked) => write!(f, "[unlinked]"),
+            None => Ok(()),
+        }
+    }
+}
+
+impl Reg {
+    fn fmt_region(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let prefix = match self.root {
             Root::Param(k) => format!("P{k}/"),
             Root::Abs => String::new(),
@@ -576,7 +621,7 @@ fn instantiate(frame: &Frame, pattern: &Reg, args: &[Val]) -> Vec<Option<Reg>> {
                 if r.ty.is_none() && r.path.is_empty() {
                     r.ty = pattern.ty.clone();
                 }
-                r
+                r.marked(pattern)
             }),
             (Ptr::Obj(r), false) => Some(buf(r, pattern.path.clone(), pattern.copy)),
             (Ptr::Field(r, fp), false) => {
@@ -617,7 +662,7 @@ fn absolute(r: &Reg, ty: Option<String>) -> Option<Reg> {
             } else {
                 r.ty.clone()
             };
-            let out = Reg::abs(r.path.clone(), r.copy, ty);
+            let out = Reg::abs(r.path.clone(), r.copy, ty).marked(r);
             out.known().then_some(out)
         }
     }
@@ -815,7 +860,9 @@ impl<'a> Solver<'a> {
 
     fn function(&self, node: usize) -> Option<(&'a str, &'a Function)> {
         let name = self.names[node].as_str();
-        let base = name.strip_suffix("#body").unwrap_or(name);
+        // `#body` (a sender's own code) and specialised nodes run the
+        // function's code.
+        let base = name.split('#').next().unwrap_or(name);
         self.module
             .functions
             .get_key_value(base)
@@ -859,7 +906,7 @@ impl<'a> Solver<'a> {
         let name = &self.names[node];
         let mut site_edges: BTreeSet<&Out> = BTreeSet::new();
         if let Some((base, _)) = self.function(node)
-            && let Some((calls, indirect)) = self.graph.site_outs.get(base)
+            && let Some((calls, indirect)) = self.graph.site_outs_of(name)
         {
             let f = self.module.functions.get(base).unwrap();
             for (i, site) in f.held.sites.iter().enumerate() {
@@ -995,7 +1042,18 @@ impl<'a> Solver<'a> {
                 ) {
                     continue;
                 }
-                let reg = region_of(&p).unwrap_or_else(|| Reg::abs(Vec::new(), false, None));
+                let mut reg = region_of(&p).unwrap_or_else(|| Reg::abs(Vec::new(), false, None));
+                // A specialised removal frees only the animations its key
+                // matches.
+                if let (Some(key), Some(animation)) = (
+                    self.graph.animation_nodes.get(&self.names[node]),
+                    &self.config.animation,
+                ) && reg.ty.as_deref().is_none_or(|t| t == animation.structure)
+                    && reg.path.is_empty()
+                    && !reg.copy
+                {
+                    reg.animation = Some(AnimationMark::Key(key.clone()));
+                }
                 out.push((reg, name.to_owned()));
             }
         }
@@ -1317,6 +1375,10 @@ pub fn analyze(
             continue;
         }
         let live = live_after_calls(f, &carriers);
+        let unlinked = match &config.animation {
+            Some(animation) => unlinked_at_calls(f, animation),
+            None => BTreeMap::new(),
+        };
         for (site, alive) in live {
             if alive.is_empty() {
                 continue;
@@ -1330,7 +1392,42 @@ pub fn analyze(
                 for reg in frame.local_regions(a) {
                     let witness = format!("{name} keeps {a} across {callee}");
                     match reg {
-                        Some(reg) => {
+                        Some(mut reg) => {
+                            // The animation being started (lv_anim_start
+                            // keeps only it across the callbacks).
+                            if let Some(animation) = &config.animation
+                                && *name == animation.start
+                                && reg.root == Root::Abs
+                                && reg.path.is_empty()
+                                && !reg.copy
+                                && reg.ty.as_deref() == Some(animation.structure.as_str())
+                            {
+                                reg.animation = Some(AnimationMark::Started);
+                            }
+                            // The animation the concurrent removal compares
+                            // against, across a `deleted_cb` it runs or
+                            // across the removal itself.
+                            if let Some(animation) = &config.animation
+                                && let Some(removal) = &animation.concurrent_removal
+                                && reg.path.is_empty()
+                                && !reg.copy
+                                && reg.ty.as_deref().is_none_or(|t| t == animation.structure)
+                                && ((removal == name
+                                    && reg.root == Root::Param(0)
+                                    && deleted_site(f, site, &animation.deleted_slot))
+                                    || removal_of_local(f, site, removal, a))
+                            {
+                                reg.animation = Some(AnimationMark::Concurrent);
+                            }
+                            // An animation this frame unlinked: no
+                            // removal finds it (the mark is kept when the
+                            // hold is charged to callers).
+                            if reg.path.is_empty()
+                                && !reg.copy
+                                && unlinked.get(&site).is_some_and(|u| u.contains(a.as_str()))
+                            {
+                                reg.animation = Some(AnimationMark::Unlinked);
+                            }
                             let hold = Hold {
                                 reg,
                                 holder: name.clone(),
@@ -1368,7 +1465,10 @@ pub fn analyze(
                     if !matches!(e.kind, Edge::Call | Edge::Indirect) || e.to.ends_with("#body") {
                         continue;
                     }
-                    let Some(callee_holds) = param_holds.get(&e.to).cloned() else {
+                    // A specialised node runs its base function's code
+                    // with fewer edges: its holds are among the base's.
+                    let base = e.to.split('#').next().unwrap_or(&e.to);
+                    let Some(callee_holds) = param_holds.get(base).cloned() else {
                         continue;
                     };
                     for h in callee_holds {
@@ -1413,10 +1513,8 @@ pub fn analyze(
     let mut site_in: BTreeSet<&str> = BTreeSet::new();
     let mut other_in: BTreeSet<&str> = BTreeSet::new();
     for (from, outs) in &graph.edges {
-        let base = from.strip_suffix("#body").unwrap_or(from);
         let site_set: BTreeSet<&Out> = graph
-            .site_outs
-            .get(base)
+            .site_outs_of(from)
             .map(|(c, i)| c.iter().chain(i).flatten().collect())
             .unwrap_or_default();
         for e in outs {
@@ -1504,6 +1602,36 @@ pub fn analyze(
         any: h.codes.0,
         set: h.codes.1,
     };
+    // For each removal key, the codes the callbacks of the animations it
+    // can match send while `lv_anim_start` keeps the animation: a hold of
+    // the animation being started is a hazard for that removal only
+    // across those codes.
+    let started_codes: BTreeMap<&AnimationKey, Codes> = graph
+        .animation_nodes
+        .values()
+        .map(|key| (key, started_codes(module, graph, config, key, &sends_of)))
+        .collect();
+    // For each removal key, the codes the `deleted_cb`s of the animations
+    // it can match send: the concurrent removal runs them while it keeps
+    // an animation with the same `exec_cb` and `var`, which a removal can
+    // match only if it matches the animation being removed too.
+    let concurrent_codes: BTreeMap<&AnimationKey, Codes> = graph
+        .animation_nodes
+        .values()
+        .map(|key| (key, concurrent_codes(module, graph, config, key, &sends_of)))
+        .collect();
+    let overlap = |hold: &Reg, free: &Reg| -> Codes {
+        match (&hold.animation, &free.animation) {
+            (Some(AnimationMark::Unlinked), _) => Codes::default(),
+            (Some(AnimationMark::Started), Some(AnimationMark::Key(k))) => {
+                started_codes.get(k).copied().unwrap_or_else(Codes::all)
+            }
+            (Some(AnimationMark::Concurrent), Some(AnimationMark::Key(k))) => {
+                concurrent_codes.get(k).copied().unwrap_or_else(Codes::all)
+            }
+            _ => Codes::all(),
+        }
+    };
     for hold in &holds {
         let codes = codes_of(hold);
         let hazardous: Vec<i64> = inputs
@@ -1520,8 +1648,9 @@ pub fn analyze(
                 if !free.known() || !matches(&hold.reg, free) {
                     continue;
                 }
+                let overlap = overlap(&hold.reg, free);
                 let guarded = is_guarded(config, hold, Some(freer), via);
-                for &code in &hazardous {
+                for &code in hazardous.iter().filter(|&&c| overlap.contains(c)) {
                     analysis.hazards.push(Hazard {
                         code,
                         freer: freer.clone(),
@@ -1619,8 +1748,12 @@ pub fn analyze(
                     continue;
                 }
                 for (free, via) in regs {
+                    let overlap = overlap(&hold.reg, free);
                     if free.known()
                         && matches(&hold.reg, free)
+                        && names
+                            .keys()
+                            .any(|&c| codes.contains(c) && shared_code(c) && overlap.contains(c))
                         && !is_guarded(config, hold, None, via)
                     {
                         analysis.send_hazard.entry(code).or_insert_with(|| {
@@ -1672,6 +1805,230 @@ pub fn analyze(
     ));
     analysis.report = report;
     Ok(analysis)
+}
+
+/// The codes sent by the callbacks `lv_anim_start` runs (`caller_slots`
+/// run immediately) for the animations a removal with `key` can match:
+/// those stored some way the profiles do not name, and those of profiles
+/// started with `early_apply` on that the key matches. A callback running
+/// as `exec_cb` is that animation's `exec_cb`, and its first parameter is
+/// its `var`: a removal comparing another `exec_cb`, or a `var` of
+/// another type, cannot match it.
+fn started_codes(
+    module: &Module,
+    graph: &Graph,
+    config: &AuditConfig,
+    key: &AnimationKey,
+    sends_of: &dyn Fn(&str) -> Codes,
+) -> Codes {
+    let Some(animation) = &config.animation else {
+        return Codes::all();
+    };
+    let AnimationKey::Matching { exec, var } = key else {
+        return Codes::default();
+    };
+    let animations = &graph.animations;
+    let excluded = |slot: &str, g: &str| {
+        *slot == animation.exec_slot
+            && (exec.as_ref().is_some_and(|e| e != g)
+                || var.as_ref().is_some_and(|t| {
+                    animations
+                        .types
+                        .param(g, 0)
+                        .is_some_and(|v| !super::identity::compatible(t, &v, module))
+                }))
+    };
+    let mut codes = Codes::default();
+    for (slot, kind) in &config.caller_slots {
+        if *kind != super::graph::CallerSlot::Immediate {
+            continue;
+        }
+        for (g, origins) in animations.landings.get(slot).into_iter().flatten() {
+            if excluded(slot, g) {
+                continue;
+            }
+            let admitted = origins.iter().any(|origin| match origin {
+                None => true,
+                Some(p) => {
+                    let p = &animations.profiles[*p];
+                    !p.never_early && p.admits(key, animation, module)
+                }
+            });
+            if admitted {
+                codes.union(sends_of(g));
+            }
+        }
+    }
+    codes
+}
+
+/// The codes sent by the `deleted_cb`s of the animations a removal with
+/// `key` can match. The concurrent removal runs the `deleted_cb` of an
+/// animation whose `exec_cb` (not NULL) and `var` equal those of the
+/// animation it keeps (lv_anim.c:846-852): a removal that matches the kept
+/// animation matches that one too, so only the callbacks of animations it
+/// admits can run while the kept one is at risk.
+fn concurrent_codes(
+    module: &Module,
+    graph: &Graph,
+    config: &AuditConfig,
+    key: &AnimationKey,
+    sends_of: &dyn Fn(&str) -> Codes,
+) -> Codes {
+    let Some(animation) = &config.animation else {
+        return Codes::all();
+    };
+    let animations = &graph.animations;
+    let mut codes = Codes::default();
+    for (g, origins) in animations
+        .landings
+        .get(&animation.deleted_slot)
+        .into_iter()
+        .flatten()
+    {
+        if animations.admits_origins(key, Some(origins), module) {
+            codes.union(sends_of(g));
+        }
+    }
+    codes
+}
+
+/// For each call site of `f`, the locals that hold, on every path to it,
+/// an animation `f` passed to the unlink function since the local was last
+/// written: `unlink(list, node)` with `list` the running list's field and
+/// `node` read from the local. Locals whose address escapes (stored, or
+/// passed to a call, which could keep it and let later code rewrite the
+/// local) are left out.
+/// An unlinked animation is never linked again (insertions allocate new
+/// nodes, lv_ll.c), so it stays out of the list until `f` frees it.
+fn unlinked_at_calls(
+    f: &Function,
+    animation: &super::identity::AnimationConfig,
+) -> BTreeMap<usize, BTreeSet<String>> {
+    let Some(unlink) = &animation.unlink else {
+        return BTreeMap::new();
+    };
+    // Locals whose address some call receives, whole or as a field.
+    let passed: BTreeSet<&str> = f
+        .held
+        .sites
+        .iter()
+        .flat_map(|s| &s.args)
+        .filter_map(|v| match v {
+            Val::Local(a) => Some(a.as_str()),
+            Val::Field(base, _) => match &**base {
+                Val::Local(a) => Some(a.as_str()),
+                _ => None,
+            },
+            _ => None,
+        })
+        .collect();
+    // The local a call site unlinks, if any.
+    let unlinks = |site: usize| -> Option<&str> {
+        let s = &f.held.sites[site];
+        let SiteKind::Call(n) = s.kind else {
+            return None;
+        };
+        if f.calls[n].callee != unlink.function {
+            return None;
+        }
+        let on_list = matches!(
+            s.args.get(unlink.list_arg),
+            Some(Val::Field(_, path)) if path.last() == Some(&unlink.list_field)
+        );
+        match s.args.get(unlink.node_arg) {
+            Some(Val::Var(a)) if on_list => f
+                .held
+                .allocas
+                .get(a)
+                .is_some_and(|l| !l.escaped && !passed.contains(a.as_str()))
+                .then_some(a.as_str()),
+            _ => None,
+        }
+    };
+    let blocks = f.held.events.len();
+    let mut preds: Vec<Vec<usize>> = vec![Vec::new(); blocks];
+    for (b, succ) in f.held.succ.iter().enumerate() {
+        for &s in succ {
+            if s < blocks {
+                preds[s].push(b);
+            }
+        }
+    }
+    let transfer =
+        |b: usize,
+         set: &mut BTreeSet<String>,
+         mut at_call: Option<&mut BTreeMap<usize, BTreeSet<String>>>| {
+            for ev in &f.held.events[b] {
+                match ev {
+                    Ev::Call(site) => {
+                        if let Some(map) = at_call.as_deref_mut() {
+                            map.insert(*site, set.clone());
+                        }
+                        if let Some(a) = unlinks(*site) {
+                            set.insert(a.to_owned());
+                        }
+                    }
+                    Ev::Store(a) | Ev::Use(a) => {
+                        set.remove(a);
+                    }
+                    Ev::Load(_) => {}
+                }
+            }
+        };
+    // Must analysis: `None` is the top (not reached yet).
+    let mut out: Vec<Option<BTreeSet<String>>> = vec![None; blocks];
+    let entry_of = |b: usize, out: &[Option<BTreeSet<String>>]| -> BTreeSet<String> {
+        if b == 0 {
+            return BTreeSet::new();
+        }
+        let mut reached = preds[b].iter().filter_map(|&p| out[p].as_ref());
+        let Some(first) = reached.next() else {
+            return BTreeSet::new();
+        };
+        reached.fold(first.clone(), |acc, x| {
+            acc.intersection(x).cloned().collect()
+        })
+    };
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for b in 0..blocks {
+            let mut set = entry_of(b, &out);
+            transfer(b, &mut set, None);
+            if out[b].as_ref() != Some(&set) {
+                out[b] = Some(set);
+                changed = true;
+            }
+        }
+    }
+    let mut at_call = BTreeMap::new();
+    for b in 0..blocks {
+        let mut set = entry_of(b, &out);
+        transfer(b, &mut set, Some(&mut at_call));
+    }
+    at_call
+}
+
+/// Whether call site `site` of `f` calls `removal` with the value of local
+/// `a` as its first argument (and `a`'s address does not escape, so the
+/// value is still the one passed when the call returns).
+fn removal_of_local(f: &Function, site: usize, removal: &str, a: &str) -> bool {
+    let s = &f.held.sites[site];
+    matches!(s.kind, SiteKind::Call(n) if f.calls[n].callee == removal)
+        && matches!(s.args.first(), Some(Val::Var(v)) if v == a)
+        && f.held.allocas.get(a).is_some_and(|l| !l.escaped)
+}
+
+/// Whether call site `site` of `f` is an indirect call through the
+/// `deleted_cb` field.
+fn deleted_site(f: &Function, site: usize, deleted_slot: &str) -> bool {
+    match f.held.sites[site].kind {
+        SiteKind::Indirect(n) => {
+            matches!(&f.indirect[n].target, super::ir::Target::Slot(s) if s == deleted_slot)
+        }
+        SiteKind::Call(_) => false,
+    }
 }
 
 /// Whether a `[guarded]` entry covers a hold freed by `freer` (`None`: a
@@ -1954,6 +2311,188 @@ fn free_without_clear(
 mod tests {
     use super::*;
 
+    #[test]
+    fn concurrent_removals_run_only_the_deleted_callbacks_of_matching_animations() {
+        use super::super::identity::tests::{ANIMATION_CONFIG, animation_module};
+        let m = animation_module();
+        let config: AuditConfig = toml::from_str(ANIMATION_CONFIG).unwrap();
+        let graph = Graph::build(&m, &config).unwrap();
+        // `deleted_bad` sends code 20; it is installed only with `exec_b`,
+        // on animations with a NULL `var`.
+        let sends_of = |g: &str| {
+            if g == "t::deleted_bad" {
+                Codes::one(20)
+            } else {
+                Codes::default()
+            }
+        };
+        let codes = |exec: Option<&str>, var: Option<&str>| {
+            let key = AnimationKey::Matching {
+                exec: exec.map(str::to_owned),
+                var: var.map(str::to_owned),
+            };
+            concurrent_codes(&m, &graph, &config, &key, &sends_of)
+        };
+        assert!(codes(None, None).contains(20));
+        assert!(codes(Some("t::exec_b"), None).contains(20));
+        // A removal that cannot match the animation being removed cannot
+        // match the kept one either (same `exec_cb`, same `var`).
+        assert!(codes(Some("t::exec_a"), None).is_empty());
+        assert!(codes(None, Some("A")).is_empty());
+        assert!(
+            concurrent_codes(&m, &graph, &config, &AnimationKey::Nothing, &sends_of).is_empty()
+        );
+    }
+
+    const UNLINK_IR: &str = r#"
+%struct._lv_anim_t = type { ptr, ptr, ptr, ptr, ptr, ptr }
+%struct.S = type { i32, i32, i32, i32, %struct.L }
+%struct.L = type { ptr }
+@g = dso_local global %struct.S zeroinitializer, align 8
+define dso_local void @lv_ll_remove(ptr noundef %0, ptr noundef %1) {
+  ret void
+}
+define dso_local void @lv_free(ptr noundef %0) {
+  ret void
+}
+define internal void @unlinked(ptr noundef %0) {
+  %2 = alloca ptr, align 8
+  store ptr %0, ptr %2, align 8
+  %3 = load ptr, ptr %2, align 8
+  call void @lv_ll_remove(ptr noundef getelementptr inbounds nuw (%struct.S, ptr @g, i32 0, i32 4), ptr noundef %3)
+  %4 = load ptr, ptr %2, align 8
+  %5 = getelementptr inbounds nuw %struct._lv_anim_t, ptr %4, i32 0, i32 5
+  %6 = load ptr, ptr %5, align 8
+  call void %6(ptr noundef %4)
+  %7 = load ptr, ptr %2, align 8
+  call void @lv_free(ptr noundef %7)
+  ret void
+}
+define internal void @other_list(ptr noundef %0, ptr noundef %1) {
+  %3 = alloca ptr, align 8
+  store ptr %0, ptr %3, align 8
+  %4 = load ptr, ptr %3, align 8
+  call void @lv_ll_remove(ptr noundef %1, ptr noundef %4)
+  %5 = load ptr, ptr %3, align 8
+  %6 = getelementptr inbounds nuw %struct._lv_anim_t, ptr %5, i32 0, i32 5
+  %7 = load ptr, ptr %6, align 8
+  call void %7(ptr noundef %5)
+  %8 = load ptr, ptr %3, align 8
+  call void @lv_free(ptr noundef %8)
+  ret void
+}
+define internal void @overwritten(ptr noundef %0, ptr noundef %1) {
+  %3 = alloca ptr, align 8
+  store ptr %0, ptr %3, align 8
+  %4 = load ptr, ptr %3, align 8
+  call void @lv_ll_remove(ptr noundef getelementptr inbounds nuw (%struct.S, ptr @g, i32 0, i32 4), ptr noundef %4)
+  store ptr %1, ptr %3, align 8
+  %5 = load ptr, ptr %3, align 8
+  %6 = getelementptr inbounds nuw %struct._lv_anim_t, ptr %5, i32 0, i32 5
+  %7 = load ptr, ptr %6, align 8
+  call void %7(ptr noundef %5)
+  %8 = load ptr, ptr %3, align 8
+  call void @lv_free(ptr noundef %8)
+  ret void
+}
+define internal void @one_path(ptr noundef %0, i1 noundef zeroext %1) {
+  %3 = alloca ptr, align 8
+  store ptr %0, ptr %3, align 8
+  br i1 %1, label %4, label %6
+
+4:
+  %5 = load ptr, ptr %3, align 8
+  call void @lv_ll_remove(ptr noundef getelementptr inbounds nuw (%struct.S, ptr @g, i32 0, i32 4), ptr noundef %5)
+  br label %6
+
+6:
+  %7 = load ptr, ptr %3, align 8
+  %8 = getelementptr inbounds nuw %struct._lv_anim_t, ptr %7, i32 0, i32 5
+  %9 = load ptr, ptr %8, align 8
+  call void %9(ptr noundef %7)
+  %10 = load ptr, ptr %3, align 8
+  call void @lv_free(ptr noundef %10)
+  ret void
+}
+"#;
+
+    #[test]
+    fn animations_a_frame_unlinked_are_known_at_later_calls() {
+        let mut m = Module::default();
+        m.add_ir("t", UNLINK_IR, &[]);
+        let config: super::super::identity::AnimationConfig = toml::from_str(
+            r#"
+structure = "_lv_anim_t"
+start = "lv_anim_start"
+init = "lv_anim_init"
+delete = "lv_anim_delete"
+delete_var_arg = 0
+delete_exec_arg = 1
+delete_carry = []
+start_carry = []
+var_slot = "_lv_anim_t.0"
+exec_slot = "_lv_anim_t.1"
+deleted_slot = "_lv_anim_t.5"
+early_apply_setter = "lv_anim_set_early_apply"
+unlink = { function = "lv_ll_remove", list_arg = 0, node_arg = 1, list_field = "S.4" }
+"#,
+        )
+        .unwrap();
+        // The locals unlinked at the indirect call (the `deleted_cb`).
+        let at_callback = |name: &str| -> BTreeSet<String> {
+            let f = &m.functions[name];
+            let site = f
+                .held
+                .sites
+                .iter()
+                .position(|s| matches!(s.kind, SiteKind::Indirect(_)))
+                .unwrap();
+            unlinked_at_calls(f, &config)
+                .remove(&site)
+                .unwrap_or_default()
+        };
+        assert_eq!(
+            at_callback("t::unlinked"),
+            BTreeSet::from(["%2".to_owned()])
+        );
+        // Unlinked from another list, overwritten since, or unlinked on one
+        // path only: unknown.
+        assert!(at_callback("t::other_list").is_empty());
+        assert!(at_callback("t::overwritten").is_empty());
+        assert!(at_callback("t::one_path").is_empty());
+    }
+
+    #[test]
+    fn started_animations_are_hazards_only_for_removals_that_match_them() {
+        use super::super::identity::tests::{ANIMATION_CONFIG, animation_module};
+        let m = animation_module();
+        let config: AuditConfig = toml::from_str(ANIMATION_CONFIG).unwrap();
+        let graph = Graph::build(&m, &config).unwrap();
+        // `exec_a` sends code 15; it runs as the `exec_cb` of animations
+        // whose `var` is an `A`.
+        let sends_of = |g: &str| {
+            if g == "t::exec_a" {
+                Codes::one(15)
+            } else {
+                Codes::default()
+            }
+        };
+        let codes = |exec: Option<&str>, var: Option<&str>| {
+            let key = AnimationKey::Matching {
+                exec: exec.map(str::to_owned),
+                var: var.map(str::to_owned),
+            };
+            started_codes(&m, &graph, &config, &key, &sends_of)
+        };
+        assert!(codes(None, None).contains(15));
+        assert!(codes(Some("t::exec_a"), Some("A")).contains(15));
+        // Another `exec_cb`, or a `var` of another type, cannot match the
+        // animation `exec_a` runs for.
+        assert!(codes(Some("t::exec_b"), None).is_empty());
+        assert!(codes(None, Some("D")).is_empty());
+        assert!(started_codes(&m, &graph, &config, &AnimationKey::Nothing, &sends_of).is_empty());
+    }
+
     const IR: &str = r#"
 %struct._lv_event_list_t = type { %struct.lv_array_t, i8 }
 %struct.lv_array_t = type { ptr, i32, i32 }
@@ -2024,6 +2563,7 @@ define dso_local void @lv_list_send_fresh(ptr noundef %0) {
 define internal void @use_text(ptr noundef %0) {
   %2 = alloca ptr, align 8
   store ptr %0, ptr %2, align 8
+  call void @nothing()
   %3 = call i32 @lv_obj_send_event(ptr noundef null, i32 noundef 10, ptr noundef null)
   %4 = load ptr, ptr %2, align 8
   ret void
@@ -2097,10 +2637,10 @@ define dso_local void @lv_u_delete(ptr noundef %0) {
 "#;
 
     fn run(guarded: &str) -> Analysis {
-        let mut m = Module::default();
-        m.add_ir("t", IR, &[]);
-        let config: AuditConfig = toml::from_str(&format!(
-            r#"
+        run_on(
+            IR,
+            &format!(
+                r#"
 sinks = ["t::nothing"]
 object_sender = "lv_obj_send_event"
 free_primitives = {{ lv_free = 0, lv_realloc = 0 }}
@@ -2109,8 +2649,16 @@ blockable_codes = ["LV_EVENT_COVER_CHECK"]
 lv_obj_send_event = 1
 {guarded}
 "#
-        ))
-        .unwrap();
+            ),
+        )
+    }
+
+    /// The analysis of `ir` (unit `t`) with every public `lv_` function
+    /// shared.
+    fn run_on(ir: &str, config: &str) -> Analysis {
+        let mut m = Module::default();
+        m.add_ir("t", ir, &[]);
+        let config: AuditConfig = toml::from_str(config).unwrap();
         let graph = Graph::build(&m, &config).unwrap();
         let access: BTreeMap<String, String> = m
             .functions
@@ -2146,6 +2694,200 @@ lv_obj_send_event = 1
         a.hazards.iter().filter(|h| h.holder == holder).collect()
     }
 
+    /// Animations removed by a frame that keeps them across their
+    /// `deleted_cb`, which sends an event, then frees them.
+    const UNLINK_HOLD_IR: &str = r#"
+%struct._lv_anim_t = type { ptr, ptr, ptr, ptr, ptr, ptr }
+%struct.S = type { i32, i32, i32, i32, %struct.L }
+%struct.L = type { ptr }
+@g = dso_local global %struct.S zeroinitializer, align 8
+@slot = dso_local global ptr null, align 8
+define internal void @nothing() {
+  ret void
+}
+define dso_local void @lv_ll_remove(ptr noundef %0, ptr noundef %1) {
+  ret void
+}
+define dso_local void @lv_free(ptr noundef %0) {
+  ret void
+}
+define dso_local i32 @lv_obj_send_event(ptr noundef %0, i32 noundef %1, ptr noundef %2) {
+  ret i32 0
+}
+define internal void @keep(ptr noundef %0) {
+  ret void
+}
+define dso_local void @lv_anim_init(ptr noundef %0) {
+  ret void
+}
+define dso_local ptr @lv_anim_start(ptr noundef %0) {
+  ret ptr null
+}
+define dso_local zeroext i1 @lv_anim_delete(ptr noundef %0, ptr noundef %1) {
+  ret i1 false
+}
+define dso_local void @lv_anim_set_early_apply(ptr noundef %0, i1 noundef zeroext %1) {
+  ret void
+}
+define internal void @deleted(ptr noundef %0) {
+  %2 = call i32 @lv_obj_send_event(ptr noundef null, i32 noundef 10, ptr noundef null)
+  ret void
+}
+define dso_local void @lv_anim_set_deleted_cb(ptr noundef %0, ptr noundef %1) {
+  %3 = alloca ptr, align 8
+  %4 = alloca ptr, align 8
+  store ptr %0, ptr %3, align 8
+  store ptr %1, ptr %4, align 8
+  %5 = load ptr, ptr %4, align 8
+  %6 = load ptr, ptr %3, align 8
+  %7 = getelementptr inbounds nuw %struct._lv_anim_t, ptr %6, i32 0, i32 5
+  store ptr %5, ptr %7, align 8
+  ret void
+}
+define dso_local void @lv_setup(ptr noundef %0) {
+  call void @lv_anim_set_deleted_cb(ptr noundef %0, ptr noundef @deleted)
+  ret void
+}
+define dso_local void @lv_remove(ptr noundef %0) {
+  %2 = alloca ptr, align 8
+  store ptr %0, ptr %2, align 8
+  %3 = load ptr, ptr %2, align 8
+  call void @lv_ll_remove(ptr noundef getelementptr inbounds nuw (%struct.S, ptr @g, i32 0, i32 4), ptr noundef %3)
+  %4 = load ptr, ptr %2, align 8
+  %5 = getelementptr inbounds nuw %struct._lv_anim_t, ptr %4, i32 0, i32 5
+  %6 = load ptr, ptr %5, align 8
+  call void %6(ptr noundef %4)
+  %7 = load ptr, ptr %2, align 8
+  call void @lv_free(ptr noundef %7)
+  ret void
+}
+define dso_local void @lv_remove_other(ptr noundef %0, ptr noundef %1) {
+  %3 = alloca ptr, align 8
+  store ptr %0, ptr %3, align 8
+  %4 = load ptr, ptr %3, align 8
+  call void @lv_ll_remove(ptr noundef %1, ptr noundef %4)
+  %5 = load ptr, ptr %3, align 8
+  %6 = getelementptr inbounds nuw %struct._lv_anim_t, ptr %5, i32 0, i32 5
+  %7 = load ptr, ptr %6, align 8
+  call void %7(ptr noundef %5)
+  %8 = load ptr, ptr %3, align 8
+  call void @lv_free(ptr noundef %8)
+  ret void
+}
+define dso_local void @lv_remove_stored(ptr noundef %0) {
+  %2 = alloca ptr, align 8
+  store ptr %0, ptr %2, align 8
+  store ptr %2, ptr @slot, align 8
+  %3 = load ptr, ptr %2, align 8
+  call void @lv_ll_remove(ptr noundef getelementptr inbounds nuw (%struct.S, ptr @g, i32 0, i32 4), ptr noundef %3)
+  %4 = load ptr, ptr %2, align 8
+  %5 = getelementptr inbounds nuw %struct._lv_anim_t, ptr %4, i32 0, i32 5
+  %6 = load ptr, ptr %5, align 8
+  call void %6(ptr noundef %4)
+  %7 = load ptr, ptr %2, align 8
+  call void @lv_free(ptr noundef %7)
+  ret void
+}
+define dso_local void @lv_remove_passed(ptr noundef %0) {
+  %2 = alloca ptr, align 8
+  store ptr %0, ptr %2, align 8
+  call void @keep(ptr noundef %2)
+  %3 = load ptr, ptr %2, align 8
+  call void @lv_ll_remove(ptr noundef getelementptr inbounds nuw (%struct.S, ptr @g, i32 0, i32 4), ptr noundef %3)
+  %4 = load ptr, ptr %2, align 8
+  %5 = getelementptr inbounds nuw %struct._lv_anim_t, ptr %4, i32 0, i32 5
+  %6 = load ptr, ptr %5, align 8
+  call void %6(ptr noundef %4)
+  %7 = load ptr, ptr %2, align 8
+  call void @lv_free(ptr noundef %7)
+  ret void
+}
+define internal void @remove_inner(ptr noundef %0) {
+  %2 = alloca ptr, align 8
+  store ptr %0, ptr %2, align 8
+  %3 = load ptr, ptr %2, align 8
+  call void @lv_ll_remove(ptr noundef getelementptr inbounds nuw (%struct.S, ptr @g, i32 0, i32 4), ptr noundef %3)
+  %4 = load ptr, ptr %2, align 8
+  %5 = getelementptr inbounds nuw %struct._lv_anim_t, ptr %4, i32 0, i32 5
+  %6 = load ptr, ptr %5, align 8
+  call void %6(ptr noundef %4)
+  %7 = load ptr, ptr %2, align 8
+  call void @lv_free(ptr noundef %7)
+  ret void
+}
+define dso_local void @lv_remove_outer(ptr noundef %0) {
+  %2 = alloca ptr, align 8
+  store ptr %0, ptr %2, align 8
+  %3 = load ptr, ptr %2, align 8
+  %4 = getelementptr inbounds nuw %struct._lv_anim_t, ptr %3, i32 0, i32 0
+  call void @remove_inner(ptr noundef %3)
+  ret void
+}
+"#;
+
+    fn run_unlinked(unlink: bool) -> Analysis {
+        let unlink = if unlink {
+            r#"unlink = { function = "lv_ll_remove", list_arg = 0, node_arg = 1, list_field = "S.4" }"#
+        } else {
+            ""
+        };
+        run_on(
+            UNLINK_HOLD_IR,
+            &format!(
+                r#"
+sinks = ["t::nothing"]
+object_sender = "lv_obj_send_event"
+free_primitives = {{ lv_free = 0 }}
+[send]
+lv_obj_send_event = 1
+[animation]
+structure = "_lv_anim_t"
+start = "lv_anim_start"
+init = "lv_anim_init"
+delete = "lv_anim_delete"
+delete_var_arg = 0
+delete_exec_arg = 1
+delete_carry = []
+start_carry = []
+var_slot = "_lv_anim_t.0"
+exec_slot = "_lv_anim_t.1"
+deleted_slot = "_lv_anim_t.5"
+early_apply_setter = "lv_anim_set_early_apply"
+{unlink}
+"#
+            ),
+        )
+    }
+
+    #[test]
+    fn animations_a_frame_unlinked_are_not_hazards() {
+        let held = |a: &Analysis, holder: &str| !held_by(a, holder).is_empty();
+        // Without the unlink table, every frame keeping an animation across
+        // its `deleted_cb` is a hazard for every shared freer.
+        let plain = run_unlinked(false);
+        for holder in [
+            "lv_remove",
+            "lv_remove_other",
+            "lv_remove_stored",
+            "lv_remove_passed",
+            "t::remove_inner",
+        ] {
+            assert!(held(&plain, holder), "{holder}: {:#?}", plain.hazards);
+        }
+        let a = run_unlinked(true);
+        // Unlinked from the running list before the callback: no removal
+        // can find it. The mark is kept when the hold of `remove_inner`'s
+        // parameter is charged to its caller.
+        assert!(!held(&a, "lv_remove"), "{:#?}", a.hazards);
+        assert!(!held(&a, "t::remove_inner"), "{:#?}", a.hazards);
+        assert!(!held(&a, "lv_remove_outer"), "{:#?}", a.hazards);
+        // Unlinked from another list, or a local whose address escapes
+        // (stored, or passed to a call that could keep it): still held.
+        assert!(held(&a, "lv_remove_other"));
+        assert!(held(&a, "lv_remove_stored"));
+        assert!(held(&a, "lv_remove_passed"));
+    }
+
     #[test]
     fn struct_copy_held_across_a_send_makes_its_freer_exclusive() {
         // T9 (a): `lv_array_t copy = list->array; send; cleanup(&copy)`.
@@ -2177,6 +2919,26 @@ lv_obj_send_event = 1
         let hazards = held_by(&a, "t::use_text");
         assert!(
             hazards
+                .iter()
+                .any(|h| h.freer == "lv_t_set_text" && h.hold.to_string() == "Buf(T.0)"),
+            "{:#?}",
+            a.hazards
+        );
+        assert!(a.promote.contains_key("lv_t_set_text"));
+    }
+
+    #[test]
+    fn a_parameter_hold_is_charged_through_a_specialised_call() {
+        // `lv_t_refresh` calls `use_text#infeasible(quiet)`, which runs
+        // `use_text`'s code (and keeps its parameter across the send).
+        let a = run(r#"
+[infeasible.quiet]
+context = "lv_t_refresh -> t::use_text"
+calls = ["t::nothing"]
+why = "test"
+"#);
+        assert!(
+            held_by(&a, "t::use_text")
                 .iter()
                 .any(|h| h.freer == "lv_t_set_text" && h.hold.to_string() == "Buf(T.0)"),
             "{:#?}",

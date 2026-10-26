@@ -18,7 +18,8 @@
 //! sink is raw (it schedules a deletion that runs without the crate's
 //! checks); anything else is shared.
 
-use super::ir::{Arg, Module, Stored, Target};
+use super::identity::{AnimationConfig, AnimationKey, Animations};
+use super::ir::{Arg, Ev, Function, Module, SiteKind, Stored, Target, Val};
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
@@ -43,8 +44,16 @@ pub struct AuditConfig {
     /// indirect call through the field.
     #[serde(default)]
     pub caller_slots: BTreeMap<String, CallerSlot>,
+    /// Animation functions and fields, to tell animations apart
+    /// (`identity.rs`).
     #[serde(default)]
-    pub anim_delete: Option<AnimDelete>,
+    pub animation: Option<AnimationConfig>,
+    /// Calls that cannot happen in a calling context, with the reason.
+    #[serde(default)]
+    pub infeasible: BTreeMap<String, Infeasible>,
+    /// Object creation, specialised by the class being built.
+    #[serde(default)]
+    pub construction: Option<Construction>,
     /// Event senders: the index of the event code argument.
     #[serde(default)]
     pub send: BTreeMap<String, usize>,
@@ -143,18 +152,232 @@ pub struct EventPolicy {
     pub why: String,
 }
 
-/// `lv_anim_delete(var, exec_cb)` runs the `deleted_cb` of the animations
-/// whose `exec_cb` matches: with a constant `exec_cb`, only the deleted
-/// callbacks installed together with it are reached.
+/// `[infeasible.<name>]`: inside calls from `context` (`"caller ->
+/// callee"`), the callee never makes the listed calls (a condition on its
+/// arguments that the caller always meets). The callee is specialised for
+/// that caller without them.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct AnimDelete {
-    pub function: String,
-    pub exec_arg: usize,
-    /// Functions through which the `exec_cb` being deleted stays known.
-    pub carry: Vec<String>,
-    pub exec_slots: Vec<String>,
-    pub deleted_slot: String,
+pub struct Infeasible {
+    pub context: String,
+    pub calls: Vec<String>,
+    pub why: String,
+}
+
+/// `[construction]`: `init(obj)` right after `obj = create(class, ...)`
+/// builds an object of that class, so `construct` runs only the
+/// constructors of the class and its bases. Such an `init` call goes to a
+/// copy of `init` and `construct` specialised for the class, whose
+/// indirect call through the constructor field reaches only those
+/// constructors.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Construction {
+    /// Allocates an object of the class at argument 0 and returns it.
+    pub create: String,
+    /// Initialises the object at argument 0; calls `construct`.
+    pub init: String,
+    /// Runs the constructors (calls itself for the base class first).
+    pub construct: String,
+    /// The class struct and, in its initializer, the base class and
+    /// constructor fields.
+    pub class_structure: String,
+    pub base_field: usize,
+    pub constructor_field: usize,
+    pub why: String,
+}
+
+/// The class the object `init` receives at call site `site` of `f` has
+/// when `site` passes a local whose only value is the result of a
+/// `create(@class, ...)` call, and every path between them runs no other
+/// call and no store through a pointer (nothing can change the class).
+fn constructed_class(f: &Function, c: &Construction, site: usize) -> Option<String> {
+    let held = &f.held;
+    let Some(Val::Var(local)) = held.sites[site].args.first() else {
+        return None;
+    };
+    let alloca = held.allocas.get(local)?;
+    let [Val::Ret(create_site)] = alloca.stores.as_slice() else {
+        return None;
+    };
+    if alloca.escaped {
+        return None;
+    }
+    let create = &held.sites[*create_site];
+    let SiteKind::Call(m) = create.kind else {
+        return None;
+    };
+    if f.calls[m].callee != c.create {
+        return None;
+    }
+    let Some(Val::Global(class)) = create.args.first() else {
+        return None;
+    };
+    // Every path from the creation to `init` runs only instructions laid
+    // out between them, with no other call and no store through a pointer.
+    let block_of = |site: usize| held.events.iter().position(|b| b.contains(&Ev::Call(site)));
+    let (first, last) = (block_of(*create_site)?, block_of(site)?);
+    if last < first {
+        return None;
+    }
+    for b in first + 1..=last {
+        let entered_in_range = held
+            .succ
+            .iter()
+            .enumerate()
+            .filter(|(_, succ)| succ.contains(&b))
+            .all(|(p, _)| first <= p && p < b);
+        if !entered_in_range {
+            return None;
+        }
+    }
+    for b in first..=last {
+        let events = &held.events[b];
+        let from = if b == first {
+            events.iter().position(|e| *e == Ev::Call(*create_site))? + 1
+        } else {
+            0
+        };
+        let to = if b == last {
+            events.iter().position(|e| *e == Ev::Call(site))?
+        } else {
+            events.len()
+        };
+        if from > to || events[from..to].iter().any(|e| matches!(e, Ev::Call(_))) {
+            return None;
+        }
+    }
+    let (from, to) = (create.order, held.sites[site].order);
+    if from >= to || held.stores.iter().any(|(_, _, o)| (from..to).contains(o)) {
+        return None;
+    }
+    Some(class.clone())
+}
+
+/// The constructors of `class` and its bases (`None`: a class without a
+/// known initializer).
+fn class_constructors(module: &Module, c: &Construction, class: &str) -> Option<BTreeSet<String>> {
+    let mut out = BTreeSet::new();
+    let mut current = class.to_owned();
+    for _ in 0..64 {
+        let fields = module.global_inits.get(&current)?;
+        for g in fields.get(c.constructor_field).into_iter().flatten() {
+            if module.functions.contains_key(g) {
+                out.insert(g.clone());
+            }
+        }
+        match fields.get(c.base_field).and_then(|b| b.first()) {
+            Some(base) => current = base.clone(),
+            None => return Some(out),
+        }
+    }
+    None // a cycle
+}
+
+/// Specialises construction per class (`[construction]`).
+fn specialise_construction(
+    module: &Module,
+    c: &Construction,
+    edges: &mut BTreeMap<String, Vec<Out>>,
+    site_outs: &mut BTreeMap<String, SiteOuts>,
+) -> Result<(), String> {
+    for name in [&c.create, &c.init, &c.construct] {
+        if !module.functions.contains_key(name) {
+            return Err(format!(
+                "audit.toml: [construction] names {name}, which is not defined"
+            ));
+        }
+    }
+    let slot = format!("{}.{}", c.class_structure, c.constructor_field);
+    let construct = &module.functions[&c.construct];
+    if construct.indirect.len() != 1 || construct.indirect[0].target != Target::Slot(slot.clone()) {
+        return Err(format!(
+            "audit.toml: [construction] {} must make one indirect call, through {slot}",
+            c.construct
+        ));
+    }
+    let all: BTreeSet<&str> = module
+        .global_slots
+        .iter()
+        .filter(|(s, _)| *s == slot)
+        .map(|(_, g)| g.as_str())
+        .collect();
+    let mut made: BTreeSet<String> = BTreeSet::new();
+    for (name, f) in &module.functions {
+        for (site, s) in f.held.sites.iter().enumerate() {
+            let SiteKind::Call(m) = s.kind else { continue };
+            if f.calls[m].callee != c.init {
+                continue;
+            }
+            let Some(class) = constructed_class(f, c, site) else {
+                continue;
+            };
+            let Some(allowed) = class_constructors(module, c, &class) else {
+                continue;
+            };
+            let init_node = format!("{}#class({class})", c.init);
+            let construct_node = format!("{}#class({class})", c.construct);
+            if made.insert(class.clone()) {
+                specialise(edges, site_outs, &c.init, &init_node, |o| {
+                    let mut o = o.clone();
+                    if o.to == c.construct && o.kind == Edge::Call {
+                        o.to = construct_node.clone();
+                    }
+                    Some(o)
+                });
+                specialise(edges, site_outs, &c.construct, &construct_node, |o| {
+                    if o.kind == Edge::Indirect
+                        && all.contains(o.to.as_str())
+                        && !allowed.contains(&o.to)
+                    {
+                        return None;
+                    }
+                    let mut o = o.clone();
+                    if o.to == c.construct && o.kind == Edge::Call {
+                        o.to = construct_node.clone();
+                    }
+                    Some(o)
+                });
+            }
+            if let Some((calls, _)) = site_outs.get_mut(name)
+                && let Some(outs) = calls.get_mut(m)
+            {
+                for o in outs.iter_mut() {
+                    if o.to == c.init {
+                        o.to = init_node.clone();
+                    }
+                }
+            }
+        }
+    }
+    // Plain edges follow the per-site ones.
+    for (name, f) in &module.functions {
+        if !f.calls.iter().any(|call| call.callee == c.init) {
+            continue;
+        }
+        let Some((calls, _)) = site_outs.get(name) else {
+            continue;
+        };
+        let to_init: Vec<Out> = f
+            .calls
+            .iter()
+            .enumerate()
+            .filter(|(_, call)| call.callee == c.init)
+            .flat_map(|(m, _)| calls.get(m).into_iter().flatten().cloned())
+            .collect();
+        if let Some(plain) = edges.get_mut(name) {
+            plain.retain(|o| o.to != c.init);
+            plain.extend(to_init);
+        }
+    }
+    Ok(())
+}
+
+/// Splits `"caller -> callee"`.
+fn call_pair(text: &str) -> Result<(&str, &str), String> {
+    text.split_once(" -> ")
+        .map(|(a, b)| (a.trim(), b.trim()))
+        .ok_or_else(|| format!("audit.toml: expected \"caller -> callee\", got {text:?}"))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
@@ -192,13 +415,8 @@ pub(crate) struct Out {
     pub(crate) sets: Option<i64>,
     /// Forwards the event being dispatched (its code stays known).
     pub(crate) carry: bool,
-    /// A deleted callback, run only when the `exec_cb` being deleted is one
-    /// of these (`*`: any).
-    execs: Option<Vec<String>>,
-    /// Starts deleting the animations of this `exec_cb`.
-    sets_exec: Option<String>,
-    /// Keeps the `exec_cb` being deleted known.
-    carry_exec: bool,
+    /// An indirect call through the animation `deleted_cb` field.
+    pub(crate) deleted_slot: bool,
 }
 
 impl Out {
@@ -209,9 +427,7 @@ impl Out {
             guard: None,
             sets: None,
             carry: false,
-            execs: None,
-            sets_exec: None,
-            carry_exec: false,
+            deleted_slot: false,
         }
     }
 }
@@ -237,6 +453,53 @@ pub struct Graph {
     deleting: BTreeSet<String>,
     /// Event handlers and the codes they are registered for (`None`: any).
     pub handlers: BTreeMap<String, BTreeSet<Option<i64>>>,
+    /// Animation profiles and where callbacks land (`identity.rs`).
+    pub animations: Animations,
+    /// Nodes specialised for an animation key.
+    pub animation_nodes: BTreeMap<String, AnimationKey>,
+}
+
+/// Every edge of `from`, in `edges` and in its per-site lists.
+fn outs_mut<'a>(
+    edges: &'a mut BTreeMap<String, Vec<Out>>,
+    site_outs: &'a mut BTreeMap<String, SiteOuts>,
+    from: &str,
+) -> impl Iterator<Item = &'a mut Out> {
+    let plain = edges.get_mut(from).into_iter().flatten();
+    let sites = site_outs
+        .get_mut(from)
+        .into_iter()
+        .flat_map(|(c, i)| c.iter_mut().chain(i.iter_mut()))
+        .flatten();
+    plain.chain(sites)
+}
+
+/// Adds node `special`: a copy of `base` whose edges `map` rewrites or
+/// drops.
+fn specialise(
+    edges: &mut BTreeMap<String, Vec<Out>>,
+    site_outs: &mut BTreeMap<String, SiteOuts>,
+    base: &str,
+    special: &str,
+    map: impl Fn(&Out) -> Option<Out>,
+) {
+    let plain: Vec<Out> = edges
+        .get(base)
+        .into_iter()
+        .flatten()
+        .filter_map(&map)
+        .collect();
+    edges.insert(special.to_owned(), plain);
+    if let Some((c, i)) = site_outs.get(base) {
+        let rewrite = |sites: &Vec<Vec<Out>>| -> Vec<Vec<Out>> {
+            sites
+                .iter()
+                .map(|s| s.iter().filter_map(&map).collect())
+                .collect()
+        };
+        let special_sites = (rewrite(c), rewrite(i));
+        site_outs.insert(special.to_owned(), special_sites);
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -348,32 +611,6 @@ impl Graph {
         let mut flow_edges: Vec<(String, String)> = Vec::new();
         let caller_slot = |slot: &str| config.caller_slots.get(slot).copied();
         let mut caller_edges: Vec<(String, String, Edge)> = Vec::new();
-        // Animation callbacks installed by each function, to pair a
-        // `deleted_cb` with the `exec_cb` installed with it.
-        let mut anim_execs: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
-        let mut anim_deleted: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
-        let mut note_anim = |installer: &str, slot: &str, g: &str| {
-            if let Some(anim) = &config.anim_delete {
-                if anim.exec_slots.iter().any(|s| s == slot) {
-                    anim_execs
-                        .entry(installer.to_owned())
-                        .or_default()
-                        .insert(g.to_owned());
-                } else if anim.deleted_slot == slot {
-                    anim_deleted
-                        .entry(installer.to_owned())
-                        .or_default()
-                        .insert(g.to_owned());
-                }
-            }
-        };
-        for (name, f) in &module.functions {
-            for (slot, stored) in &f.stores {
-                if let Stored::Function(g) = stored {
-                    note_anim(name, slot, g);
-                }
-            }
-        }
         for (name, f) in &module.functions {
             escaped.extend(f.refs.iter().cloned());
             for call in &f.calls {
@@ -389,7 +626,6 @@ impl Graph {
                                 escaped.insert(g.clone()); // an unknown callee keeps it
                             }
                             for slot in param_slots.get(&key).into_iter().flatten() {
-                                note_anim(name, slot, g);
                                 if caller_slot(slot).is_some() {
                                     caller_slot_funcs
                                         .entry(slot.clone())
@@ -422,19 +658,14 @@ impl Graph {
         }
         escaped.extend(module.global_refs.iter().cloned());
         let taken = escaped;
-        let mut deleted_by: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
-        for (installer, deleted) in &anim_deleted {
-            let execs = anim_execs.get(installer);
-            for d in deleted {
-                let by = deleted_by.entry(d.clone()).or_default();
-                match execs {
-                    Some(execs) if !execs.is_empty() => by.extend(execs.iter().cloned()),
-                    _ => {
-                        by.insert("*".into());
-                    }
-                }
-            }
-        }
+        let animations = Animations::new(
+            module,
+            config.animation.as_ref(),
+            &param_slots,
+            &passthrough,
+        )?;
+        // Removals specialised by the animations they can reach.
+        let mut animation_requests: BTreeSet<(String, AnimationKey)> = BTreeSet::new();
         let mut by_signature: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
         for name in &taken {
             if handlers.contains_key(name) {
@@ -589,7 +820,7 @@ impl Graph {
             let sender = config.send.contains_key(name);
             let in_machinery = machinery(name);
             let sender_widget = widget_of(&f.unit);
-            for call in &f.calls {
+            for (n, call) in f.calls.iter().enumerate() {
                 let start = out.len();
                 if call.callee == "lv_event_get_code" {
                     sites.0.push(Vec::new());
@@ -632,18 +863,29 @@ impl Graph {
                         }
                     }
                     _ => {
-                        let mut e = Out::new(call.callee.clone(), Edge::Call);
-                        e.guard = call.codes.clone();
-                        e.carry = carry;
-                        if let Some(anim) = &config.anim_delete {
-                            if anim.function == call.callee
-                                && let Some(Arg::Function(exec)) = call.args.get(anim.exec_arg)
-                            {
-                                e.sets_exec = Some(exec.clone());
-                            }
-                            e.carry_exec = anim.carry.iter().any(|c| c == name);
+                        // An animation removal goes to the removal
+                        // specialised for the animations it can match.
+                        let keys = match animations.delete_key(module, name, f, n) {
+                            Some(key) => Some(vec![key]),
+                            None => animations.start_keys(name, f, n),
+                        };
+                        let targets: Vec<String> = match keys {
+                            Some(keys) => keys
+                                .into_iter()
+                                .map(|key| {
+                                    let to = format!("{}{}", call.callee, key.suffix());
+                                    animation_requests.insert((call.callee.clone(), key));
+                                    to
+                                })
+                                .collect(),
+                            None => vec![call.callee.clone()],
+                        };
+                        for to in targets {
+                            let mut e = Out::new(to, Edge::Call);
+                            e.guard = call.codes.clone();
+                            e.carry = carry;
+                            out.push(e);
                         }
-                        out.push(e);
                     }
                 }
                 if config.event_dispatch.contains(&call.callee) && !sender && !dispatch {
@@ -703,8 +945,8 @@ impl Graph {
                             .map(|g| (*g).to_owned())
                             .collect(),
                     };
-                    let deleted_slot = match (&indirect.target, &config.anim_delete) {
-                        (Target::Slot(slot), Some(anim)) => *slot == anim.deleted_slot,
+                    let deleted_slot = match (&indirect.target, &config.animation) {
+                        (Target::Slot(slot), Some(animation)) => *slot == animation.deleted_slot,
                         _ => false,
                     };
                     for g in targets {
@@ -713,14 +955,7 @@ impl Graph {
                         let mut e = Out::new(g.clone(), Edge::Indirect);
                         e.guard = indirect.codes.clone();
                         e.carry = carry;
-                        if deleted_slot {
-                            e.execs = Some(
-                                deleted_by
-                                    .get(&g)
-                                    .map(|b| b.iter().cloned().collect())
-                                    .unwrap_or_else(|| vec!["*".to_owned()]),
-                            );
-                        }
+                        e.deleted_slot = deleted_slot;
                         out.push(e);
                     }
                     sites.1.push(out[start..].to_vec());
@@ -739,6 +974,73 @@ impl Graph {
                 .or_default()
                 .push(Out::new(to.clone(), *kind));
         }
+
+        // Calls that cannot happen in a context: the callee specialised
+        // for that caller.
+        for (name, inf) in &config.infeasible {
+            let (from, to) = call_pair(&inf.context)?;
+            if !edges
+                .get(from)
+                .is_some_and(|o| o.iter().any(|o| o.to == to))
+            {
+                return Err(format!(
+                    "audit.toml: [infeasible.{name}] {from} does not call {to}"
+                ));
+            }
+            for c in &inf.calls {
+                if !edges.get(to).is_some_and(|o| o.iter().any(|o| o.to == *c)) {
+                    return Err(format!(
+                        "audit.toml: [infeasible.{name}] {to} does not call {c}"
+                    ));
+                }
+            }
+            let special = format!("{to}#infeasible({name})");
+            specialise(&mut edges, &mut site_outs, to, &special, |o| {
+                (!(inf.calls.contains(&o.to) && o.kind == Edge::Call)).then(|| o.clone())
+            });
+            for o in outs_mut(&mut edges, &mut site_outs, from) {
+                if o.to == to {
+                    o.to = special.clone();
+                }
+            }
+        }
+        if let Some(construction) = &config.construction {
+            specialise_construction(module, construction, &mut edges, &mut site_outs)?;
+        }
+        // Animation removals: the chain of functions down to the one that
+        // runs `deleted_cb`, specialised for each key, with only the deleted
+        // callbacks of animations the key can match.
+        let mut animation_nodes: BTreeMap<String, AnimationKey> = BTreeMap::new();
+        if let Some(animation) = &config.animation {
+            for (callee, key) in &animation_requests {
+                let chain = if *callee == animation.delete {
+                    &animation.delete_carry
+                } else {
+                    &animation.start_carry
+                };
+                if chain.first() != Some(callee) {
+                    return Err(format!(
+                        "audit.toml: [animation] the carry list of {callee} must start with it"
+                    ));
+                }
+                let suffix = key.suffix();
+                for x in chain {
+                    let special = format!("{x}{suffix}");
+                    specialise(&mut edges, &mut site_outs, x, &special, |o| {
+                        if o.deleted_slot && !animations.admits_deleted(key, &o.to, module) {
+                            return None;
+                        }
+                        let mut o = o.clone();
+                        if chain.contains(&o.to) && matches!(o.kind, Edge::Call | Edge::Indirect) {
+                            o.to = format!("{}{suffix}", o.to);
+                        }
+                        Some(o)
+                    });
+                    animation_nodes.insert(special, key.clone());
+                }
+            }
+        }
+
         // A sender's code is its parameter: called on its own (or with a
         // computed code), it reaches every handler.
         for sender in config.send.keys() {
@@ -773,7 +1075,17 @@ impl Graph {
             sinks,
             deleting,
             handlers,
+            animations,
+            animation_nodes,
         })
+    }
+
+    /// The per-site edges of a graph node (specialised nodes have their
+    /// own; `#body` nodes use their function's).
+    pub(crate) fn site_outs_of(&self, node: &str) -> Option<&SiteOuts> {
+        self.site_outs
+            .get(node)
+            .or_else(|| self.site_outs.get(node.split('#').next().unwrap_or(node)))
     }
 
     /// Exclusive if a sink is reachable now; raw if the call schedules a
@@ -858,13 +1170,13 @@ impl Graph {
         kinds: &[Edge],
         sinks: &BTreeSet<String>,
     ) -> Option<Vec<String>> {
-        type State<'a> = (&'a str, Option<i64>, Option<&'a str>);
+        type State<'a> = (&'a str, Option<i64>);
         let mut previous: BTreeMap<State, State> = BTreeMap::new();
-        let first: State = (start, code, None);
+        let first: State = (start, code);
         let mut queue = VecDeque::from([first]);
         let mut seen = BTreeSet::from([first]);
         while let Some(state) = queue.pop_front() {
-            let (node, code, exec) = state;
+            let (node, code) = state;
             if sinks.contains(node) {
                 let mut path = vec![node.to_owned()];
                 let mut at = state;
@@ -884,22 +1196,12 @@ impl Graph {
                 {
                     continue;
                 }
-                if let (Some(exec), Some(execs)) = (exec, &out.execs)
-                    && !execs.iter().any(|e| e == exec || e == "*")
-                {
-                    continue;
-                }
                 let next_code = match (out.sets, out.carry) {
                     (Some(c), _) => Some(c),
                     (None, true) => code,
                     (None, false) => None,
                 };
-                let next_exec = match (&out.sets_exec, out.carry_exec) {
-                    (Some(e), _) => Some(e.as_str()),
-                    (None, true) => exec,
-                    (None, false) => None,
-                };
-                let next: State = (out.to.as_str(), next_code, next_exec);
+                let next: State = (out.to.as_str(), next_code);
                 if seen.insert(next) {
                     previous.insert(next, state);
                     queue.push_back(next);
@@ -977,9 +1279,8 @@ impl Graph {
             if getters.iter().chain(checked).any(|g| g == node) {
                 continue; // the call itself was counted (or is checked)
             }
-            let function = module
-                .functions
-                .get(node.strip_suffix("#body").unwrap_or(node));
+            // `#body` and specialised nodes run their base function's code.
+            let function = module.functions.get(node.split('#').next().unwrap_or(node));
             for call in function.into_iter().flat_map(|f| &f.calls) {
                 if getters.contains(&call.callee)
                     && call.codes.as_ref().is_none_or(|c| c.contains(&code))
@@ -1158,6 +1459,319 @@ define dso_local void @use_display_delete(ptr noundef %0) {
         // An indirect call reaches only what its slot can hold, although a
         // deleting function of the same signature has its address taken.
         assert_eq!(graph.verdict("remove_anim"), Verdict::Shared);
+    }
+
+    #[test]
+    fn animation_removals_reach_only_the_animations_they_match() {
+        use super::super::identity::tests::{ANIMATION_CONFIG, animation_module};
+        let m = animation_module();
+        let config: AuditConfig = toml::from_str(ANIMATION_CONFIG).unwrap();
+        let graph = Graph::build(&m, &config).unwrap();
+        let exclusive = |f: &str| matches!(graph.verdict(f), Verdict::Exclusive(_));
+        // `deleted_bad` belongs to animations whose `exec_cb` is `exec_b`
+        // and whose `var` is NULL.
+        assert!(!exclusive("lv_stop_a"));
+        assert!(exclusive("lv_stop_b"));
+        // No `exec_cb` and a `var` of unknown type: every animation.
+        assert!(exclusive("lv_stop_all"));
+        // A `var` of another struct type.
+        assert!(!exclusive("lv_stop_d"));
+        // Starting replaces the animations with the same `exec_cb` and
+        // `var`, unless `early_apply` is off.
+        assert!(!exclusive("lv_setup_a"));
+        assert!(exclusive("lv_setup_bad"));
+        assert!(!exclusive("lv_setup_quiet"));
+        // A local whose address escapes can be anything.
+        assert!(exclusive("lv_setup_escaping"));
+        // The removal itself, called with unknown arguments.
+        assert!(exclusive("lv_anim_delete"));
+    }
+
+    #[test]
+    fn infeasible_calls_are_removed_only_in_their_context() {
+        let mut m = Module::default();
+        m.add_ir(
+            "t",
+            r#"
+define internal void @obj_delete_core(ptr noundef %0) {
+  ret void
+}
+define dso_local void @lv_group_remove_obj(ptr noundef %0) {
+  call void @obj_delete_core(ptr %0)
+  ret void
+}
+define dso_local void @lv_group_add_obj(ptr noundef %0) {
+  call void @lv_group_remove_obj(ptr %0)
+  ret void
+}
+define dso_local void @lv_obj_class_init_obj(ptr noundef %0) {
+  call void @lv_group_add_obj(ptr %0)
+  ret void
+}
+define dso_local void @lv_tabview_add_tab(ptr noundef %0) {
+  call void @lv_group_add_obj(ptr %0)
+  ret void
+}
+"#,
+            &[],
+        );
+        let entry = r#"
+sinks = ["t::obj_delete_core"]
+[infeasible.fresh]
+context = "lv_obj_class_init_obj -> lv_group_add_obj"
+calls = ["lv_group_remove_obj"]
+why = "test"
+"#;
+        let config: AuditConfig = toml::from_str(entry).unwrap();
+        let graph = Graph::build(&m, &config).unwrap();
+        assert_eq!(graph.verdict("lv_obj_class_init_obj"), Verdict::Shared);
+        assert!(matches!(
+            graph.verdict("lv_tabview_add_tab"),
+            Verdict::Exclusive(_)
+        ));
+        assert!(matches!(
+            graph.verdict("lv_group_add_obj"),
+            Verdict::Exclusive(_)
+        ));
+        // Entries that do not match the call graph are errors.
+        for wrong in [
+            entry.replace("lv_obj_class_init_obj ->", "lv_group_remove_obj ->"),
+            entry.replace("calls = [\"lv_group_remove_obj\"]", "calls = [\"lv_free\"]"),
+            entry.replace(" -> lv_group_add_obj", ""),
+        ] {
+            let config: AuditConfig = toml::from_str(&wrong).unwrap();
+            assert!(Graph::build(&m, &config).is_err(), "{wrong}");
+        }
+    }
+
+    #[test]
+    fn parameter_reads_are_found_in_specialised_nodes() {
+        let mut m = Module::default();
+        m.add_ir(
+            "t",
+            r#"
+define internal void @obj_delete_core(ptr noundef %0) {
+  ret void
+}
+define dso_local ptr @lv_event_get_param(ptr noundef %0) {
+  ret ptr null
+}
+define dso_local void @lv_group_remove_obj(ptr noundef %0) {
+  call void @obj_delete_core(ptr %0)
+  ret void
+}
+define dso_local void @lv_group_add_obj(ptr noundef %0) {
+  %2 = call ptr @lv_event_get_param(ptr noundef %0)
+  call void @lv_group_remove_obj(ptr %0)
+  ret void
+}
+define dso_local void @lv_obj_class_init_obj(ptr noundef %0, i32 noundef %1) {
+  call void @lv_group_add_obj(ptr %0)
+  ret void
+}
+"#,
+            &[],
+        );
+        let config: AuditConfig = toml::from_str(
+            r#"
+sinks = ["t::obj_delete_core"]
+[send]
+lv_obj_class_init_obj = 1
+[infeasible.fresh]
+context = "lv_obj_class_init_obj -> lv_group_add_obj"
+calls = ["lv_group_remove_obj"]
+why = "test"
+"#,
+        )
+        .unwrap();
+        let graph = Graph::build(&m, &config).unwrap();
+        // The sender reaches `lv_group_add_obj` only through its
+        // specialised node, whose own calls still read the parameter.
+        let getters = ["lv_event_get_param".to_owned()];
+        let (found, witness) = graph
+            .param_reads(&m, "lv_obj_class_init_obj", 7, &getters, &[])
+            .expect("the specialised node reads the parameter");
+        assert!(found.contains("lv_event_get_param"));
+        assert!(
+            witness
+                .iter()
+                .any(|n| n == "lv_group_add_obj#infeasible(fresh)"),
+            "{witness:?}"
+        );
+    }
+
+    const CONSTRUCTION_IR: &str = r#"
+%struct._lv_obj_t = type { ptr }
+%struct._lv_obj_class_t = type { ptr, ptr }
+@lv_obj_class = dso_local constant { ptr, ptr } { ptr null, ptr @obj_constructor }, align 8
+@lv_a_class = dso_local constant { ptr, ptr } { ptr @lv_obj_class, ptr @a_constructor }, align 8
+@lv_bad_class = dso_local constant { ptr, ptr } { ptr @lv_obj_class, ptr @bad_constructor }, align 8
+@slot = dso_local global ptr null, align 8
+define dso_local void @sink() {
+  ret void
+}
+define dso_local void @other() {
+  ret void
+}
+define internal void @obj_constructor(ptr noundef %0, ptr noundef %1) {
+  ret void
+}
+define internal void @a_constructor(ptr noundef %0, ptr noundef %1) {
+  ret void
+}
+define internal void @bad_constructor(ptr noundef %0, ptr noundef %1) {
+  call void @sink()
+  ret void
+}
+define dso_local ptr @lv_obj_class_create_obj(ptr noundef %0, ptr noundef %1) {
+  ret ptr null
+}
+define internal void @lv_obj_construct(ptr noundef %0, ptr noundef %1) {
+  %3 = alloca ptr, align 8
+  %4 = alloca ptr, align 8
+  store ptr %0, ptr %3, align 8
+  store ptr %1, ptr %4, align 8
+  %5 = load ptr, ptr %4, align 8
+  %6 = getelementptr inbounds nuw %struct._lv_obj_t, ptr %5, i32 0, i32 0
+  %7 = load ptr, ptr %6, align 8
+  %8 = load ptr, ptr %3, align 8
+  call void @lv_obj_construct(ptr noundef %8, ptr noundef %5)
+  %9 = getelementptr inbounds nuw %struct._lv_obj_class_t, ptr %7, i32 0, i32 1
+  %10 = load ptr, ptr %9, align 8
+  call void %10(ptr noundef %8, ptr noundef %5)
+  ret void
+}
+define dso_local void @lv_obj_class_init_obj(ptr noundef %0) {
+  call void @lv_obj_construct(ptr noundef null, ptr noundef %0)
+  ret void
+}
+define dso_local ptr @lv_a_create(ptr noundef %0) {
+  %2 = alloca ptr, align 8
+  %3 = alloca ptr, align 8
+  store ptr %0, ptr %2, align 8
+  %4 = load ptr, ptr %2, align 8
+  %5 = call ptr @lv_obj_class_create_obj(ptr noundef @lv_a_class, ptr noundef %4)
+  store ptr %5, ptr %3, align 8
+  %6 = load ptr, ptr %3, align 8
+  %7 = icmp eq ptr %6, null
+  br i1 %7, label %8, label %9
+
+8:
+  ret ptr null
+
+9:
+  %10 = load ptr, ptr %3, align 8
+  call void @lv_obj_class_init_obj(ptr noundef %10)
+  %11 = load ptr, ptr %3, align 8
+  ret ptr %11
+}
+define dso_local ptr @lv_bad_create(ptr noundef %0) {
+  %2 = alloca ptr, align 8
+  %3 = alloca ptr, align 8
+  store ptr %0, ptr %2, align 8
+  %4 = load ptr, ptr %2, align 8
+  %5 = call ptr @lv_obj_class_create_obj(ptr noundef @lv_bad_class, ptr noundef %4)
+  store ptr %5, ptr %3, align 8
+  %6 = load ptr, ptr %3, align 8
+  call void @lv_obj_class_init_obj(ptr noundef %6)
+  ret ptr %6
+}
+define dso_local ptr @lv_a_meddle(ptr noundef %0) {
+  %2 = alloca ptr, align 8
+  %3 = alloca ptr, align 8
+  store ptr %0, ptr %2, align 8
+  %4 = load ptr, ptr %2, align 8
+  %5 = call ptr @lv_obj_class_create_obj(ptr noundef @lv_a_class, ptr noundef %4)
+  store ptr %5, ptr %3, align 8
+  call void @other()
+  %6 = load ptr, ptr %3, align 8
+  call void @lv_obj_class_init_obj(ptr noundef %6)
+  ret ptr %6
+}
+define dso_local ptr @lv_a_store(ptr noundef %0) {
+  %2 = alloca ptr, align 8
+  %3 = alloca ptr, align 8
+  store ptr %0, ptr %2, align 8
+  %4 = load ptr, ptr %2, align 8
+  %5 = call ptr @lv_obj_class_create_obj(ptr noundef @lv_a_class, ptr noundef %4)
+  store ptr %5, ptr %3, align 8
+  %6 = load ptr, ptr %3, align 8
+  %7 = getelementptr inbounds nuw %struct._lv_obj_t, ptr %6, i32 0, i32 0
+  store ptr @lv_bad_class, ptr %7, align 8
+  call void @lv_obj_class_init_obj(ptr noundef %6)
+  ret ptr %6
+}
+define dso_local ptr @lv_a_loop(ptr noundef %0) {
+  %2 = alloca ptr, align 8
+  %3 = alloca ptr, align 8
+  store ptr %0, ptr %2, align 8
+  %4 = load ptr, ptr %2, align 8
+  %5 = call ptr @lv_obj_class_create_obj(ptr noundef @lv_a_class, ptr noundef %4)
+  store ptr %5, ptr %3, align 8
+  br label %6
+
+6:
+  %7 = load ptr, ptr %3, align 8
+  call void @lv_obj_class_init_obj(ptr noundef %7)
+  %8 = icmp eq ptr %7, null
+  br i1 %8, label %6, label %9
+
+9:
+  ret ptr %7
+}
+define dso_local ptr @lv_a_escaped(ptr noundef %0) {
+  %2 = alloca ptr, align 8
+  %3 = alloca ptr, align 8
+  store ptr %0, ptr %2, align 8
+  store ptr %3, ptr @slot, align 8
+  %4 = load ptr, ptr %2, align 8
+  %5 = call ptr @lv_obj_class_create_obj(ptr noundef @lv_a_class, ptr noundef %4)
+  store ptr %5, ptr %3, align 8
+  %6 = load ptr, ptr %3, align 8
+  call void @lv_obj_class_init_obj(ptr noundef %6)
+  ret ptr %6
+}
+"#;
+
+    #[test]
+    fn construction_runs_only_the_constructors_of_the_class_built() {
+        let mut m = Module::default();
+        m.add_ir(
+            "t",
+            CONSTRUCTION_IR,
+            &[("lv_*_class".to_owned(), "_lv_obj_class_t".to_owned())],
+        );
+        let entry = r#"
+sinks = ["sink"]
+[construction]
+create = "lv_obj_class_create_obj"
+init = "lv_obj_class_init_obj"
+construct = "t::lv_obj_construct"
+class_structure = "_lv_obj_class_t"
+base_field = 0
+constructor_field = 1
+why = "test"
+"#;
+        let config: AuditConfig = toml::from_str(entry).unwrap();
+        let graph = Graph::build(&m, &config).unwrap();
+        let exclusive = |f: &str| matches!(graph.verdict(f), Verdict::Exclusive(_));
+        // An `a` runs its own and `lv_obj`'s constructors, not `bad`'s.
+        assert_eq!(graph.verdict("lv_a_create"), Verdict::Shared);
+        assert!(exclusive("lv_bad_create"));
+        // A call or a store through a pointer between the creation and
+        // `init` could change the class; so could a loop running `init`
+        // again, or a write through the local's escaped address.
+        assert!(exclusive("lv_a_meddle"));
+        assert!(exclusive("lv_a_store"));
+        assert!(exclusive("lv_a_loop"));
+        assert!(exclusive("lv_a_escaped"));
+        // Without the table, every constructor is reachable.
+        let plain: AuditConfig = toml::from_str("sinks = [\"sink\"]").unwrap();
+        let graph = Graph::build(&m, &plain).unwrap();
+        assert!(matches!(
+            graph.verdict("lv_a_create"),
+            Verdict::Exclusive(_)
+        ));
     }
 
     #[test]
