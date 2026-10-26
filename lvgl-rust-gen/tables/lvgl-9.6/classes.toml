@@ -68,6 +68,10 @@ manual = [
     # checked against the current children, and set_tile takes only one
     # of them (tileview.rs).
     "lv_tileview_get_tile_active",
+    # The SCROLL_END handler divides by the content width and height
+    # (lv_tileview.c:181-182), which layout or styles can bring to 0: the
+    # wrapper installs a guard that stops the event first (tileview.rs).
+    "lv_tileview_create",
     "lv_tileview_set_tile",
     # The arrow header indexes month names with the shown month, unchecked
     # (lv_calendar_header_arrow.c:148, 164): months are checked (calendar.rs).

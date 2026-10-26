@@ -314,6 +314,34 @@ mod handles {
     }
 
     #[test]
+    fn zero_size_tile_views_ignore_scroll_end() {
+        let mut guard = guard();
+        let mut lv = session(&mut guard);
+        let screen = lv.screen_active().unwrap();
+        let tileview = TileView::create(screen).unwrap().handle().unwrap();
+        let mut edit = tileview.get_mut(&mut lv).unwrap();
+        edit.add_tile(0, 0, Dir::ALL).unwrap();
+        // LVGL's handler would divide by the content width or height: the
+        // guard stops the SCROLL_END sent by an unanimated scroll.
+        edit.set_width(0);
+        edit.update_layout();
+        edit.scroll_by(0, 10, false);
+        edit.set_width(100);
+        edit.set_height(0);
+        edit.update_layout();
+        edit.scroll_by(10, 0, false);
+        // The handler never ran: it would have made the tile at (0, 0)
+        // active.
+        assert!(edit.view().get_tile_active().is_none());
+        edit.set_height(100);
+        edit.update_layout();
+        edit.scroll_by(10, 0, false);
+        assert!(edit.view().get_tile_active().is_some());
+        draw();
+        tileview.get_mut(&mut lv).unwrap().delete().unwrap();
+    }
+
+    #[test]
     fn calendar_headers_stay_in_their_calendar() {
         let mut guard = guard();
         let mut lv = session(&mut guard);

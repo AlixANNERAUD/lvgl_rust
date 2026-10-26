@@ -313,8 +313,8 @@ cfgs mirror the `LV_USE_*` values for hand-written code.
 - `classes.toml` `crate_owned` functions can never be shared or exclusive;
   `manual` ones are wrapped by hand in `lvgl-rust/src/base/`, `manual.rs`
   or a widget's own module (`chart.rs`: series tokens checked against the
-  chart's list; `table.rs`: cell bounds and sizes; `tileview.rs`,
-  `calendar.rs`).
+  chart's list; `table.rs`: cell bounds and sizes; `tileview.rs`: tiles
+  and a zero-size guard installed by `create`; `calendar.rs`).
 - `classes.toml` `[composite.<widget>]` tables drive the structural checks:
   `parts` are the objects LVGL holds pointers to (getters, `child:N`,
   `shim:`), `indexed` how many levels below a part LVGL finds objects by

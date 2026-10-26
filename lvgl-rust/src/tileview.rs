@@ -9,8 +9,20 @@
 //! `lv_tileview_get_tile_active`, whose wrapper returns the pointer only
 //! while it is still one of the tile view's tiles, and `set_tile` takes
 //! only one of them.
+//!
+//! The tile view's SCROLL_END handler divides by its content width and
+//! height (`lv_tileview.c:181-182`), which a size, padding or layout can
+//! bring to 0 or below: [`TileView::create`] puts a guard in front of it
+//! (a preprocessed handler, so it runs before the class's) that stops
+//! the event while either is not positive. The guard is one LVGL event
+//! descriptor per tile view.
 
-use crate::{Obj, base::gen_support::getter_view, sys, widgets::TileView};
+use crate::{
+    Error, Obj,
+    base::gen_support::{check_create, getter_view, view},
+    sys,
+    widgets::TileView,
+};
 
 /// Whether `tile` is a child of `tileview` of the tile class. `tile` may
 /// dangle: it is only compared with live children.
@@ -32,7 +44,68 @@ unsafe fn is_tile_of(tileview: *mut sys::lv_obj_t, tile: *mut sys::lv_obj_t) -> 
     }
 }
 
+/// Stops a SCROLL_END the tile view's handler would divide by zero (or
+/// by a negative size) on. Runs no user code.
+unsafe extern "C" fn zero_size_guard(e: *mut sys::lv_event_t) {
+    // SAFETY: an event of a live tile view (the object holding the
+    // handler, also when the event bubbled up to it).
+    unsafe {
+        let tileview = sys::lv_event_get_current_target_obj(e);
+        if sys::lv_obj_get_content_width(tileview) <= 0
+            || sys::lv_obj_get_content_height(tileview) <= 0
+        {
+            sys::lv_event_stop_processing(e);
+        }
+    }
+}
+
 impl TileView {
+    /// Creates a tile view in `parent`.
+    ///
+    /// [`Error::OutOfMemory`] if the tile view or its guard (see the
+    /// module) could not be allocated; in the second case the tile view
+    /// stays in `parent` without its scroll handler (scrolling no longer
+    /// changes the active tile).
+    ///
+    /// `lv_tileview_create`.
+    pub fn create(parent: &Obj) -> Result<&Self, Error> {
+        check_create(parent.as_ptr())?;
+        // SAFETY: shared access through the parent view; creation frees
+        // nothing.
+        let p = unsafe { sys::lv_tileview_create(parent.as_ptr()) };
+        if p.is_null() {
+            return Err(Error::OutOfMemory);
+        }
+        // SAFETY: a tile view just created: no event is being sent to it,
+        // and its only handler is its constructor's, at index 0 (themes
+        // are applied after the constructor).
+        unsafe {
+            let filter =
+                sys::lv_event_code_t_LV_EVENT_SCROLL_END | sys::lv_event_code_t_LV_EVENT_PREPROCESS;
+            #[allow(clippy::unnecessary_cast)] // the bindgen alias may already be `u32`
+            let guard = sys::lv_obj_add_event_cb(
+                p,
+                Some(zero_size_guard),
+                filter as _,
+                core::ptr::null_mut(),
+            );
+            if guard.is_null() {
+                // Without its guard, the handler must go: removing a
+                // descriptor frees it and allocates nothing.
+                sys::lv_obj_remove_event(p, 0);
+                return Err(Error::OutOfMemory);
+            }
+            // SAFETY: just created, of this class.
+            Ok(view::<Self>(p))
+        }
+    }
+
+    /// Creates a tile view and takes ownership of it.
+    #[cfg(not(lvgl_rust_views_only))]
+    pub fn create_owned(parent: &Obj) -> Result<crate::Owned<Self>, Error> {
+        crate::WidgetExt::own(Self::create(parent)?)
+    }
+
     /// The active tile: the last one shown by `set_tile`,
     /// `set_tile_by_index` or scrolling, if it is still one of this tile
     /// view's tiles.
