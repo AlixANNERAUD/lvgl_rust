@@ -86,6 +86,10 @@ run = "cargo test -p lvgl-rust-sys -p lvgl-rust-gen"
 description = "Package the three crates as crates.io would, and build each one from its package"
 env.DEP_LV_CONFIG_PATH = "{{config_root}}/lvgl-rust/conf"
 env.CARGO_TARGET_DIR = "target/package"
+# Verification builds lvgl-rust from the packaged generator, whose tables
+# sit at the same paths in cargo's temporary registry on every run: mbx's
+# build-script cache could replay generated code from other tables.
+env.MBX_BUILD_SCRIPT_EXECUTION = "false"
 run = "cargo package -p lvgl-rust-sys -p lvgl-rust-gen -p lvgl-rust"
 
 [tasks.coverage]
