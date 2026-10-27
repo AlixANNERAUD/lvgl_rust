@@ -109,6 +109,16 @@ export BINDGEN_EXTRA_CLANG_ARGS_riscv32imc_unknown_none_elf="$CFLAGS_riscv32imc_
 `wasm32-unknown-unknown` has no C library: the crate provides the one header
 LVGL needs (`inttypes.h`), so only clang is required.
 
+For `wasm32-wasip1`, use [wasi-sdk](https://github.com/WebAssembly/wasi-sdk)
+(its `wasm32-wasip1-clang` finds the SDK's sysroot; bindgen needs it
+explicitly):
+
+```sh
+export CC_wasm32_wasip1=$WASI_SDK/bin/wasm32-wasip1-clang
+export AR_wasm32_wasip1=$WASI_SDK/bin/llvm-ar
+export BINDGEN_EXTRA_CLANG_ARGS_wasm32_wasip1="--sysroot=$WASI_SDK/share/wasi-sysroot"
+```
+
 ### Color depth
 
 The `color_depth_*` features set both `LV_COLOR_FORMAT_DEFAULT` and
