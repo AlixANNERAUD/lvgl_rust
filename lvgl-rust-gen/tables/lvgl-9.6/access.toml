@@ -6424,6 +6424,15 @@ access = "shared"
 [fn.lvgl_sys_display_reshape_buffers]
 access = "shared"
 
+[fn.lvgl_sys_hit_test_point]
+access = "shared"
+
+[fn.lvgl_sys_hit_test_result]
+access = "shared"
+
+[fn.lvgl_sys_hit_test_set_result]
+access = "shared"
+
 [fn.lvgl_sys_image_cache_drop]
 access = "shared"
 

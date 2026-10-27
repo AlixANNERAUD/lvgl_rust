@@ -8,6 +8,11 @@ license.workspace = true
 publish = false
 build = "build.rs"
 
+[features]
+# The diagnostic features of lvgl-rust, measured by `gate.sh ... <features>`.
+defmt = ["lvgl-rust/defmt"]
+debug-counters = ["lvgl-rust/debug-counters"]
+
 [dependencies]
 lvgl-rust = { path = ".." }
 

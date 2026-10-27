@@ -25,6 +25,17 @@ extern "C"
      */
     bool lvgl_sys_obj_events_traversing(const lv_obj_t * obj);
 
+    /** The point (absolute coordinates) of an `LV_EVENT_HIT_TEST`
+     *  parameter, whose type LVGL declares in a private header. */
+    lv_point_t lvgl_sys_hit_test_point(const lv_hit_test_info_t * info);
+
+    /** The current result of an `LV_EVENT_HIT_TEST` parameter: whether the
+     *  point can click the object. */
+    bool lvgl_sys_hit_test_result(const lv_hit_test_info_t * info);
+
+    /** Sets the result of an `LV_EVENT_HIT_TEST` parameter. */
+    void lvgl_sys_hit_test_set_result(lv_hit_test_info_t * info, bool res);
+
 #if LV_USE_KEYBOARD
     /**
      * Makes a keyboard forget its textarea without touching it (unlike
