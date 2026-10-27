@@ -120,22 +120,57 @@ mod desktop {
 
     impl Window {
         /// Builds a window under `parent` (form (b): creating objects and
-        /// setting geometry and styles need exclusive access). Each object
-        /// is created through its parent's `ObjMut` and configured through
-        /// its own; handles keep what handlers and later calls need.
+        /// setting geometry and styles need exclusive access). Creating
+        /// through a parent's `ObjMut` lends a view of the new object;
+        /// handles give each part its own `ObjMut` afterwards.
         fn build(parent: Handle<Obj>, lv: &mut Lvgl, number: u32) -> Result<Self, Error> {
-            let mut parent = parent.get_mut(lv)?;
-            let mut window = Obj::create(&mut parent)?;
-            window.add_style(&WINDOW, Selector::DEFAULT);
-            window.set_size(220, 150);
-            window.align(Align::CENTER, (number as i32 % 3) * 10, 10);
-            let root = window.view().handle()?;
-            let mut title = Label::create(&mut window)?;
-            title.view().set_text_i32(number as i32);
-            let title_handle = title.view().handle()?;
+            let root = Obj::create(&mut parent.get_mut(lv)?)?.handle()?;
+            let (title, close, textarea, keyboard) = {
+                let mut window = root.get_mut(lv)?;
+                window.add_style(&WINDOW, Selector::DEFAULT);
+                window.set_size(220, 150);
+                window.align(Align::CENTER, (number as i32 % 3) * 10, 10);
+                let title = Label::create(&mut window)?;
+                title.set_text_i32(number as i32);
+                let title = title.handle()?;
+                let close = Button::create(&mut window)?;
+                // The close button deletes its window later: handlers cannot
+                // delete.
+                close.on_with(EventCode::CLICKED, root, |e, root| {
+                    if let Ok(root) = root.get(e.lv())
+                        && root.delete_later().is_ok()
+                    {
+                        CLOSED.fetch_add(1, Relaxed);
+                        let _ = e
+                            .lv()
+                            .post(|lv: &mut Lvgl, ()| OPEN.set(lv, OPEN.get(lv) - 1), ());
+                    }
+                })?;
+                let close = close.handle()?;
+                let textarea = TextArea::create(&mut window)?.handle()?;
+                let keyboard = Keyboard::create(&mut window)?.handle()?;
+                (title, close, textarea, keyboard)
+            };
+            {
+                let mut close = close.upcast::<Obj>().get_mut(lv)?;
+                close.align(Align::TOP_RIGHT, 0, 0);
+                close.add_style(&ACCENT, Selector::DEFAULT);
+                Label::create(&mut close)?.set_text_str("x")?;
+            }
+            {
+                let mut textarea = textarea.upcast::<Obj>().get_mut(lv)?;
+                textarea.set_size(200, 36);
+                textarea.align(Align::TOP_LEFT, 0, 24);
+            }
+            {
+                let mut keyboard = keyboard.get_mut(lv)?;
+                keyboard.set_textarea(Some(textarea))?;
+                keyboard.set_size(200, 70);
+                keyboard.align(Align::BOTTOM_MID, 0, 0);
+            }
             // A short animation counting up in the title.
-            title.animate(
-                Anim::new(title_handle)
+            title.upcast::<Obj>().get_mut(lv)?.animate(
+                Anim::new(title)
                     .values(0, 100)
                     .duration(300)
                     .path(AnimPath::EaseOut)
@@ -145,29 +180,6 @@ mod desktop {
                         }
                     }),
             )?;
-            let mut close = Button::create(&mut window)?;
-            close.align(Align::TOP_RIGHT, 0, 0);
-            close.add_style(&ACCENT, Selector::DEFAULT);
-            Label::create(&mut close)?.view().set_text_str("x")?;
-            // The close button deletes its window later: handlers cannot delete.
-            close.view().on_with(EventCode::CLICKED, root, |e, root| {
-                if let Ok(root) = root.get(e.lv())
-                    && root.delete_later().is_ok()
-                {
-                    CLOSED.fetch_add(1, Relaxed);
-                    let _ = e
-                        .lv()
-                        .post(|lv: &mut Lvgl, ()| OPEN.set(lv, OPEN.get(lv) - 1), ());
-                }
-            })?;
-            let mut textarea = TextArea::create(&mut window)?;
-            textarea.set_size(200, 36);
-            textarea.align(Align::TOP_LEFT, 0, 24);
-            let textarea = textarea.view().handle()?;
-            let mut keyboard = Keyboard::create(&mut window)?;
-            keyboard.set_textarea(Some(textarea))?;
-            keyboard.as_base::<Obj>().set_size(200, 70);
-            keyboard.as_base::<Obj>().align(Align::BOTTOM_MID, 0, 0);
             OPENED.fetch_add(1, Relaxed);
             OPEN.set(lv, OPEN.get(lv) + 1);
             Ok(Window { root })
@@ -233,18 +245,23 @@ mod desktop {
             lv.style(&ACCENT).set_bg_color(color::hex(0x89b4fa));
 
             // The top bar: a clock and the number of open windows.
-            {
-                let mut screen = lv.screen_active_mut().unwrap();
-                let mut bar = Obj::create(&mut screen).unwrap();
+            let bar = Obj::create(&mut lv.screen_active_mut().unwrap())
+                .unwrap()
+                .handle()
+                .unwrap();
+            let (clock, open) = {
+                let mut bar = bar.get_mut(&mut lv).unwrap();
                 bar.add_style(&BAR, Selector::DEFAULT);
                 bar.set_size(WIDTH as i32, 28);
-                Label::create(&mut bar)
-                    .unwrap()
-                    .bind_text(&SECONDS)
-                    .unwrap();
-                let mut open = Label::create(&mut bar).unwrap();
+                let clock = Label::create(&mut bar).unwrap().handle().unwrap();
+                let open = Label::create(&mut bar).unwrap().handle().unwrap();
+                (clock, open)
+            };
+            clock.get_mut(&mut lv).unwrap().bind_text(&SECONDS).unwrap();
+            {
+                let mut open = open.get_mut(&mut lv).unwrap();
                 open.bind_text(&OPEN).unwrap();
-                open.as_base::<Obj>().align(Align::RIGHT_MID, 0, 0);
+                open.align(Align::RIGHT_MID, 0, 0);
             }
             // A timer ticks the clock (setting a subject is exclusive: posted).
             // Forgotten: dropping an `Owned<Timer>` deletes the timer.
@@ -257,19 +274,20 @@ mod desktop {
                 .unwrap(),
             );
             // The launcher.
-            let mut screen = lv.screen_active_mut().unwrap();
-            let mut launcher = Button::create(&mut screen).unwrap();
-            launcher.set_size(80, 40);
-            launcher.align(Align::BOTTOM_LEFT, 8, -8);
-            Label::create(&mut launcher)
+            let launcher = Button::create(&mut lv.screen_active_mut().unwrap())
                 .unwrap()
-                .view()
+                .handle()
+                .unwrap();
+            let mut edit = launcher.upcast::<Obj>().get_mut(&mut lv).unwrap();
+            edit.set_size(80, 40);
+            edit.align(Align::BOTTOM_LEFT, 8, -8);
+            Label::create(&mut edit)
+                .unwrap()
                 .set_text_str("Open")
                 .unwrap();
             // Creating objects needs exclusive access, which handlers do not
             // have: the window is built by a posted function.
-            launcher
-                .view()
+            edit.view()
                 .on(EventCode::CLICKED, |e| {
                     let number = OPENED.load(Relaxed) + 1;
                     let _ = e.lv().post(open_window, number);

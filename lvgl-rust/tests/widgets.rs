@@ -36,7 +36,7 @@ fn labels_take_copied_and_static_text() {
     let mut guard = guard();
     let mut lv = session(&mut guard);
     let mut screen = lv.screen_active_mut().unwrap();
-    let label = Label::create(&mut screen).unwrap().into_view();
+    let label = Label::create(&mut screen).unwrap();
     {
         let text = std::ffi::CString::new("temporary").unwrap();
         label.set_text(Some(&text));
@@ -87,7 +87,6 @@ fn sliders_are_bars() {
     assert_eq!(as_bar.get(&lv).unwrap().get_value(), 42);
     let button = Button::create(&mut lv.screen_active_mut().unwrap())
         .unwrap()
-        .view()
         .handle()
         .unwrap();
     assert!(button.upcast::<Obj>().downcast::<Slider>(&lv).is_none());
@@ -153,7 +152,6 @@ fn objects_expose_geometry_flags_and_states() {
     assert_eq!(object.get_screen().unwrap().as_ptr(), screen.as_ptr());
     let switch = Switch::create(&mut lv.edit(last).unwrap())
         .unwrap()
-        .view()
         .get_index();
     assert_eq!(switch, 0);
     assert_eq!(last(&lv).unwrap().get_child_count(), 1);
@@ -176,7 +174,7 @@ fn text_is_copied_out_of_views_and_borrowed_under_exclusive_access() {
     let mut guard = guard();
     let mut lv = session(&mut guard);
     let mut screen = lv.screen_active_mut().unwrap();
-    let label = Label::create(&mut screen).unwrap().into_view();
+    let label = Label::create(&mut screen).unwrap();
     label.set_text(Some(c"hello"));
     let mut buf = [0u8; 8];
     assert_eq!(label.get_text_into(&mut buf), Ok(Some(c"hello")));
@@ -194,7 +192,7 @@ fn text_is_copied_out_of_views_and_borrowed_under_exclusive_access() {
     }
     // NULL comes back as `None`: a dropdown has no fixed text by default.
     let mut screen = lv.screen_active_mut().unwrap();
-    let dropdown = Dropdown::create(&mut screen).unwrap().into_view();
+    let dropdown = Dropdown::create(&mut screen).unwrap();
     assert_eq!(dropdown.get_text_into(&mut buf), Ok(None));
     lv.edit(|lv| lv.screen_active()?.child(-1))
         .unwrap()
@@ -211,7 +209,7 @@ fn labels_take_str_and_numbers() {
     let mut guard = guard();
     let mut lv = session(&mut guard);
     let mut screen = lv.screen_active_mut().unwrap();
-    let label = Label::create(&mut screen).unwrap().into_view();
+    let label = Label::create(&mut screen).unwrap();
     let mut buf = [0u8; 128];
     let mut text = |label: &Label| {
         label
@@ -259,7 +257,6 @@ fn composites_free_their_parts_when_deleted() {
     // The dropdown puts its list on the screen, after itself.
     let index = Dropdown::create(&mut lv.screen_active_mut().unwrap())
         .unwrap()
-        .view()
         .get_index();
     fn dropdown(lv: &Lvgl, index: i32) -> Option<&Dropdown> {
         lv.screen_active()?.child(index)?.downcast()
@@ -294,7 +291,7 @@ fn labels_take_formatted_text() {
     let mut guard = guard();
     let mut lv = session(&mut guard);
     let mut screen = lv.screen_active_mut().unwrap();
-    let label = Label::create(&mut screen).unwrap().into_view();
+    let label = Label::create(&mut screen).unwrap();
     let value = 3.5f32;
     label
         .set_text_fmt(format_args!("{} élans, {value:.2} — {:>8}|", 42, "日本"))

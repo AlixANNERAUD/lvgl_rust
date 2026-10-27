@@ -60,7 +60,8 @@ pub fn emit(classifier: &Classifier, plans: &BTreeMap<String, Plan>) -> String {
     // The core's own `ObjMut` methods count as base object methods.
     const CORE_OBJMUT: &[&str] = &[
         "view",
-        "as_base",
+        "into_base",
+        "into_view",
         "as_raw",
         "delete",
         "clean",
@@ -602,8 +603,10 @@ fn emit_method(classifier: &Classifier, m: &Method) -> TokenStream {
 /// `W::create` and `W::create_owned`. Creating an object runs its
 /// constructors, adds it to the default group and notifies its parent: what
 /// that reaches decides the access, as for any other call. Exclusive
-/// creation goes through the parent's `ObjMut` and lends the new object's
-/// `ObjMut`, borrowing the parent's.
+/// creation goes through the parent's `ObjMut` and lends a view of the new
+/// object borrowing it, like any exclusive call returning an object: an
+/// `ObjMut` of the child would allow exclusive calls that delete the parent
+/// while its `ObjMut` is in scope.
 fn emit_create(
     classifier: &Classifier,
     m: &Method,
@@ -620,15 +623,18 @@ fn emit_create(
             /// Needs exclusive access (the parent's `ObjMut`): creation can
             /// reach code that moves or deletes other objects. Callbacks
             /// create objects through [`Lvgl::post`](crate::Lvgl::post).
+            /// The new widget is lent as a view borrowing the parent's
+            /// `ObjMut`; exclusive calls on it go through a handle once
+            /// that borrow ends.
             pub fn create<'p, P: crate::Widget>(
                 parent: &'p mut crate::ObjMut<'_, P>,
-            ) -> Result<crate::ObjMut<'p, Self>, crate::Error> {
+            ) -> Result<&'p Self, crate::Error> {
                 crate::base::gen_support::check_create(parent.as_raw())?;
                 // SAFETY: exclusive access through the parent's `ObjMut`, as
                 // the table requires; the call does not consume the parent.
                 let p = unsafe { crate::sys::#c_fn(parent.as_raw()) };
-                // SAFETY: just created, of this class; the result reborrows
-                // the parent's exclusive access.
+                // SAFETY: just created, of this class; the view borrows the
+                // parent's `ObjMut`, so no exclusive call runs while it lives.
                 unsafe { crate::base::gen_support::created::<#ty>(p) }
             }
 
@@ -637,7 +643,7 @@ fn emit_create(
             pub fn create_owned<P: crate::Widget>(
                 parent: &mut crate::ObjMut<'_, P>,
             ) -> Result<crate::Owned<#ty>, crate::Error> {
-                crate::WidgetExt::own(Self::create(parent)?.view())
+                crate::WidgetExt::own(Self::create(parent)?)
             }
         };
     }

@@ -101,11 +101,11 @@ fn top_layer(lv: &Lvgl) -> &Obj {
 fn views_reach_children_and_parents() {
     let mut guard = guard();
     let mut lv = session(&mut guard);
-    let child = {
-        let mut screen = lv.screen_active_mut().unwrap();
-        let mut parent = Obj::create(&mut screen).unwrap();
-        Obj::create(&mut parent).unwrap().view().as_ptr()
-    };
+    Obj::create(&mut lv.screen_active_mut().unwrap()).unwrap();
+    // The new object's own `ObjMut`, once the screen's borrow ended.
+    let child = Obj::create(&mut lv.edit(|lv| lv.screen_active()?.child(-1)).unwrap())
+        .unwrap()
+        .as_ptr();
     let parent = lv.screen_active().unwrap().child(-1).unwrap();
     assert_eq!(parent.child(0).unwrap().as_ptr(), child);
     assert_eq!(
@@ -173,7 +173,6 @@ fn reparenting_refuses_cycles() {
     let mut lv = session(&mut guard);
     let parent = Obj::create(&mut lv.screen_active_mut().unwrap())
         .unwrap()
-        .view()
         .as_ptr();
     fn select_parent(lv: &Lvgl) -> Option<&Obj> {
         lv.screen_active()?.child(-1)
@@ -217,8 +216,8 @@ mod handles {
         let before = used_slots();
         let mut screen = lv.screen_active_mut().unwrap();
         let object = Obj::create(&mut screen).unwrap();
-        let first = object.view().handle().unwrap();
-        assert_eq!(object.view().handle().unwrap(), first);
+        let first = object.handle().unwrap();
+        assert_eq!(object.handle().unwrap(), first);
         assert_eq!(used_slots(), before + 1);
         first.get_mut(&mut lv).unwrap().delete().unwrap();
         assert_eq!(first.get(&lv).err(), Some(Error::Dead));
@@ -233,7 +232,6 @@ mod handles {
         let parent = Obj::create_owned(&mut lv.screen_active_mut().unwrap()).unwrap();
         let child = Obj::create(&mut parent.get_mut(&mut lv).unwrap())
             .unwrap()
-            .view()
             .handle()
             .unwrap();
         let grandchild = Obj::create_owned(&mut child.get_mut(&mut lv).unwrap()).unwrap();
@@ -331,7 +329,7 @@ mod handles {
         let owned = Obj::create_owned(&mut lv.screen_active_mut().unwrap()).unwrap();
         let mut parent = owned.get_mut(&mut lv).unwrap();
         Obj::create(&mut parent).unwrap();
-        let child = Obj::create(&mut parent).unwrap().view().handle().unwrap();
+        let child = Obj::create(&mut parent).unwrap().handle().unwrap();
         parent.view().clean_later().unwrap();
         lv.timer_handler();
         let parent = owned.get(&lv).unwrap();
@@ -354,7 +352,6 @@ mod handles {
         // Other slots come and go meanwhile.
         let other = Obj::create(&mut lv.screen_active_mut().unwrap())
             .unwrap()
-            .view()
             .handle()
             .unwrap();
         other.get_mut(&mut lv).unwrap().delete().unwrap();
@@ -370,7 +367,6 @@ mod handles {
         let mut lv = session(&mut guard);
         let stale = Obj::create(&mut lv.screen_active_mut().unwrap())
             .unwrap()
-            .view()
             .handle()
             .unwrap();
         stale.get_mut(&mut lv).unwrap().delete().unwrap();
@@ -378,7 +374,6 @@ mod handles {
         let mut handles = std::vec::Vec::new();
         while let Ok(handle) = Obj::create(&mut lv.screen_active_mut().unwrap())
             .unwrap()
-            .view()
             .handle()
         {
             handles.push(handle);
@@ -401,7 +396,6 @@ mod handles {
         let mut lv = session(&mut guard);
         let handle = Obj::create(&mut lv.screen_active_mut().unwrap())
             .unwrap()
-            .view()
             .handle()
             .unwrap();
         let same: Handle<Obj> = handle.downcast::<Obj>(&lv).unwrap().upcast();
@@ -418,7 +412,6 @@ mod handles {
         assert_eq!(CELL.get(), None);
         let handle = Obj::create(&mut lv.screen_active_mut().unwrap())
             .unwrap()
-            .view()
             .handle()
             .unwrap();
         CELL.set(Some(handle));
@@ -440,7 +433,6 @@ mod handles {
         let before = used_slots();
         let object = Obj::create(&mut lv.screen_active_mut().unwrap())
             .unwrap()
-            .view()
             .as_ptr();
         let handle = lv
             .screen_active()
@@ -581,7 +573,6 @@ mod protocol {
         let mut handles = std::vec::Vec::new();
         while let Ok(handle) = Obj::create(&mut lv.screen_active_mut().unwrap())
             .unwrap()
-            .view()
             .handle()
         {
             assert!(!handles.contains(&handle));
@@ -598,7 +589,6 @@ mod protocol {
             let owned = Obj::create_owned(&mut lv.screen_active_mut().unwrap()).unwrap();
             let bystander = Obj::create(&mut lv.screen_active_mut().unwrap())
                 .unwrap()
-                .view()
                 .handle()
                 .unwrap();
             let thread = loom::thread::spawn(move || drop(owned));
@@ -622,7 +612,6 @@ mod protocol {
             owned.get(&lv).unwrap().delete_later().unwrap();
             let reused = Obj::create(&mut lv.screen_active_mut().unwrap())
                 .unwrap()
-                .view()
                 .handle()
                 .unwrap();
             let thread = loom::thread::spawn(move || drop(owned));
@@ -669,7 +658,6 @@ mod lvgl_only {
         }
         let other = Obj::create(&mut lv.screen_active_mut().unwrap())
             .unwrap()
-            .view()
             .handle()
             .unwrap();
         // The label cannot move; the textarea, which keeps its label by
@@ -695,9 +683,8 @@ mod lvgl_only {
         let mut guard = guard();
         let mut lv = session(&mut guard);
         let mut screen = lv.screen_active_mut().unwrap();
-        let mut button = Button::create(&mut screen).unwrap();
-        let text = Label::create_owned(&mut button).unwrap();
-        let button = button.view().handle().unwrap();
+        let button = Button::create(&mut screen).unwrap().handle().unwrap();
+        let text = Label::create_owned(&mut button.get_mut(&mut lv).unwrap()).unwrap();
         // A label put in a button by the application can be moved back
         // and deleted; the button can be cleaned.
         let screen = lv.screen_active().unwrap().handle().unwrap();
@@ -757,7 +744,6 @@ mod lvgl_only {
         };
         let user = Obj::create(&mut lv.edit(|lv| Some(from_raw(lv, page))).unwrap())
             .unwrap()
-            .view()
             .handle()
             .unwrap();
         let page = from_raw(&lv, page);
@@ -848,12 +834,12 @@ mod lvgl_only {
         Obj::create(&mut lv.edit(|lv| Some(from_raw(lv, page))).unwrap()).unwrap();
         // Siblings in a plain object can be reordered.
         let mut screen = lv.screen_active_mut().unwrap();
-        let mut parent = Obj::create(&mut screen).unwrap();
-        let parent_handle = parent.view().handle().unwrap();
+        let parent_handle = Obj::create(&mut screen).unwrap().handle().unwrap();
+        let mut parent = parent_handle.get_mut(&mut lv).unwrap();
         Obj::create(&mut parent).unwrap();
         let second = Obj::create(&mut parent).unwrap();
-        let second_ptr = second.view().as_ptr();
-        let second = second.view().handle().unwrap();
+        let second_ptr = second.as_ptr();
+        let second = second.handle().unwrap();
         second.get_mut(&mut lv).unwrap().move_to_index(0).unwrap();
         let parent = parent_handle.get(&lv).unwrap();
         assert_eq!(parent.child(0).unwrap().as_ptr(), second_ptr);

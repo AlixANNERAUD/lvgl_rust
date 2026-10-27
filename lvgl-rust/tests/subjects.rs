@@ -66,7 +66,7 @@ fn object_observers_go_with_their_object() {
     let mut guard = guard();
     let mut lv = session(&mut guard);
     let mut screen = lv.screen_active_mut().unwrap();
-    let object = Obj::create(&mut screen).unwrap().into_view();
+    let object = Obj::create(&mut screen).unwrap();
     LEVEL
         .observe_obj(object, (), |ctx, (), _| {
             assert!(ctx.target().is_some());

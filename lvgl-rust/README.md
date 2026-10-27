@@ -13,8 +13,10 @@ else stays reachable through `lvgl_rust::sys`.
 - **No dangling objects.** Views (`&Obj`) borrow the session; creating,
   deleting and moving objects need exclusive access. Objects are created
   through their parent's `ObjMut` (`Label::create(&mut parent)?`), which
-  lends the new object's `ObjMut` (`.view()` or `.into_view()` for its
-  shared methods); `create_owned` returns an `Owned`. `Handle`s (4 bytes) report deleted objects as
+  lends a view of the new object borrowing it (an `ObjMut` of the child
+  would allow calls that delete the parent); exclusive calls on the child
+  go through its handle once that borrow ends. `create_owned` returns an
+  `Owned`. `Handle`s (4 bytes) report deleted objects as
   `Error::Dead`, whatever deleted them. `Owned` deletes its object when
   dropped, from any thread. A generated function the access audit finds
   shared is a view method only (from an `ObjMut`, call it through
@@ -110,9 +112,9 @@ let mut guard = Guard(/* lock */);
 let mut lv = init(&mut guard)?;
 let screen = lv.create_screen()?;              // Owned<Obj>
 let mut parent = screen.get_mut(&mut lv)?;     // ObjMut<Obj>, borrows `lv`
-let mut panel = Obj::create(&mut parent)?;     // ObjMut<Obj>, borrows `parent`
-panel.add_style(&PANEL, Selector::DEFAULT);
-let panel = panel.view().handle()?;            // Handle<Obj>, storable
+let panel = Obj::create(&mut parent)?;         // &Obj, borrows `parent`
+let panel = panel.handle()?;                   // Handle<Obj>, storable
+panel.get_mut(&mut lv)?.add_style(&PANEL, Selector::DEFAULT);
 lv.load_screen(screen.handle(), ScreenAnim::NONE)?;
 loop {
     let wait = lv.timer_handler();

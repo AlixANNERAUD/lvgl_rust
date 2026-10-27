@@ -54,7 +54,7 @@ fn queues_record_events_for_async_code() {
     // SAFETY: session held.
     unsafe { sys::lv_display_create(240, 160) };
     let mut screen = lv.screen_active_mut().unwrap();
-    let object = Obj::create(&mut screen).unwrap().into_view();
+    let object = Obj::create(&mut screen).unwrap();
     object.subscribe(EventCode::CLICKED, &CLICKS).unwrap();
     let object = object.as_ptr();
     let rx = CLICKS.receiver(&lv).unwrap();

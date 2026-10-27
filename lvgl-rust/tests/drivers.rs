@@ -122,7 +122,6 @@ fn displays_and_input_devices() {
     static CLICKS: AtomicU32 = AtomicU32::new(0);
     Button::create(&mut lv.screen_active_mut().unwrap())
         .unwrap()
-        .view()
         .on(EventCode::CLICKED, |_| {
             CLICKS.fetch_add(1, Relaxed);
         })

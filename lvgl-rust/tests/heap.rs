@@ -41,7 +41,7 @@ fn boxed_handlers_live_until_their_object_is_deleted() {
     let mut lv = session(&mut guard);
     let counter = Arc::new(AtomicU32::new(0));
     let mut screen = lv.screen_active_mut().unwrap();
-    let object = Obj::create(&mut screen).unwrap().into_view();
+    let object = Obj::create(&mut screen).unwrap();
     let mine = counter.clone();
     object
         .on_boxed(EventCode::CLICKED, move |_| {

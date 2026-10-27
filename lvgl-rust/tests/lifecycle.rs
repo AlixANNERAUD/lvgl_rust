@@ -22,7 +22,7 @@ fn init_enter_deinit() {
     // SAFETY: session held.
     unsafe { sys::lv_display_create(32, 32) };
     let mut screen = lv.screen_active_mut().unwrap();
-    let object = Obj::create(&mut screen).unwrap().into_view();
+    let object = Obj::create(&mut screen).unwrap();
     #[cfg(not(lvgl_rust_views_only))]
     let handle = {
         use lvgl_rust::WidgetExt;

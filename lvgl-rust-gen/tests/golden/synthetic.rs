@@ -246,9 +246,12 @@ impl crate::widgets::Bar {
     /// Needs exclusive access (the parent's `ObjMut`): creation can
     /// reach code that moves or deletes other objects. Callbacks
     /// create objects through [`Lvgl::post`](crate::Lvgl::post).
+    /// The new widget is lent as a view borrowing the parent's
+    /// `ObjMut`; exclusive calls on it go through a handle once
+    /// that borrow ends.
     pub fn create<'p, P: crate::Widget>(
         parent: &'p mut crate::ObjMut<'_, P>,
-    ) -> Result<crate::ObjMut<'p, Self>, crate::Error> {
+    ) -> Result<&'p Self, crate::Error> {
         crate::base::gen_support::check_create(parent.as_raw())?;
         let p = unsafe { crate::sys::lv_bar_create(parent.as_raw()) };
         unsafe { crate::base::gen_support::created::<crate::widgets::Bar>(p) }
@@ -258,7 +261,7 @@ impl crate::widgets::Bar {
     pub fn create_owned<P: crate::Widget>(
         parent: &mut crate::ObjMut<'_, P>,
     ) -> Result<crate::Owned<crate::widgets::Bar>, crate::Error> {
-        crate::WidgetExt::own(Self::create(parent)?.view())
+        crate::WidgetExt::own(Self::create(parent)?)
     }
     /// `lv_bar_set_value`.
     #[inline]

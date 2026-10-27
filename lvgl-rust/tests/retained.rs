@@ -130,7 +130,7 @@ fn button_maps_are_terminated_and_control_maps_cover_them() {
     let mut lv = session(&mut guard);
     assert_eq!(KEYPAD.button_count(), 3);
     let mut screen = lv.screen_active_mut().unwrap();
-    let matrix = ButtonMatrix::create(&mut screen).unwrap().into_view();
+    let matrix = ButtonMatrix::create(&mut screen).unwrap();
     matrix.set_map(&KEYPAD);
     let mut buf = [0u8; 4];
     assert_eq!(matrix.get_button_text_into(2, &mut buf), Ok(Some(c"3")));
@@ -214,7 +214,6 @@ fn an_open_dropdown_list_follows_its_options() {
     let mut lv = session(&mut guard);
     let index = Dropdown::create(&mut lv.screen_active_mut().unwrap())
         .unwrap()
-        .view()
         .get_index();
     fn dropdown(lv: &Lvgl, index: i32) -> Option<&Dropdown> {
         lv.screen_active()?.child(index)?.downcast()
@@ -256,15 +255,15 @@ fn textarea_labels_and_degenerate_scales_are_refused() {
     let mut guard = guard();
     let mut lv = session(&mut guard);
     let mut screen = lv.screen_active_mut().unwrap();
-    let textarea = TextArea::create(&mut screen).unwrap().into_view();
+    let textarea = TextArea::create(&mut screen).unwrap();
     let label = textarea.get_label().unwrap().downcast::<Label>().unwrap();
     // The textarea edits this text in place: static text would be written.
     assert_eq!(label.set_text_static(Some(c"x")), Err(Error::Internal));
     let mut screen = lv.screen_active_mut().unwrap();
-    let other = Label::create(&mut screen).unwrap().into_view();
+    let other = Label::create(&mut screen).unwrap();
     other.set_text_static(Some(c"fine")).unwrap();
     let mut screen = lv.screen_active_mut().unwrap();
-    let scale = Scale::create(&mut screen).unwrap().into_view();
+    let scale = Scale::create(&mut screen).unwrap();
     assert_eq!(scale.set_range(5, 5), Err(Error::InvalidArg));
     scale.set_range(0, 10).unwrap();
     assert_eq!(scale.set_min_value(10), Err(Error::InvalidArg));

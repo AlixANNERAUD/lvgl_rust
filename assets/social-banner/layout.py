@@ -10,11 +10,11 @@ K, T, F, N, C, P, S = '#c678dd', '#e5c07b', '#61afef', '#d19a66', '#7f848e', '#d
 # Each line: list of (text, color).
 code = [
     [('let ', K), ('arc', P), (' = ', P), ('Arc', T), ('::', P), ('create', F), ('(screen)?;', P)],
-    [('arc', P), ('.', P), ('view', F), ('().', P), ('set_range', F), ('(', P), ('10', N), (', ', P), ('30', N), (');', P)],
-    [('arc', P), ('.', P), ('view', F), ('().', P), ('set_value', F), ('(', P), ('21', N), (');', P)],
+    [('arc', P), ('.', P), ('set_range', F), ('(', P), ('10', N), (', ', P), ('30', N), (');', P)],
+    [('arc', P), ('.', P), ('set_value', F), ('(', P), ('21', N), (');', P)],
     [],
     [('let ', K), ('lights', P), (' = ', P), ('Switch', T), ('::', P), ('create', F), ('(screen)?;', P)],
-    [('lights', P), ('.', P), ('view', F), ('().', P), ('on', F), ('(', P), ('EventCode', T), ('::', P), ('VALUE_CHANGED', N), (', |e| {', P)],
+    [('lights', P), ('.', P), ('on', F), ('(', P), ('EventCode', T), ('::', P), ('VALUE_CHANGED', N), (', |e| {', P)],
     [('    // Handlers get shared access:', C)],
     [('    // exclusive work is posted.', C)],
     [('    ', P), ('let ', K), ('_ = e.', P), ('lv', F), ('().', P), ('post', F), ('(toggle_lights, ());', P)],

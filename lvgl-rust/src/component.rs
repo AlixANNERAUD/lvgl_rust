@@ -6,12 +6,14 @@ use crate::{Error, Handle, Lvgl, Widget};
 /// [`Handle`] or an [`Owned`](crate::Owned)) and handles to its parts,
 /// built by an associated function in one of two forms:
 ///
-/// - `fn build(parent: &mut ObjMut<'_, impl Widget>) -> Result<Self, Error>`,
-///   creating each part through its parent's [`ObjMut`](crate::ObjMut)
-///   (creation needs exclusive access);
+/// - `fn build(parent: &mut ObjMut<'_, impl Widget>) -> Result<Self, Error>`
+///   when every part is a direct child set up with shared calls: creating
+///   through the parent's [`ObjMut`](crate::ObjMut) lends a view of each
+///   part;
 /// - `fn build(parent: Handle<Obj>, lv: &mut Lvgl) -> Result<Self, Error>`
-///   when the caller keeps a handle, resolving `parent` with
-///   [`Handle::get_mut`] first.
+///   when parts have children of their own or need exclusive calls: each
+///   part's handle gives its own `ObjMut` ([`Handle::get_mut`]) once the
+///   parent's borrow ends.
 ///
 /// Handlers have shared access only: a handler that builds a component
 /// posts the build with [`Lvgl::post`], which runs it with exclusive access
@@ -24,7 +26,7 @@ use crate::{Error, Handle, Lvgl, Widget};
 ///
 /// ```no_run
 /// use lvgl_rust::{
-///     Component, Error, Handle, Lvgl, Obj, ObjMut, Widget, WidgetExt,
+///     Component, Error, Handle, Lvgl, Obj, WidgetExt,
 ///     enums::EventCode,
 ///     widgets::{Button, Label},
 /// };
@@ -35,12 +37,13 @@ use crate::{Error, Handle, Lvgl, Widget};
 /// }
 ///
 /// impl Counter {
-///     fn build(parent: &mut ObjMut<'_, impl Widget>) -> Result<Self, Error> {
-///         let mut button = Button::create(parent)?;
-///         let label = Label::create(&mut button)?.into_view();
+///     fn build(parent: Handle<Obj>, lv: &mut Lvgl) -> Result<Self, Error> {
+///         let button = Button::create(&mut parent.get_mut(lv)?)?.handle()?;
+///         let mut edit = button.get_mut(lv)?;
+///         let label = Label::create(&mut edit)?;
 ///         label.set_text_i32(0);
 ///         let label = label.handle()?;
-///         let button = button.into_view();
+///         let button = button.get(lv)?;
 ///         button.on_with(EventCode::CLICKED, label, |e, label| {
 ///             if let Ok(label) = label.get(e.lv()) {
 ///                 let mut buf = [0u8; 12];
@@ -59,9 +62,7 @@ use crate::{Error, Handle, Lvgl, Widget};
 ///
 /// // From a handler: build later, with exclusive access.
 /// fn add_counter(lv: &mut Lvgl, parent: Handle<Obj>) {
-///     if let Ok(mut parent) = parent.get_mut(lv) {
-///         let _ = Counter::build(&mut parent);
-///     }
+///     let _ = Counter::build(parent, lv);
 /// }
 ///
 /// fn install(button: &Obj, parent: Handle<Obj>) -> Result<(), Error> {
