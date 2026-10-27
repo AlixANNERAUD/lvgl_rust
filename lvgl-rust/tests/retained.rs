@@ -269,3 +269,349 @@ fn textarea_labels_and_degenerate_scales_are_refused() {
         lv.edit(last).unwrap().delete().unwrap();
     }
 }
+
+fn render() {
+    let before = FLUSHES.load(Ordering::Relaxed);
+    // SAFETY: session held by the caller; lays out and draws the screen.
+    unsafe { sys::lv_refr_now(core::ptr::null_mut()) };
+    assert!(FLUSHES.load(Ordering::Relaxed) > before);
+}
+
+mod grids {
+    use super::*;
+    use lvgl_rust::{GridTemplate, Track, enums::GridAlign, grid_template, props};
+
+    static COLUMNS: GridTemplate = grid_template![Track::px(40), Track::fr(1), Track::CONTENT];
+    static ONE: GridTemplate = grid_template![Track::fr(1)];
+    const GRID: u16 = sys::lv_layout_t_LV_LAYOUT_GRID as u16;
+    const FLEX: u16 = sys::lv_layout_t_LV_LAYOUT_FLEX as u16;
+
+    #[test]
+    fn templates_are_terminated_and_never_empty() {
+        assert_eq!(COLUMNS.track_count(), 3);
+        assert_eq!(ONE.track_count(), 1);
+        let refused: [fn() -> GridTemplate; 4] = [
+            // No track: placing a child would read x[-1].
+            || GridTemplate::new(&[Track::END]),
+            || GridTemplate::new(&[]),
+            || {
+                static OPEN: [Track; 1] = [Track::px(1)];
+                GridTemplate::new(&OPEN)
+            },
+            || {
+                static EARLY: [Track; 4] = [Track::px(1), Track::END, Track::px(2), Track::END];
+                GridTemplate::new(&EARLY)
+            },
+        ];
+        for build in refused {
+            assert!(std::panic::catch_unwind(build).is_err());
+        }
+        assert!(std::panic::catch_unwind(|| Track::px(-1)).is_err());
+        assert!(std::panic::catch_unwind(|| Track::px(sys::LV_GRID_CONTENT as i32)).is_err());
+        assert!(std::panic::catch_unwind(|| Track::fr(0)).is_err());
+        // LV_GRID_FR(100) is the terminator.
+        assert!(std::panic::catch_unwind(|| Track::fr(100)).is_err());
+        let big = std::panic::catch_unwind(|| {
+            static TRACKS: std::sync::OnceLock<Vec<Track>> = std::sync::OnceLock::new();
+            let tracks = TRACKS.get_or_init(|| {
+                let half = Track::px(sys::LV_COORD_MAX as i32 / 2 + 1);
+                vec![half, half, Track::END]
+            });
+            GridTemplate::new(tracks)
+        });
+        assert!(big.is_err(), "the fixed pixels overflow LVGL's sum");
+    }
+
+    #[test]
+    fn children_beyond_the_template_are_clamped() {
+        let mut guard = guard();
+        let mut lv = session(&mut guard);
+        let screen = lv.screen_active().unwrap();
+        let container = Obj::create(screen).unwrap();
+        let index = container.get_index();
+        fn container_of(lv: &Lvgl, index: i32) -> Option<&Obj> {
+            lv.screen_active()?.child(index)
+        }
+        lv.edit(|lv| container_of(lv, index))
+            .unwrap()
+            .set_size(200, 120);
+        for template in [&COLUMNS, &ONE] {
+            lv.edit(|lv| container_of(lv, index))
+                .unwrap()
+                .set_grid_dsc_array(template, &ONE)
+                .unwrap();
+            let cells = [
+                (0, 1, 0, 1),
+                (2, 1, 0, 1),
+                (100, 1000, 7, 3),
+                (-5, -1, -9, 0),
+                (
+                    i32::MAX,
+                    GridTemplate::MAX_SPAN,
+                    i32::MIN,
+                    GridTemplate::MAX_SPAN,
+                ),
+            ];
+            for (column, column_span, row, row_span) in cells {
+                Obj::create(container_of(&lv, index).unwrap()).unwrap();
+                let mut child = lv.edit(|lv| container_of(lv, index)?.child(-1)).unwrap();
+                child
+                    .set_grid_cell(
+                        GridAlign::STRETCH,
+                        column,
+                        column_span,
+                        GridAlign::END,
+                        row,
+                        row_span,
+                    )
+                    .unwrap();
+                // `pos + span` would overflow in LVGL's clamp.
+                for span in [GridTemplate::MAX_SPAN + 1, i32::MAX] {
+                    assert_eq!(
+                        child.set_grid_cell(GridAlign::START, 2, span, GridAlign::START, 0, 1),
+                        Err(Error::InvalidArg)
+                    );
+                    assert_eq!(
+                        child.set_grid_cell(GridAlign::START, 0, 1, GridAlign::START, 2, span),
+                        Err(Error::InvalidArg)
+                    );
+                    assert_eq!(
+                        child.set_style_grid_cell_column_span(span, Selector::DEFAULT),
+                        Err(Error::InvalidArg)
+                    );
+                    assert_eq!(
+                        child.set_style_grid_cell_row_span(span, Selector::DEFAULT),
+                        Err(Error::InvalidArg)
+                    );
+                }
+            }
+            {
+                let mut style = lv.style(&DYNAMIC);
+                assert_eq!(
+                    style.set_grid_cell_column_span(i32::MAX),
+                    Err(Error::InvalidArg)
+                );
+                assert_eq!(
+                    style.set_grid_cell_row_span(i32::MAX),
+                    Err(Error::InvalidArg)
+                );
+                style
+                    .set_grid_cell_column_span(GridTemplate::MAX_SPAN)
+                    .unwrap();
+                style.reset();
+            }
+            assert!(std::panic::catch_unwind(|| props::grid_cell_row_span(i32::MAX)).is_err());
+            render();
+            lv.edit(|lv| container_of(lv, index))
+                .unwrap()
+                .clean()
+                .unwrap();
+        }
+        lv.edit(|lv| container_of(lv, index))
+            .unwrap()
+            .delete()
+            .unwrap();
+    }
+
+    #[test]
+    fn the_grid_layout_never_goes_without_its_templates() {
+        let mut guard = guard();
+        let mut lv = session(&mut guard);
+        let screen = lv.screen_active().unwrap();
+        let parent = Obj::create(screen).unwrap();
+        let index = parent.get_index();
+        fn parent_of(lv: &Lvgl, index: i32) -> Option<&Obj> {
+            lv.screen_active()?.child(index)
+        }
+        // A grid container without templates inside a grid would be a
+        // subgrid, copying the parent's template from its own cell.
+        Obj::create(parent).unwrap();
+        Obj::create(parent.child(0).unwrap()).unwrap();
+        lv.edit(|lv| parent_of(lv, index))
+            .unwrap()
+            .set_grid_dsc_array(&ONE, &ONE)
+            .unwrap();
+        {
+            let mut inner = lv.edit(|lv| parent_of(lv, index)?.child(0)).unwrap();
+            inner
+                .set_grid_cell(GridAlign::START, 50, 1000, GridAlign::START, 0, 0)
+                .unwrap();
+            assert_eq!(inner.set_layout(GRID.into()), Err(Error::InvalidArg));
+            // LVGL keeps the low 16 bits.
+            assert_eq!(
+                inner.set_layout(0x1_0000 | u32::from(GRID)),
+                Err(Error::InvalidArg)
+            );
+            assert_eq!(
+                inner.set_style_layout(GRID, Part::MAIN),
+                Err(Error::InvalidArg)
+            );
+            inner.set_style_layout(FLEX, Part::MAIN).unwrap();
+            inner.set_layout(0).unwrap();
+        }
+        assert!(std::panic::catch_unwind(|| props::layout(GRID)).is_err());
+        let _ = props::layout(FLEX);
+        {
+            let mut style = lv.style(&DYNAMIC);
+            assert_eq!(style.set_layout(GRID), Err(Error::InvalidArg));
+            style.set_layout(FLEX).unwrap();
+            style.reset();
+        }
+        {
+            let mut grid = lv.edit(|lv| parent_of(lv, index)).unwrap();
+            for prop in [
+                sys::_lv_style_id_t_LV_STYLE_GRID_COLUMN_DSC_ARRAY,
+                sys::_lv_style_id_t_LV_STYLE_GRID_ROW_DSC_ARRAY,
+            ] {
+                assert_eq!(
+                    grid.remove_local_style_prop(prop as u8, Selector::DEFAULT),
+                    Err(Error::InvalidArg)
+                );
+            }
+            assert_eq!(grid.view().get_style_layout(Part::MAIN), GRID);
+        }
+        render();
+        {
+            // Removing the local style removes the layout with the templates.
+            let mut grid = lv.edit(|lv| parent_of(lv, index)).unwrap();
+            grid.remove_style_all();
+            assert_eq!(grid.view().get_style_layout(Part::MAIN), 0);
+            assert_eq!(
+                grid.remove_local_style_prop(
+                    sys::_lv_style_id_t_LV_STYLE_LAYOUT as u8,
+                    Selector::DEFAULT
+                ),
+                Ok(false)
+            );
+        }
+        render();
+        lv.edit(|lv| parent_of(lv, index))
+            .unwrap()
+            .delete()
+            .unwrap();
+    }
+}
+
+mod scales {
+    use super::*;
+    use lvgl_rust::{ScaleLabel, ScaleLabels, enums::ScaleMode, scale_labels, widgets::Scale};
+
+    static LABELS: ScaleLabels = scale_labels![c"low", c"", c"high"];
+
+    #[test]
+    fn labels_are_terminated() {
+        assert_eq!(LABELS.label_count(), 3);
+        assert_eq!(scale_labels![].label_count(), 0);
+        static EARLY: [ScaleLabel; 3] = [ScaleLabel::new(c"a"), ScaleLabel::END, ScaleLabel::END];
+        assert!(std::panic::catch_unwind(|| ScaleLabels::new(&EARLY)).is_err());
+        static OPEN: [ScaleLabel; 1] = [ScaleLabel::new(c"a")];
+        assert!(std::panic::catch_unwind(|| ScaleLabels::new(&OPEN)).is_err());
+    }
+
+    #[test]
+    fn labels_stay_in_bounds_at_every_tick_count() {
+        let mut guard = guard();
+        let mut lv = session(&mut guard);
+        Scale::create(lv.screen_active().unwrap()).unwrap();
+        lv.edit(last).unwrap().set_size(200, 100);
+        let scale = last(&lv).unwrap().downcast::<Scale>().unwrap();
+        scale.set_label_show(true);
+        scale.set_text_src(Some(&LABELS));
+        for mode in [ScaleMode::HORIZONTAL_BOTTOM, ScaleMode::ROUND_INNER] {
+            scale.set_mode(mode);
+            // Fewer, as many and more major ticks than labels; one tick and
+            // none; the largest count (15 bits: the uint16 major tick index
+            // LVGL uses never wraps to 0, which would read label -1).
+            for (total, every) in [
+                (2, 1),
+                (3, 1),
+                (10, 1),
+                (1, 1),
+                (0, 1),
+                (7, 0),
+                (32767, 1),
+                (32767, 32767),
+            ] {
+                scale.set_total_tick_count(total);
+                scale.set_major_tick_every(every);
+                assert_eq!(scale.get_total_tick_count(), total as i32);
+                render();
+            }
+        }
+        // The setters truncate to 15 bits: 65538 ticks are 2.
+        scale.set_total_tick_count(65538);
+        assert_eq!(scale.get_total_tick_count(), 2);
+        render();
+        scale.set_text_src(None);
+        scale.set_total_tick_count(5);
+        render();
+        lv.edit(last).unwrap().delete().unwrap();
+    }
+}
+
+mod keyboards {
+    use super::*;
+    use lvgl_rust::{
+        KeyboardMap,
+        enums::KeyboardMode,
+        widgets::{ButtonMatrix, Keyboard},
+    };
+
+    const WIDE: ButtonmatrixCtrl = ButtonmatrixCtrl::WIDTH_2.union(ButtonmatrixCtrl::POPOVER);
+    static TINY: KeyboardMap = KeyboardMap::new(
+        button_map![c"a", c"\n", c"b"],
+        &[WIDE, ButtonmatrixCtrl::POPOVER],
+    );
+    static WIDE_MAP: ButtonMap = button_map![
+        c"1", c"2", c"3", c"4", c"5", c"6", c"7", c"8", c"9", c"10", c"\n", c"11", c"12", c"13",
+        c"14", c"15", c"16", c"17", c"18", c"19", c"20", c"21", c"22", c"23", c"24", c"25", c"26",
+        c"27", c"28", c"29", c"30", c"31", c"32", c"33", c"34", c"35", c"36", c"37", c"38", c"39",
+        c"40", c"41", c"42", c"43", c"44", c"45", c"46", c"47", c"48", c"49", c"50"
+    ];
+
+    #[test]
+    fn keyboard_maps_need_one_control_entry_per_button() {
+        assert_eq!(TINY.map().button_count(), 2);
+        let short = std::panic::catch_unwind(|| {
+            static ENTRIES: [MapEntry; 3] =
+                [MapEntry::new(c"a"), MapEntry::new(c"b"), MapEntry::END];
+            KeyboardMap::new(ButtonMap::new(&ENTRIES), &[ButtonmatrixCtrl::NONE])
+        });
+        assert!(short.is_err());
+        let long = std::panic::catch_unwind(|| {
+            static ENTRIES: [MapEntry; 2] = [MapEntry::new(c"a"), MapEntry::END];
+            KeyboardMap::new(ButtonMap::new(&ENTRIES), &[ButtonmatrixCtrl::NONE; 2])
+        });
+        assert!(long.is_err());
+    }
+
+    #[test]
+    fn popovers_follow_the_layout_shown() {
+        let mut guard = guard();
+        let mut lv = session(&mut guard);
+        let screen = lv.screen_active().unwrap();
+        let first = Keyboard::create(screen).unwrap();
+        let second = Keyboard::create(screen).unwrap();
+        first.set_mode(KeyboardMode::USER_2);
+        second.set_mode(KeyboardMode::USER_2);
+        // The second keyboard still shows LVGL's 35-button layout: copying
+        // its control flags from TINY's 2 entries would read past them.
+        first.set_map(KeyboardMode::USER_2, &TINY);
+        let mut buf = [0u8; 4];
+        assert_eq!(first.get_button_text_into(1, &mut buf), Ok(Some(c"b")));
+        for enabled in [true, false, true] {
+            second.set_popovers(enabled);
+            assert_eq!(second.get_button_text_into(1, &mut buf), Ok(Some(c"b")));
+            render();
+        }
+        // A button matrix map larger than the mode's control map.
+        let matrix: &ButtonMatrix = second;
+        matrix.set_map(&WIDE_MAP);
+        second.set_popovers(false);
+        assert_eq!(second.get_button_text_into(0, &mut buf), Ok(Some(c"a")));
+        render();
+        for _ in 0..2 {
+            lv.edit(last).unwrap().delete().unwrap();
+        }
+    }
+}

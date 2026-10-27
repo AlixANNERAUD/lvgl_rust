@@ -23,14 +23,30 @@ else stays reachable through `lvgl_rust::sys`.
   are always `'static`, since LVGL keeps pointers to them.
 - **Constant data stays in flash.** Images (`ImageDsc` over aligned
   `ImageData`, checked against their format and size), button maps
-  (`button_map![...]`), gradients and transitions are `const` and
-  `'static`, as LVGL keeps pointers to them.
+  (`button_map![...]`), keyboard layouts (`KeyboardMap`, a button map with
+  one control entry per button), grid templates (`grid_template![...]`,
+  never empty), scale labels (`scale_labels![...]`), gradients and
+  transitions are `const` and `'static`, as LVGL keeps pointers to them.
+  Their shape is checked at compile time. A grid layout is set only with
+  its templates (`ObjMut::set_grid_dsc_array`) and cell spans are bounded,
+  which keeps LVGL's grid code within the templates.
 - **Event handlers without allocation.** `obj.on(code, |e| ...)` (a closure
   without captures), `on_with(code, data, ...)` (a value of up to 4 bytes),
   `on_static` (a `static` context), `on_removable`. Handlers get shared
   access; `delete_later` and `lv.post(f, data)` defer what needs exclusive
-  access to the next drain. Codes sent in the middle of layout or
-  rendering are not offered.
+  access to the next drain.
+- **Restricted handlers for query and draw codes.** Codes sent in the
+  middle of layout or rendering (`GET_SELF_SIZE`, `HIT_TEST`,
+  `COVER_CHECK`, `REFR_EXT_DRAW_SIZE`, `DRAW_*`, `DRAW_TASK_ADDED`) go to
+  `obj.on_query(QueryCode::X, |e| ...)` (also `on_query_with`,
+  `on_query_fn`). The handler gets a `QueryEvent`, with no `Lvgl` access
+  and no views: it reads the typed parameter and writes the answer (`if
+  let Some(size) = e.self_size() { size.extend(w, h) }`, likewise
+  `hit_test()` with `set_result`, `draw_task()` with `set_color`), and the
+  compiler rejects anything else, given the `LvglAccess` contract that a
+  guard is never borrowed for `'static` (a leaked guard would let a
+  thread-local keep shared access). Drawing into a layer stays raw
+  (`Layer::as_ptr`).
 - **Timers.** `lv.timer(period_ms, data, f)` returns an `Owned<Timer>`
   (dropping it deletes the timer); `Handle<Timer>` pauses, resumes and
   changes the period and repeat count. No allocation besides LVGL's timer.
