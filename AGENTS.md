@@ -549,6 +549,15 @@ review the `access.toml` and `events.toml` diffs.
   `req`, `any_req` and `ticks`. `Registry::request_drop` and `drain` pair
   SeqCst fences; keep that pairing if either side changes, and rerun
   `mise run loom`.
+- **Display buffers.** LVGL checks draw buffer sizes only when they are
+  set (and only with `LV_USE_CHECK_ARG`). A display call that changes what
+  is rendered into them (resolution, rotation, color format, render mode)
+  goes through `Display::change_geometry` (`display.rs`): `Geometry::fits`
+  mirrors `lv_refr.c` and `_calculate_draw_buf_size`, and
+  `lvgl_sys_display_reshape_buffers` gives every buffer the new shape,
+  since direct mode with two buffers copies areas between them with their
+  stored shapes. Drivers sit right after their header (`layout::trailing`)
+  in a `repr(C)` cell or an `LvBox` block; keep both layouts in step.
 - **Diagnostic counters.** `counters::count` is the only way to bump
   them, a load and a store like the registry (no read-modify-write), and
   it compiles to nothing without `debug-counters`. Count only what the

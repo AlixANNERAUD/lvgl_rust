@@ -6422,6 +6422,9 @@ access = "shared"
 [fn.lv_zalloc]
 access = "shared"
 
+[fn.lvgl_sys_display_reshape_buffers]
+access = "shared"
+
 [fn.lvgl_sys_hit_test_point]
 access = "shared"
 
