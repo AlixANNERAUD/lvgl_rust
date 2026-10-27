@@ -26,6 +26,10 @@ heap = []
 allocator = []
 # `Label::set_text_fmt` and `Display for Error` (links `core::fmt`).
 fmt = []
+# `defmt::Format` for `Error`, handles and the public enums and plain types.
+defmt = ["dep:defmt"]
+# Four 16-bit counters (8 bytes of .bss) read by `DebugCounters::read`.
+debug-counters = []
 
 color_depth_1 = ["lvgl-rust-sys/color_depth_1"]
 color_depth_8 = ["lvgl-rust-sys/color_depth_8"]
@@ -36,6 +40,7 @@ color_depth_32 = ["lvgl-rust-sys/color_depth_32"]
 [dependencies]
 # The safe layer calls into the linked C library: `build-lvgl` is required.
 lvgl-rust-sys = { version = "0.1.0", path = "../lvgl-rust-sys", default-features = false, features = ["build-lvgl"] }
+defmt = { version = "1.0.1", optional = true }
 
 [dev-dependencies]
 # Compile-fail cases (`tests/compile_fail.rs`, `mise run test-compile-fail`).

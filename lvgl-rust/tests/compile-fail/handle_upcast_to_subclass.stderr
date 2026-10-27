@@ -1,21 +1,21 @@
 error[E0277]: the trait bound `Obj: IsA<Label>` is not satisfied
  --> tests/compile-fail/handle_upcast_to_subclass.rs:6:12
   |
- 6 |     handle.upcast::<Label>()
-   |            ^^^^^^ the trait `IsA<Label>` is not implemented for `Obj`
-   |
+6 |     handle.upcast::<Label>()
+  |            ^^^^^^ the trait `IsA<Label>` is not implemented for `Obj`
+  |
 help: the trait `IsA<Label>` is not implemented for `Obj`
       but trait `IsA<Obj>` is implemented for it
-  --> src/base/view.rs
-   |
-   | unsafe impl IsA<Obj> for Obj {}
-   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-   = help: for that trait implementation, expected `Obj`, found `Label`
+ --> src/base/view.rs
+  |
+  | unsafe impl IsA<Obj> for Obj {}
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  = help: for that trait implementation, expected `Obj`, found `Label`
 note: required by a bound in `Handle::<W>::upcast`
-  --> src/base/handle.rs
-   |
-   |     pub fn upcast<B: Widget>(self) -> Handle<B>
-   |            ------ required by a bound in this associated function
-   |     where
-   |         W: IsA<B>,
-   |            ^^^^^^ required by this bound in `Handle::<W>::upcast`
+ --> src/base/handle.rs
+  |
+  |     pub fn upcast<B: Widget>(self) -> Handle<B>
+  |            ------ required by a bound in this associated function
+  |     where
+  |         W: IsA<B>,
+  |            ^^^^^^ required by this bound in `Handle::<W>::upcast`

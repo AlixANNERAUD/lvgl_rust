@@ -126,6 +126,10 @@ jobs:
         include:
           - target: wasm32-unknown-unknown
             task: cross-wasm32
+          # wasi-sdk and wasmtime come from the task's mise tools; runs the
+          # tests and the desktop example.
+          - target: wasm32-wasip1
+            task: cross-wasip1
           - target: riscv32imc-unknown-none-elf
             task: cross-riscv32
           - target: thumbv6m and riscv32imc firmware
