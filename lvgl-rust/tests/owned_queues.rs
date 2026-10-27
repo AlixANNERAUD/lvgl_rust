@@ -68,7 +68,8 @@ fn last(lv: &Lvgl) -> Option<&Obj> {
 fn owned_queues_record_until_their_object_is_deleted() {
     let mut guard = guard();
     let mut lv = session(&mut guard);
-    let object = Obj::create(lv.screen_active().unwrap()).unwrap();
+    Obj::create(&mut lv.screen_active_mut().unwrap()).unwrap();
+    let object = last(&lv).unwrap();
     let queue = object
         .subscribe_owned::<u32, 2>(EventCode::CLICKED, capture)
         .unwrap();
@@ -109,7 +110,8 @@ fn owned_queues_record_until_their_object_is_deleted() {
 fn closing_an_owned_queue_detaches_it() {
     let mut guard = guard();
     let mut lv = session(&mut guard);
-    let object = Obj::create(lv.screen_active().unwrap()).unwrap();
+    Obj::create(&mut lv.screen_active_mut().unwrap()).unwrap();
+    let object = last(&lv).unwrap();
     let before = event_count(object);
     let queue = object
         .subscribe_owned::<u32, 4>(EventCode::ALL, capture)
@@ -137,7 +139,8 @@ fn queues_of_any_alignment_are_attached() {
     }
     let mut guard = guard();
     let mut lv = session(&mut guard);
-    let object = Obj::create(lv.screen_active().unwrap()).unwrap();
+    Obj::create(&mut lv.screen_active_mut().unwrap()).unwrap();
+    let object = last(&lv).unwrap();
     let queue = object
         .subscribe_owned::<Wide, 3>(EventCode::CLICKED, wide)
         .unwrap();
@@ -156,8 +159,9 @@ static BUBBLED: StaticQueue<u32, 8> = StaticQueue::new(capture);
 fn children_bubble_into_queues_when_asked() {
     let mut guard = guard();
     let mut lv = session(&mut guard);
-    let parent = Obj::create(lv.screen_active().unwrap()).unwrap();
-    let early = Obj::create(parent).unwrap();
+    Obj::create(&mut lv.screen_active_mut().unwrap()).unwrap();
+    Obj::create(&mut lv.edit(last).unwrap()).unwrap();
+    let parent = last(&lv).unwrap();
     let options = SubscribeOptions::new(EventCode::CLICKED).bubble_children();
     let queue = parent.subscribe_owned::<u32, 8>(options, capture).unwrap();
     parent.subscribe(options, &BUBBLED).unwrap();
@@ -166,8 +170,11 @@ fn children_bubble_into_queues_when_asked() {
     // A second subscription adds no second CHILD_CREATED handler.
     let _more = parent.subscribe_owned::<u32, 1>(options, capture).unwrap();
     assert_eq!(event_count(parent), before + 2);
-    let late = Obj::create(parent).unwrap();
-    let grandchild = Obj::create(late).unwrap();
+    Obj::create(&mut lv.edit(last).unwrap()).unwrap();
+    Obj::create(&mut lv.edit(|lv| last(lv)?.child(-1)).unwrap()).unwrap();
+    let parent = last(&lv).unwrap();
+    let (early, late) = (parent.child(0).unwrap(), parent.child(1).unwrap());
+    let grandchild = late.child(0).unwrap();
     send(early, EventCode::CLICKED);
     send(late, EventCode::CLICKED);
     assert_eq!(queue.try_recv(&lv), Recv::Event(EventCode::CLICKED.bits()));
@@ -178,8 +185,10 @@ fn children_bubble_into_queues_when_asked() {
     send(grandchild, EventCode::CLICKED);
     assert_eq!(queue.try_recv(&lv), Recv::Empty);
     // Without the option, children keep their events.
-    let plain = Obj::create(lv.screen_active().unwrap()).unwrap();
-    let child = Obj::create(plain).unwrap();
+    Obj::create(&mut lv.screen_active_mut().unwrap()).unwrap();
+    Obj::create(&mut lv.edit(last).unwrap()).unwrap();
+    let plain = last(&lv).unwrap();
+    let child = plain.child(0).unwrap();
     let quiet = plain
         .subscribe_owned::<u32, 1>(EventCode::CLICKED, capture)
         .unwrap();
@@ -207,8 +216,9 @@ fn delete_target(e: &Event<'_>) -> Option<u32> {
 #[test]
 fn a_queue_deleted_while_recording_outlives_the_frame() {
     let mut guard = guard();
-    let lv = session(&mut guard);
-    let object = Obj::create(lv.screen_active().unwrap()).unwrap();
+    let mut lv = session(&mut guard);
+    Obj::create(&mut lv.screen_active_mut().unwrap()).unwrap();
+    let object = last(&lv).unwrap();
     let queue = object
         .subscribe_owned::<u32, 2>(EventCode::CLICKED, delete_target)
         .unwrap();
@@ -239,7 +249,8 @@ fn close_own_queue(e: &Event<'_>) -> Option<u32> {
 fn a_queue_closed_while_recording_outlives_the_frame() {
     let mut guard = guard();
     let mut lv = session(&mut guard);
-    let object = Obj::create(lv.screen_active().unwrap()).unwrap();
+    Obj::create(&mut lv.screen_active_mut().unwrap()).unwrap();
+    let object = last(&lv).unwrap();
     let before = event_count(object);
     let queue = object
         .subscribe_owned::<u32, 2>(EventCode::CLICKED, close_own_queue)
@@ -263,8 +274,10 @@ fn bubbles(object: &Obj) -> bool {
 fn refused_subscriptions_leave_children_alone() {
     let mut guard = guard();
     let mut lv = session(&mut guard);
-    let parent = Obj::create(lv.screen_active().unwrap()).unwrap();
-    let child = Obj::create(parent).unwrap();
+    Obj::create(&mut lv.screen_active_mut().unwrap()).unwrap();
+    Obj::create(&mut lv.edit(last).unwrap()).unwrap();
+    let parent = last(&lv).unwrap();
+    let child = parent.child(0).unwrap();
     let before = event_count(parent);
     // A code handlers never receive: refused before anything changes.
     let options = SubscribeOptions::new(EventCode::DRAW_MAIN).bubble_children();
@@ -280,7 +293,8 @@ fn refused_subscriptions_leave_children_alone() {
     assert_eq!(event_count(parent), before);
     assert!(!bubbles(child));
     // Children created later do not bubble either.
-    let late = Obj::create(parent).unwrap();
+    Obj::create(&mut lv.edit(last).unwrap()).unwrap();
+    let late = last(&lv).unwrap().child(-1).unwrap();
     assert!(!bubbles(late));
     lv.edit(last).unwrap().delete().unwrap();
 }
@@ -315,15 +329,16 @@ unsafe extern "C" fn send_to_parent(e: *mut sys::lv_event_t) {
 fn owned_queues_ignore_events_trickled_after_delete() {
     let mut guard = guard();
     let mut lv = session(&mut guard);
-    let parent = Obj::create(lv.screen_active().unwrap()).unwrap();
+    Obj::create(&mut lv.screen_active_mut().unwrap()).unwrap();
+    let mut parent = lv.edit(last).unwrap();
     // SAFETY: session held, live object.
     unsafe {
         sys::lv_obj_add_flag(
-            parent.as_ptr(),
+            parent.view().as_ptr(),
             sys::lv_obj_flag_t_LV_OBJ_FLAG_EVENT_TRICKLE,
         )
     };
-    let child = Obj::create(parent).unwrap();
+    let child = Obj::create(&mut parent).unwrap();
     let queue = child
         .subscribe_owned::<u32, 4>(EventCode::ALL, count_ready)
         .unwrap();
@@ -336,7 +351,7 @@ fn owned_queues_ignore_events_trickled_after_delete() {
             core::ptr::null_mut(),
         )
     };
-    send(parent, EventCode::READY);
+    send(last(&lv).unwrap(), EventCode::READY);
     assert_eq!(TRICKLED.load(Relaxed), 1);
     lv.edit(|lv| last(lv)?.child(0)).unwrap().delete().unwrap();
     // The closed queue recorded nothing more; its block waited for the
@@ -364,12 +379,12 @@ fn a_full_registry_refuses_subscriptions_without_a_trace() {
     use lvgl_rust::WidgetExt;
     let mut guard = guard();
     let mut lv = session(&mut guard);
-    let screen = lv.screen_active().unwrap();
     // Every free slot goes to a child of `holders`.
-    let holders = Obj::create(screen).unwrap();
+    Obj::create(&mut lv.screen_active_mut().unwrap()).unwrap();
+    let mut holders = lv.edit(last).unwrap();
     let mut handles = Vec::new();
     loop {
-        let holder = Obj::create(holders).unwrap();
+        let holder = Obj::create(&mut holders).unwrap();
         match holder.handle() {
             Ok(handle) => handles.push(handle),
             Err(error) => {
@@ -379,8 +394,10 @@ fn a_full_registry_refuses_subscriptions_without_a_trace() {
         }
         assert!(handles.len() < 4096, "the registry never filled");
     }
-    let target = Obj::create(screen).unwrap();
-    let child = Obj::create(target).unwrap();
+    Obj::create(&mut lv.screen_active_mut().unwrap()).unwrap();
+    Obj::create(&mut lv.edit(last).unwrap()).unwrap();
+    let target = last(&lv).unwrap();
+    let child = target.child(0).unwrap();
     // One handler for good: the object's event list exists before and
     // after, so the heap is comparable.
     // SAFETY: session held, live object; the callback needs no data.
@@ -404,7 +421,8 @@ fn a_full_registry_refuses_subscriptions_without_a_trace() {
     assert_eq!(event_count(target), before);
     assert_eq!(used_blocks(), used);
     assert!(!bubbles(child));
-    let late = Obj::create(target).unwrap();
+    Obj::create(&mut lv.edit(last).unwrap()).unwrap();
+    let late = last(&lv).unwrap().child(-1).unwrap();
     assert!(!bubbles(late));
     drop(handles);
     lv.edit(last).unwrap().delete().unwrap();
@@ -412,10 +430,12 @@ fn a_full_registry_refuses_subscriptions_without_a_trace() {
 }
 
 #[test]
+#[cfg_attr(target_os = "wasi", ignore = "WASI has no threads")]
 fn owned_queues_drop_on_other_threads() {
     let mut guard = guard();
     let mut lv = session(&mut guard);
-    let object = Obj::create(lv.screen_active().unwrap()).unwrap();
+    Obj::create(&mut lv.screen_active_mut().unwrap()).unwrap();
+    let object = last(&lv).unwrap();
     let queue = object
         .subscribe_owned::<u32, 2>(EventCode::CLICKED, capture)
         .unwrap();

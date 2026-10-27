@@ -42,11 +42,11 @@ fn init_enter_deinit() {
     // Owned sources retired during `deinit` (after its last drain) are
     // freed at once, while LVGL's heap still exists.
     #[cfg(feature = "heap")]
-    let mut lv = lv;
-    #[cfg(feature = "heap")]
     {
         use lvgl_rust::{ImageBuffer, PixelFormat, widgets::Image};
-        let raw = Image::create(screen_of(&lv)).unwrap().as_ptr();
+        let raw = Image::create(&mut lv.screen_active_mut().unwrap())
+            .unwrap()
+            .as_ptr();
         // Heap blocks in use around the handler retiring the source.
         // SAFETY: session held, live object; the callbacks need no data.
         unsafe { sys::lv_obj_add_event_cb(raw, Some(count_before), DELETE, core::ptr::null_mut()) };

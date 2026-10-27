@@ -178,7 +178,8 @@ fn boxed_drivers_live_until_deleted() {
     keys.delete(&mut lv);
 
     // A deferred flush keeps the block alive: deletion is refused until it
-    // completes, from another thread.
+    // completes, from another thread (on this one under WASI, which has no
+    // threads).
     DEFER.store(true, Relaxed);
     lv.edit(|lv| lv.screen_active()?.child(0))
         .unwrap()
@@ -191,6 +192,9 @@ fn boxed_drivers_live_until_deleted() {
         other => panic!("expected Busy: {:?}", other.err().map(|e| e.1)),
     };
     assert_eq!(DROPS.load(Relaxed), 1);
+    #[cfg(target_os = "wasi")]
+    done.ready();
+    #[cfg(not(target_os = "wasi"))]
     std::thread::spawn(move || done.ready()).join().unwrap();
     display.try_delete(&mut lv).map_err(|e| e.1).unwrap();
     assert_eq!(DROPS.load(Relaxed), 2);
