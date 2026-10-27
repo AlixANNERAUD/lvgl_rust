@@ -86,6 +86,9 @@ configuration() { # slots features
     echo "$text"
 }
 
+# Before writing the page: rewriting it would make the commit look dirty.
+revision=$(git describe --always --dirty)
+
 # --- The page ----------------------------------------------------------------
 
 {
@@ -106,7 +109,7 @@ explains where the costs come from.
 | System | ${os:-unknown}, Linux $(uname -r) |
 | Compiler | $(rustc --version) |
 | LVGL | $lvgl |
-| Commit | \`$(git describe --always --dirty)\` |
+| Commit | \`$revision\` |
 | Date | $(date -u +%Y-%m-%d) |
 
 ## Time per operation
