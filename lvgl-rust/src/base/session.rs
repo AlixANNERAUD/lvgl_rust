@@ -199,6 +199,7 @@ impl Lvgl {
         let depth = &reg().hdr.depth;
         let current = depth.get();
         if current >= MAX_CALLBACK_DEPTH {
+            crate::counters::count(crate::counters::Counter::Skipped);
             return None;
         }
         depth.set(current + 1);

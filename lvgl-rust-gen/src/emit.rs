@@ -317,6 +317,7 @@ fn emit_enum(classifier: &Classifier, c_type: &str) -> TokenStream {
         #[doc = #doc]
         #[repr(transparent)]
         #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+        #[cfg_attr(feature = "defmt", derive(defmt::Format))]
         pub struct #name(pub(crate) u32);
 
         #[allow(clippy::unnecessary_cast)] // the bindgen alias may already be `u32`
@@ -414,6 +415,7 @@ fn emit_events(classifier: &Classifier) -> TokenStream {
         /// none reads its parameter (sent as NULL).
         #[repr(transparent)]
         #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+        #[cfg_attr(feature = "defmt", derive(defmt::Format))]
         pub struct SafeEventCode(pub(crate) u32);
 
         #[allow(clippy::unnecessary_cast)] // the bindgen alias may already be `u32`
@@ -427,6 +429,7 @@ fn emit_events(classifier: &Classifier) -> TokenStream {
         /// parameter (sent as NULL).
         #[repr(transparent)]
         #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+        #[cfg_attr(feature = "defmt", derive(defmt::Format))]
         pub struct SendableEventCode(pub(crate) u32);
 
         #[allow(clippy::unnecessary_cast)] // the bindgen alias may already be `u32`
