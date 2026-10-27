@@ -33,8 +33,10 @@ pub struct Method {
 /// Where the wrapper goes (emission rule of the design, 4.8).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Shape {
-    /// `lv_<w>_create(parent)`: `W::create` and `W::create_owned`.
-    Create,
+    /// `lv_<w>_create(parent)`: `W::create` and `W::create_owned`, through
+    /// the parent's `ObjMut` when the table says exclusive, through a view
+    /// of it when it says shared.
+    Create { exclusive: bool },
     /// Shared call on a view: `&self`.
     View,
     /// Exclusive call on an object: `ObjMut<'_, W>`, `self` if it consumes.
@@ -275,7 +277,16 @@ impl<'a> Classifier<'a> {
             }
         };
         let shape = match (entry.access, &class) {
-            _ if create => Shape::Create,
+            (Access::Shared, _) if create => Shape::Create { exclusive: false },
+            // The parent's `ObjMut` lives on after the call: a creation
+            // that may delete its receiver would leave it dangling.
+            (Access::Exclusive, _) if create && entry.consumes => {
+                return Plan::Raw("creation may delete its parent (consumes)".into());
+            }
+            (Access::Exclusive, _) if create => Shape::Create { exclusive: true },
+            (Access::Pure | Access::Isr, _) if create => {
+                return Plan::Raw("pure function creating an object".into());
+            }
             // The style may be in use by objects: changes need exclusive
             // access whatever the function reaches.
             _ if style => Shape::Style,

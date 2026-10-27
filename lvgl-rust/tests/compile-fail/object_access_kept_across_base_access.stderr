@@ -1,0 +1,16 @@
+error[E0382]: borrow of moved value: `button`
+  --> tests/compile-fail/object_access_kept_across_base_access.rs:17:13
+   |
+13 |     let button = lv
+   |         ------ move occurs because `button` has type `ObjMut<'_, lvgl_rust::widgets::Button>`, which does not implement the `Copy` trait
+...
+16 |     button.into_base::<Obj>().delete().unwrap();
+   |            ------------------ `button` moved due to this method call
+17 |     let _ = button.view();
+   |             ^^^^^^ value borrowed here after move
+   |
+note: `lvgl_rust::ObjMut::<'s, W>::into_base` takes ownership of the receiver `self`, which moves `button`
+  --> src/base/objmut.rs
+   |
+   |     pub fn into_base<B: Widget>(self) -> ObjMut<'s, B>
+   |                                 ^^^^

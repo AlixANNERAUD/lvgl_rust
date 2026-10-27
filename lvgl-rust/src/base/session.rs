@@ -29,8 +29,10 @@ pub unsafe trait LvglAccess {}
 /// `!Send` and `!Sync`; obtained from a [`Session`].
 ///
 /// Shared access allows every call that cannot free an object: views,
-/// getters, setters, creation. Calls that may delete objects need exclusive
-/// access, so no view can be held across them.
+/// getters, most setters. Calls that may delete objects or move them
+/// between parents need exclusive access, so no view can be held across
+/// them; creating an object is one of them (it can focus another object,
+/// whose handler may move objects).
 pub struct Lvgl {
     _p: PhantomData<*mut ()>,
 }

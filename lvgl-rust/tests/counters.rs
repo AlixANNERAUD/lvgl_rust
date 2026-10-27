@@ -116,20 +116,23 @@ fn deferred_requests(lv: &mut Lvgl) {
 
     // A dropped `Owned`, a `delete_later` and a `clean_later` are carried
     // out by the drain; `Owned::delete` and a dropped group count too.
-    let owned = Obj::create_owned(screen.get(lv).unwrap()).unwrap();
+    let owned = Obj::create_owned(&mut screen.get_mut(lv).unwrap()).unwrap();
     drop(owned);
-    Obj::create(screen.get(lv).unwrap())
+    Obj::create(&mut screen.get_mut(lv).unwrap())
         .unwrap()
         .delete_later()
         .unwrap();
-    let parent = Obj::create(screen.get(lv).unwrap()).unwrap();
-    Obj::create(parent).unwrap();
-    parent.clean_later().unwrap();
+    let parent = Obj::create(&mut screen.get_mut(lv).unwrap())
+        .unwrap()
+        .handle()
+        .unwrap();
+    Obj::create(&mut parent.get_mut(lv).unwrap()).unwrap();
+    parent.get(lv).unwrap().clean_later().unwrap();
     drop(lv.create_group().unwrap());
     assert_eq!(counts(), (0, 0));
     lv.timer_handler();
     assert_eq!(counts(), (4, 0));
-    Obj::create_owned(screen.get(lv).unwrap())
+    Obj::create_owned(&mut screen.get_mut(lv).unwrap())
         .unwrap()
         .delete(lv)
         .unwrap();
@@ -137,10 +140,15 @@ fn deferred_requests(lv: &mut Lvgl) {
 
     // Requests for objects deleted through their parent before the drain
     // are not counted.
-    let parent = Obj::create(screen.get(lv).unwrap()).unwrap();
-    let owned = Obj::create_owned(parent).unwrap();
-    Obj::create(parent).unwrap().delete_later().unwrap();
-    let parent = parent.handle().unwrap();
+    let parent = Obj::create(&mut screen.get_mut(lv).unwrap())
+        .unwrap()
+        .handle()
+        .unwrap();
+    let owned = Obj::create_owned(&mut parent.get_mut(lv).unwrap()).unwrap();
+    Obj::create(&mut parent.get_mut(lv).unwrap())
+        .unwrap()
+        .delete_later()
+        .unwrap();
     parent.get_mut(lv).unwrap().delete().unwrap();
     drop(owned);
     lv.timer_handler();
@@ -151,12 +159,13 @@ fn deferred_requests(lv: &mut Lvgl) {
     // describe) are dropped and counted as refused; the objects stay.
     // SAFETY: session held; the menu is deleted below, with its children.
     let menu = unsafe { sys::lv_menu_create(screen.get(lv).unwrap().as_ptr()) };
-    let owned = Obj::create_owned(screen.get(lv).unwrap()).unwrap();
+    let owned = Obj::create_owned(&mut screen.get_mut(lv).unwrap()).unwrap();
     let dropped = owned.get(lv).unwrap().as_ptr();
-    let later = Obj::create(screen.get(lv).unwrap()).unwrap();
+    let mut edit = screen.get_mut(lv).unwrap();
+    let later = Obj::create(&mut edit).unwrap();
     later.delete_later().unwrap();
     let later = later.as_ptr();
-    let cleaned = Obj::create(screen.get(lv).unwrap()).unwrap();
+    let cleaned = Obj::create(&mut edit).unwrap();
     cleaned.clean_later().unwrap();
     let cleaned = cleaned.as_ptr();
     // SAFETY: session held; the menu and the three objects are live.

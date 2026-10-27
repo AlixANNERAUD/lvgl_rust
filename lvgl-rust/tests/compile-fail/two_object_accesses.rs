@@ -10,9 +10,11 @@ unsafe impl LvglAccess for Guard {}
 fn main() {
     let mut guard = Guard;
     let mut lv = Lvgl::enter(&mut guard).unwrap();
-    let screen = lv.screen_active().unwrap();
-    let parent = Obj::create(screen).unwrap().handle().unwrap();
-    let child = Obj::create(parent.get(&lv).unwrap())
+    let parent = Obj::create(&mut lv.screen_active_mut().unwrap())
+        .unwrap()
+        .handle()
+        .unwrap();
+    let child = Obj::create(&mut parent.get_mut(&mut lv).unwrap())
         .unwrap()
         .handle()
         .unwrap();

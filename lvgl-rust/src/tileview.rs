@@ -23,8 +23,8 @@
 //! keeps a single descriptor, as LVGL's own.
 
 use crate::{
-    Error, Obj,
-    base::gen_support::{check_create, getter_view, view},
+    Error, Obj, ObjMut, Widget,
+    base::gen_support::{check_create, created, getter_view},
     sys,
     widgets::TileView,
 };
@@ -75,7 +75,9 @@ unsafe extern "C" fn checked_scroll_end(e: *mut sys::lv_event_t) {
 }
 
 impl TileView {
-    /// Creates a tile view in `parent`.
+    /// Creates a tile view in `parent`, with exclusive access (the
+    /// parent's `ObjMut`), like every widget creation; the tile view is
+    /// lent as a view borrowing it.
     ///
     /// [`Error::OutOfMemory`] if the tile view or its checked scroll
     /// handler (see the module) could not be allocated; in the second case
@@ -83,11 +85,11 @@ impl TileView {
     /// no longer changes the active tile).
     ///
     /// `lv_tileview_create`.
-    pub fn create(parent: &Obj) -> Result<&Self, Error> {
-        check_create(parent.as_ptr())?;
-        // SAFETY: shared access through the parent view; creation frees
-        // nothing.
-        let p = unsafe { sys::lv_tileview_create(parent.as_ptr()) };
+    pub fn create<'p, P: Widget>(parent: &'p mut ObjMut<'_, P>) -> Result<&'p Self, Error> {
+        check_create(parent.as_raw())?;
+        // SAFETY: exclusive access through the parent's `ObjMut`, as
+        // `lv_tileview_create`'s access requires.
+        let p = unsafe { sys::lv_tileview_create(parent.as_raw()) };
         if p.is_null() {
             return Err(Error::OutOfMemory);
         }
@@ -118,14 +120,17 @@ impl TileView {
             if checked.is_null() {
                 return Err(Error::OutOfMemory);
             }
-            // SAFETY: just created, of this class.
-            Ok(view::<Self>(p))
+            // SAFETY: just created, of this class; the view borrows the
+            // parent's `ObjMut`.
+            created::<Self>(p)
         }
     }
 
     /// Creates a tile view and takes ownership of it.
     #[cfg(not(lvgl_rust_views_only))]
-    pub fn create_owned(parent: &Obj) -> Result<crate::Owned<Self>, Error> {
+    pub fn create_owned<P: Widget>(
+        parent: &mut ObjMut<'_, P>,
+    ) -> Result<crate::Owned<Self>, Error> {
         crate::WidgetExt::own(Self::create(parent)?)
     }
 

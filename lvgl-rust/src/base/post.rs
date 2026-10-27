@@ -48,7 +48,8 @@ impl Lvgl {
     /// Runs `f(lv, data)` at the next drain (the next
     /// [`Lvgl::enter`](crate::Lvgl::enter) or after
     /// [`Lvgl::timer_handler`](crate::Lvgl::timer_handler)), with exclusive
-    /// access: for callbacks, which get shared access only. `f` is a
+    /// access: for callbacks, which get shared access only (creating,
+    /// deleting or moving objects, setting subjects, ...). `f` is a
     /// function item or a closure without captures. Fails with
     /// [`Error::Busy`] when the queue (`LVGL_RUST_POST_SLOTS`, default 4)
     /// is full.

@@ -38,11 +38,13 @@ struct Counter {
 }
 
 impl Counter {
-    fn build(parent: &Obj) -> Result<Self, Error> {
-        let button = Button::create(parent)?;
-        let label = Label::create(button)?;
+    fn build(parent: Handle<Obj>, lv: &mut Lvgl) -> Result<Self, Error> {
+        let button = Button::create(&mut parent.get_mut(lv)?)?.handle()?;
+        let mut edit = button.get_mut(lv)?;
+        let label = Label::create(&mut edit)?;
         label.set_text_i32(0);
         let label = label.handle()?;
+        let button = button.get(lv)?;
         button.on_with(EventCode::CLICKED, label, |e, label| {
             if let Ok(label) = label.get(e.lv()) {
                 let mut buf = [0u8; 12];
@@ -73,7 +75,7 @@ impl Component for Counter {
 fn a_component_counts_clicks_and_goes_with_its_root() {
     let mut guard = guard();
     let mut lv = session(&mut guard);
-    let counter = Counter::build(lv.screen_active().unwrap()).unwrap();
+    let counter = Counter::build(lv.screen_active().unwrap().handle().unwrap(), &mut lv).unwrap();
     for _ in 0..3 {
         let button = counter.root().get(&lv).unwrap();
         // SAFETY: session held; CLICKED takes no param.

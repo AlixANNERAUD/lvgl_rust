@@ -102,7 +102,8 @@ fn query_codes_follow_the_audit() {
 fn self_size_answers_reach_layout() {
     let mut guard = guard();
     let mut lv = session(&mut guard);
-    let object = Obj::create(lv.screen_active().unwrap()).unwrap();
+    Obj::create(&mut lv.screen_active_mut().unwrap()).unwrap();
+    let object = lv.screen_active().unwrap().child(-1).unwrap();
     object
         .on_query(QueryCode::GET_SELF_SIZE, |e: &QueryEvent<'_>| {
             // Only the code's own parameter is typed.
@@ -130,7 +131,8 @@ fn self_size_answers_reach_layout() {
 fn hit_tests_are_answered_with_user_data() {
     let mut guard = guard();
     let mut lv = session(&mut guard);
-    let object = Obj::create(lv.screen_active().unwrap()).unwrap();
+    Obj::create(&mut lv.screen_active_mut().unwrap()).unwrap();
+    let object = lv.screen_active().unwrap().child(-1).unwrap();
     set_size(object, 100, 100);
     add_flag(object, sys::lv_obj_flag_t_LV_OBJ_FLAG_ADV_HITTEST);
     // Points left of `limit` do not click the object.
@@ -162,7 +164,8 @@ fn ext_draw_size_keeps_the_largest_request() {
     static SEEN: AtomicI32 = AtomicI32::new(0);
     let mut guard = guard();
     let mut lv = session(&mut guard);
-    let object = Obj::create(lv.screen_active().unwrap()).unwrap();
+    Obj::create(&mut lv.screen_active_mut().unwrap()).unwrap();
+    let object = lv.screen_active().unwrap().child(-1).unwrap();
     object
         .on_query(QueryCode::REFR_EXT_DRAW_SIZE, |e: &QueryEvent<'_>| {
             let size = e.ext_draw_size().unwrap();
@@ -208,7 +211,8 @@ fn on_draw(e: &QueryEvent<'_>) {
 fn draw_and_cover_codes_reach_restricted_handlers() {
     let mut guard = guard();
     let mut lv = session(&mut guard);
-    let object = Obj::create(lv.screen_active().unwrap()).unwrap();
+    Obj::create(&mut lv.screen_active_mut().unwrap()).unwrap();
+    let object = lv.screen_active().unwrap().child(-1).unwrap();
     set_size(object, 60, 40);
     add_flag(object, sys::lv_obj_flag_t_LV_OBJ_FLAG_SEND_DRAW_TASK_EVENTS);
     object.on_query_fn(QueryCode::DRAW_MAIN, on_draw).unwrap();
@@ -267,7 +271,8 @@ fn safe_sends_reach_restricted_handlers_without_a_layer() {
     static WITHOUT: AtomicU32 = AtomicU32::new(0);
     let mut guard = guard();
     let mut lv = session(&mut guard);
-    let object = Obj::create(lv.screen_active().unwrap()).unwrap();
+    Obj::create(&mut lv.screen_active_mut().unwrap()).unwrap();
+    let object = lv.screen_active().unwrap().child(-1).unwrap();
     object
         .on_query(QueryCode::DRAW_MAIN_BEGIN, |e: &QueryEvent<'_>| {
             if e.layer().is_none() {
@@ -287,8 +292,9 @@ fn restricted_handlers_block_sessions_without_one_active() {
     static ATTEMPTS: AtomicU32 = AtomicU32::new(0);
     static REFUSED: AtomicU32 = AtomicU32::new(0);
     let mut guard = guard();
-    let lv = session(&mut guard);
-    let object = Obj::create(lv.screen_active().unwrap()).unwrap();
+    let mut lv = session(&mut guard);
+    Obj::create(&mut lv.screen_active_mut().unwrap()).unwrap();
+    let object = lv.screen_active().unwrap().child(-1).unwrap();
     object
         .on_query(QueryCode::GET_SELF_SIZE, |_: &QueryEvent<'_>| {
             ATTEMPTS.fetch_add(1, Relaxed);

@@ -167,7 +167,13 @@ fn audit(check: bool, verbose: bool) -> Result<(), String> {
                 Verdict::Exclusive(path) => Entry {
                     access: "exclusive".to_owned(),
                     why: Some(path.join(" -> ")),
-                    consumes: graph.deletes(name),
+                    consumes: graph.deletes_except(
+                        name,
+                        config
+                            .own_deletions
+                            .get(name)
+                            .map_or(&[][..], |o| &o.calls[..]),
+                    ),
                 },
                 Verdict::Raw(path) => Entry {
                     access: "raw".to_owned(),

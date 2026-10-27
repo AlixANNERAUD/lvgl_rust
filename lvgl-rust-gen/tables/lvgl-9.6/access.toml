@@ -2808,7 +2808,6 @@ why = "schedules a deletion: lv_msgbox_close_async -> lv_obj_delete_async -> cor
 [fn.lv_msgbox_create]
 access = "exclusive"
 why = "lv_msgbox_create -> lv_obj_delete -> core/lv_obj_tree::obj_delete_core"
-consumes = true
 
 [fn.lv_msgbox_get_content]
 access = "shared"

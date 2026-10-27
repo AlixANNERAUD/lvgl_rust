@@ -6,7 +6,7 @@ use super::{
     ffi::{self, lv_obj_class_t, lv_obj_t},
     registry::reg,
 };
-use crate::{Error, Lvgl};
+use crate::{Error, Lvgl, ObjMut};
 use core::{cell::UnsafeCell, marker::PhantomData, marker::PhantomPinned, ptr::NonNull};
 
 #[cfg(not(lvgl_rust_views_only))]
@@ -111,6 +111,22 @@ pub(crate) unsafe fn in_deletion(mut o: *mut lv_obj_t) -> bool {
     false
 }
 
+/// The view of an object an exclusive call just created (also used by the
+/// generated `create` functions): [`Error::OutOfMemory`] for NULL.
+///
+/// # Safety
+///
+/// `p` is NULL or a live object of class `W` just created, and the caller
+/// holds access for `'a` (borrowing the parent's `ObjMut`, so that no
+/// exclusive call runs while the view lives).
+pub(crate) unsafe fn created<'a, W: Widget>(p: *mut lv_obj_t) -> Result<&'a W, Error> {
+    if p.is_null() {
+        return Err(Error::OutOfMemory);
+    }
+    // SAFETY: caller contract.
+    Ok(unsafe { view(p) })
+}
+
 /// A view of a non-null object returned by an LVGL getter, unless the
 /// object or an ancestor is being deleted (possible only inside callbacks).
 pub(crate) fn getter_view<'a>(p: *mut lv_obj_t) -> Option<&'a Obj> {
@@ -127,26 +143,88 @@ pub(crate) fn getter_view<'a>(p: *mut lv_obj_t) -> Option<&'a Obj> {
 }
 
 impl Obj {
-    /// Creates a base object (`lv_obj_create`).
-    /// Creates a base object. Refuses parents whose children a widget
-    /// indexes or casts ([`Error::Internal`]), like [`ObjMut::set_parent`].
+    /// Creates a base object (`lv_obj_create`) under `parent`, with
+    /// exclusive access: creation can reach code that moves or deletes
+    /// other objects (the access table marks `lv_obj_create` exclusive).
+    /// Refuses parents whose children a widget indexes or casts
+    /// ([`Error::Internal`]), like [`ObjMut::set_parent`]. Callbacks, which
+    /// have shared access only, create objects through
+    /// [`Lvgl::post`](crate::Lvgl::post).
     ///
     /// [`ObjMut::set_parent`]: crate::ObjMut
-    pub fn create(parent: &Obj) -> Result<&Obj, Error> {
-        super::structural::check_create(parent.as_ptr())?;
-        // SAFETY: shared access through the parent view; creation frees
-        // nothing.
-        let p = unsafe { ffi::obj_create(parent.as_ptr()) };
-        if p.is_null() {
-            return Err(Error::OutOfMemory);
-        }
-        // SAFETY: just created.
-        Ok(unsafe { view(p) })
+    ///
+    /// The new object is lent as a view borrowing the parent's `ObjMut`,
+    /// like every object an exclusive call returns: an `ObjMut` of the
+    /// child would allow exclusive calls (sending a deleting event, ...)
+    /// that delete the parent while its `ObjMut` is still in scope. For
+    /// exclusive calls on the child, take a handle (or use
+    /// [`Lvgl::edit`]) once the parent's borrow ends.
+    ///
+    /// The child is a view, never an `ObjMut`:
+    ///
+    /// ```compile_fail
+    /// # use lvgl_rust::{Error, Obj, ObjMut};
+    /// fn f(parent: &mut ObjMut<'_, Obj>) -> Result<(), Error> {
+    ///     let child: ObjMut<'_, Obj> = Obj::create(parent)?;
+    ///     Ok(())
+    /// }
+    /// ```
+    ///
+    /// and the parent stays borrowed while it lives:
+    ///
+    /// ```compile_fail
+    /// # use lvgl_rust::{Error, Obj, ObjMut};
+    /// fn f(parent: &mut ObjMut<'_, Obj>) -> Result<(), Error> {
+    ///     let child = Obj::create(parent)?;
+    ///     parent.clean()?;
+    ///     let _ = child.as_ptr();
+    ///     Ok(())
+    /// }
+    /// ```
+    ///
+    /// The generated `create` of every widget has the same shape:
+    ///
+    /// ```compile_fail
+    /// # use lvgl_rust::{Error, Obj, ObjMut, widgets::Button};
+    /// fn f(parent: &mut ObjMut<'_, Obj>) -> Result<(), Error> {
+    ///     let button: ObjMut<'_, Button> = Button::create(parent)?;
+    ///     Ok(())
+    /// }
+    /// ```
+    ///
+    /// ```compile_fail
+    /// # use lvgl_rust::{Error, Obj, ObjMut, widgets::Button};
+    /// fn f(parent: &mut ObjMut<'_, Obj>) -> Result<(), Error> {
+    ///     let button = Button::create(parent)?;
+    ///     parent.clean()?;
+    ///     let _ = button.as_ptr();
+    ///     Ok(())
+    /// }
+    /// ```
+    ///
+    /// What compiles:
+    ///
+    /// ```no_run
+    /// # use lvgl_rust::{Error, Obj, ObjMut, widgets::Button};
+    /// fn f(parent: &mut ObjMut<'_, Obj>) -> Result<(), Error> {
+    ///     let child = Obj::create(parent)?;
+    ///     let _ = child.as_ptr();
+    ///     let button: &Button = Button::create(parent)?;
+    ///     let _ = button.as_ptr();
+    ///     parent.clean()
+    /// }
+    /// ```
+    pub fn create<'p, P: Widget>(parent: &'p mut ObjMut<'_, P>) -> Result<&'p Obj, Error> {
+        super::structural::check_create(parent.as_raw())?;
+        // SAFETY: exclusive access through the parent's `ObjMut`.
+        let p = unsafe { ffi::obj_create(parent.as_raw()) };
+        // SAFETY: just created, of this class.
+        unsafe { created(p) }
     }
 
     /// Creates a base object and takes ownership of it.
     #[cfg(not(lvgl_rust_views_only))]
-    pub fn create_owned(parent: &Obj) -> Result<Owned<Obj>, Error> {
+    pub fn create_owned<P: Widget>(parent: &mut ObjMut<'_, P>) -> Result<Owned<Obj>, Error> {
         use crate::WidgetExt;
         Self::create(parent)?.own()
     }

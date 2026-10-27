@@ -47,7 +47,10 @@ pub(crate) mod gen_support {
             .resolve(handle.raw(), super::registry::Kind::Obj, core::ptr::null())
             .map(|p| p.as_ptr().cast())
     }
-    pub(crate) use super::view::{getter_view, ptr_of, view};
+    pub(crate) use super::view::{created, getter_view, ptr_of};
+    // Shared creations and certified getters; none in some tables.
+    #[allow(unused_imports)]
+    pub(crate) use super::view::view;
     pub(crate) use crate::style::font;
     pub(crate) use crate::text::{borrow_str, copy_str};
 }

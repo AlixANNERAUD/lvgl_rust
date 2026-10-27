@@ -10,8 +10,9 @@ unsafe impl LvglAccess for Guard {}
 
 fn main() {
     let mut guard = Guard;
-    let lv = Lvgl::enter(&mut guard).unwrap();
-    let label = Label::create(lv.screen_active().unwrap()).unwrap();
+    let mut lv = Lvgl::enter(&mut guard).unwrap();
+    let mut screen = lv.screen_active_mut().unwrap();
+    let label = Label::create(&mut screen).unwrap();
     let text = *b"local\0";
     let _ = label.set_text_static(Some(CStr::from_bytes_with_nul(&text).unwrap()));
 }

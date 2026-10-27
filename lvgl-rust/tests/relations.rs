@@ -35,9 +35,9 @@ fn session(guard: &mut Guard) -> Session<'_> {
 fn a_keyboard_forgets_a_deleted_textarea() {
     let mut guard = guard();
     let mut lv = session(&mut guard);
-    let screen = lv.screen_active().unwrap();
-    let keyboard = Keyboard::create(screen).unwrap().handle().unwrap();
-    let textarea = TextArea::create(screen).unwrap().handle().unwrap();
+    let mut screen = lv.screen_active_mut().unwrap();
+    let keyboard = Keyboard::create(&mut screen).unwrap().handle().unwrap();
+    let textarea = TextArea::create(&mut screen).unwrap().handle().unwrap();
     {
         let mut kb = keyboard.get_mut(&mut lv).unwrap();
         kb.set_textarea(Some(textarea)).unwrap();
@@ -46,7 +46,8 @@ fn a_keyboard_forgets_a_deleted_textarea() {
     }
     assert!(keyboard.get(&lv).unwrap().get_textarea().is_some());
     assert_eq!(textarea.get(&lv).unwrap().get_event_count(), {
-        let other = TextArea::create(lv.screen_active().unwrap()).unwrap();
+        let mut screen = lv.screen_active_mut().unwrap();
+        let other = TextArea::create(&mut screen).unwrap();
         let count = other.get_event_count() + 1;
         other.delete_later().unwrap();
         count
@@ -60,7 +61,7 @@ fn a_keyboard_forgets_a_deleted_textarea() {
     // The keyboard no longer points to it (ASan: no read of it).
     assert!(keyboard.get(&lv).unwrap().get_textarea().is_none());
     // A deleted keyboard leaves a harmless watcher on the next textarea.
-    let other = TextArea::create(lv.screen_active().unwrap())
+    let other = TextArea::create(&mut lv.screen_active_mut().unwrap())
         .unwrap()
         .handle()
         .unwrap();
@@ -83,9 +84,9 @@ fn a_keyboard_forgets_a_deleted_textarea() {
 fn exclusive_calls_take_handles_and_lend_views() {
     let mut guard = guard();
     let mut lv = session(&mut guard);
-    let screen = lv.screen_active().unwrap();
-    let base = Obj::create(screen).unwrap().handle().unwrap();
-    let object = Obj::create(screen).unwrap().handle().unwrap();
+    let mut screen = lv.screen_active_mut().unwrap();
+    let base = Obj::create(&mut screen).unwrap().handle().unwrap();
+    let object = Obj::create(&mut screen).unwrap().handle().unwrap();
     object
         .get_mut(&mut lv)
         .unwrap()
@@ -103,7 +104,7 @@ fn exclusive_calls_take_handles_and_lend_views() {
     object.get_mut(&mut lv).unwrap().delete().unwrap();
 
     // Objects created by an exclusive call are lent as views.
-    let msgbox = MsgBox::create(lv.screen_active().unwrap())
+    let msgbox = MsgBox::create(&mut lv.screen_active_mut().unwrap())
         .unwrap()
         .handle()
         .unwrap();
@@ -113,15 +114,15 @@ fn exclusive_calls_take_handles_and_lend_views() {
         assert!(title.parent().is_some());
     }
     msgbox.get_mut(&mut lv).unwrap().delete().unwrap();
-    let tabview = TabView::create(lv.screen_active().unwrap())
+    let tabview = TabView::create(&mut lv.screen_active_mut().unwrap())
         .unwrap()
         .handle()
         .unwrap();
-    {
+    let page = {
         let mut edit = tabview.get_mut(&mut lv).unwrap();
-        let page = edit.add_tab(Some(c"One")).unwrap();
-        // A page takes the application's objects.
-        Obj::create(page).unwrap();
-    }
+        edit.add_tab(Some(c"One")).unwrap().handle().unwrap()
+    };
+    // A page takes the application's objects.
+    Obj::create(&mut page.get_mut(&mut lv).unwrap()).unwrap();
     tabview.get_mut(&mut lv).unwrap().delete().unwrap();
 }

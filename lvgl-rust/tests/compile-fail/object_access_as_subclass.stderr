@@ -1,8 +1,8 @@
 error[E0277]: the trait bound `Obj: IsA<Label>` is not satisfied
   --> tests/compile-fail/object_access_as_subclass.rs:13:25
    |
-13 |     let _label = screen.as_base::<Label>();
-   |                         ^^^^^^^ the trait `IsA<Label>` is not implemented for `Obj`
+13 |     let _label = screen.into_base::<Label>();
+   |                         ^^^^^^^^^ the trait `IsA<Label>` is not implemented for `Obj`
    |
 help: the trait `IsA<Label>` is not implemented for `Obj`
       but trait `IsA<Obj>` is implemented for it
@@ -11,11 +11,11 @@ help: the trait `IsA<Label>` is not implemented for `Obj`
    | unsafe impl IsA<Obj> for Obj {}
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    = help: for that trait implementation, expected `Obj`, found `Label`
-note: required by a bound in `ObjMut::<'_, W>::as_base`
+note: required by a bound in `ObjMut::<'s, W>::into_base`
   --> src/base/objmut.rs
    |
-   |     pub fn as_base<B: Widget>(&mut self) -> ObjMut<'_, B>
-   |            ------- required by a bound in this associated function
+   |     pub fn into_base<B: Widget>(self) -> ObjMut<'s, B>
+   |            --------- required by a bound in this associated function
    |     where
    |         W: crate::IsA<B>,
-   |            ^^^^^^^^^^^^^ required by this bound in `ObjMut::<'_, W>::as_base`
+   |            ^^^^^^^^^^^^^ required by this bound in `ObjMut::<'s, W>::into_base`

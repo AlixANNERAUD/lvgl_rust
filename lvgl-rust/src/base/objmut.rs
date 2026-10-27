@@ -50,17 +50,6 @@ impl<W: Widget> ObjMut<'_, W> {
         self.p.as_ptr()
     }
 
-    /// The same object as a base class, for the exclusive methods of that
-    /// class (`ObjMut<'_, Slider>` to `ObjMut<'_, Bar>`).
-    pub fn as_base<B: Widget>(&mut self) -> ObjMut<'_, B>
-    where
-        W: crate::IsA<B>,
-    {
-        // SAFETY: same object, a `B` by `IsA`; the reborrow keeps
-        // exclusive access.
-        unsafe { ObjMut::new(self.p) }
-    }
-
     /// A view of the object, for the shared API.
     pub fn view(&self) -> &W {
         // SAFETY: live while `self` holds exclusive access.
@@ -114,24 +103,67 @@ impl<W: Widget> ObjMut<'_, W> {
     }
 }
 
+impl<'s, W: Widget> ObjMut<'s, W> {
+    /// The same object as a base class, for the exclusive methods of that
+    /// class (`ObjMut<'_, Slider>` to `ObjMut<'_, Bar>`). It takes `self`:
+    /// a reborrowed `ObjMut` would let a consuming call (`delete`,
+    /// `send_event`) delete the object while the original is still in
+    /// scope.
+    ///
+    /// ```compile_fail
+    /// # use lvgl_rust::{Error, Obj, ObjMut, widgets::Button};
+    /// fn f(mut button: ObjMut<'_, Button>) -> Result<(), Error> {
+    ///     button.into_base::<Obj>().delete()?;
+    ///     let _ = button.view();
+    ///     Ok(())
+    /// }
+    /// ```
+    pub fn into_base<B: Widget>(self) -> ObjMut<'s, B>
+    where
+        W: crate::IsA<B>,
+    {
+        // SAFETY: same object, a `B` by `IsA`; the exclusive access moves
+        // with it.
+        unsafe { ObjMut::new(self.p) }
+    }
+
+    /// Gives up exclusive access for a view of the object, for as long as
+    /// that access was borrowed: what [`view`](ObjMut::view) gives, without
+    /// keeping the `ObjMut`: `lv.edit(select)?.into_view()`.
+    pub fn into_view(self) -> &'s W {
+        // SAFETY: the exclusive borrow of `'s` becomes a shared one: the
+        // object stays live and no exclusive call can run while the view
+        // exists.
+        unsafe { view(self.as_raw()) }
+    }
+}
+
 impl Lvgl {
     /// Creates a screen (an object without a parent). A screen has no parent
-    /// to own it, so it is returned owned.
+    /// to own it, so it is returned owned. Like every creation, it needs
+    /// exclusive access (`lv_obj_create` is exclusive in the access table).
     #[cfg(not(lvgl_rust_views_only))]
-    pub fn create_screen(&self) -> Result<Owned<Obj>, Error> {
+    pub fn create_screen(&mut self) -> Result<Owned<Obj>, Error> {
         let screen = create_screen()?;
-        screen.own().inspect_err(|_| {
+        screen.view().own().inspect_err(|_| {
             // Nothing refers to the new screen yet: deleting it cannot leave
-            // a dangling pointer, even from a callback.
+            // a dangling pointer.
             // SAFETY: live object, unreachable from any frame.
-            unsafe { ffi::obj_delete(screen.as_ptr()) }
+            unsafe { ffi::obj_delete(screen.as_raw()) }
         })
     }
 
-    /// Creates a screen (an object without a parent).
+    /// Creates a screen (an object without a parent). Like every creation,
+    /// it needs exclusive access.
     #[cfg(lvgl_rust_views_only)]
-    pub fn create_screen(&self) -> Result<&Obj, Error> {
+    pub fn create_screen(&mut self) -> Result<ObjMut<'_, Obj>, Error> {
         create_screen()
+    }
+
+    /// Exclusive access to the active screen of the default display, to
+    /// create objects on it.
+    pub fn screen_active_mut(&mut self) -> Option<ObjMut<'_, Obj>> {
+        self.edit(|lv| lv.screen_active())
     }
 
     /// The active screen of the default display.
@@ -171,13 +203,13 @@ impl Lvgl {
     }
 }
 
-fn create_screen<'a>() -> Result<&'a Obj, Error> {
-    // SAFETY: shared access (the caller holds `&Lvgl`); creation frees
-    // nothing.
+/// A screen, with exclusive access: the caller holds `&mut Lvgl`, which the
+/// result borrows. A screen has no ancestor that exclusive calls on it
+/// could delete.
+fn create_screen<'a>() -> Result<ObjMut<'a, Obj>, Error> {
+    // SAFETY: exclusive access (the caller holds `&mut Lvgl`).
     let p = unsafe { ffi::obj_create(core::ptr::null_mut()) };
-    if p.is_null() {
-        return Err(Error::OutOfMemory);
-    }
-    // SAFETY: just created.
-    Ok(unsafe { view(p) })
+    let p = NonNull::new(p).ok_or(Error::OutOfMemory)?;
+    // SAFETY: just created, so not being deleted; exclusive access held.
+    Ok(unsafe { ObjMut::new(p) })
 }

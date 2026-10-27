@@ -10,8 +10,13 @@ else stays reachable through `lvgl_rust::sys`.
 
 - **No locking, no allocator.** Prove exclusive access with your own lock by
   implementing `LvglAccess` for its guard, then work through a `Session`.
-- **No dangling objects.** Views (`&Obj`) borrow the session; deleting needs
-  exclusive access. `Handle`s (4 bytes) report deleted objects as
+- **No dangling objects.** Views (`&Obj`) borrow the session; creating,
+  deleting and moving objects need exclusive access. Objects are created
+  through their parent's `ObjMut` (`Label::create(&mut parent)?`), which
+  lends a view of the new object borrowing it (an `ObjMut` of the child
+  would allow calls that delete the parent); exclusive calls on the child
+  go through its handle once that borrow ends. `create_owned` returns an
+  `Owned`. `Handle`s (4 bytes) report deleted objects as
   `Error::Dead`, whatever deleted them. `Owned` deletes its object when
   dropped, from any thread. A generated function the access audit finds
   shared is a view method only (from an `ObjMut`, call it through
@@ -34,7 +39,7 @@ else stays reachable through `lvgl_rust::sys`.
   without captures), `on_with(code, data, ...)` (a value of up to 4 bytes),
   `on_static` (a `static` context), `on_removable`. Handlers get shared
   access; `delete_later` and `lv.post(f, data)` defer what needs exclusive
-  access to the next drain.
+  access (creating objects included) to the next drain.
 - **Restricted handlers for query and draw codes.** Codes sent in the
   middle of layout or rendering (`GET_SELF_SIZE`, `HIT_TEST`,
   `COVER_CHECK`, `REFR_EXT_DRAW_SIZE`, `DRAW_*`, `DRAW_TASK_ADDED`) go to
@@ -183,7 +188,8 @@ unsafe impl LvglAccess for Guard {}
 let mut guard = Guard(/* lock */);
 let mut lv = init(&mut guard)?;
 let screen = lv.create_screen()?;              // Owned<Obj>
-let panel = Obj::create(screen.get(&lv)?)?;    // &Obj, borrows `lv`
+let mut parent = screen.get_mut(&mut lv)?;     // ObjMut<Obj>, borrows `lv`
+let panel = Obj::create(&mut parent)?;         // &Obj, borrows `parent`
 let panel = panel.handle()?;                   // Handle<Obj>, storable
 panel.get_mut(&mut lv)?.add_style(&PANEL, Selector::DEFAULT);
 lv.load_screen(screen.handle(), ScreenAnim::NONE)?;

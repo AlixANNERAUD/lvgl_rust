@@ -154,7 +154,7 @@ access = "shared"
 [fn.lv_obj_old]
 access = "shared"
 [fn.lv_bar_create]
-access = "shared"
+access = "exclusive"
 [fn.lv_bar_set_value]
 access = "shared"
 [fn.lv_bar_set_segment]
@@ -365,6 +365,28 @@ fn generated_code_matches_golden() {
             ("lv_use_slider".to_owned(), true)
         ]
     );
+}
+
+#[test]
+fn a_consuming_create_stays_raw() {
+    // A creation that may delete its receiver would leave the parent's
+    // `ObjMut` dangling: no wrapper.
+    let access = ACCESS.replace(
+        "[fn.lv_bar_create]\naccess = \"exclusive\"",
+        "[fn.lv_bar_create]\naccess = \"exclusive\"\nconsumes = true",
+    );
+    assert_ne!(access, ACCESS);
+    let (bindings, headers) = inputs();
+    let tables = load(&access, CLASSES, OVERRIDES).unwrap();
+    let output = generate_from(&bindings, &headers, &tables, true).unwrap();
+    assert!(
+        output
+            .coverage
+            .contains("lv_bar_create: raw (creation may delete its parent (consumes))"),
+        "{}",
+        output.coverage
+    );
+    assert!(!output.code.contains("sys::lv_bar_create("));
 }
 
 #[test]

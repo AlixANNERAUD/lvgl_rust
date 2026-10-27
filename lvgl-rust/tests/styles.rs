@@ -47,7 +47,7 @@ static RED: ConstStyle = const_style![
 fn constant_styles_apply_from_rodata() {
     let mut guard = guard();
     let mut lv = session(&mut guard);
-    Obj::create(lv.screen_active().unwrap()).unwrap();
+    Obj::create(&mut lv.screen_active_mut().unwrap()).unwrap();
     lv.edit(last).unwrap().add_style(&RED, Selector::DEFAULT);
     let object = last(&lv).unwrap();
     let bg = object.get_style_bg_color(Part::MAIN);
@@ -82,7 +82,7 @@ fn mutable_styles_refresh_their_objects() {
     let mut lv = session(&mut guard);
     assert!(lv.style_is_empty(&CARD));
     lv.style(&CARD).set_radius(3);
-    Obj::create(lv.screen_active().unwrap()).unwrap();
+    Obj::create(&mut lv.screen_active_mut().unwrap()).unwrap();
     lv.edit(last).unwrap().add_style(&CARD, Selector::DEFAULT);
     assert_eq!(last(&lv).unwrap().get_style_radius(Part::MAIN), 3);
     {
@@ -110,7 +110,7 @@ fn fonts_are_static() {
     let mut lv = session(&mut guard);
     let font: &'static Font = Font::montserrat_14();
     assert!(lv.font_get_line_height(font) > 0);
-    Obj::create(lv.screen_active().unwrap()).unwrap();
+    Obj::create(&mut lv.screen_active_mut().unwrap()).unwrap();
     lv.edit(last)
         .unwrap()
         .set_style_text_font(font, Selector::DEFAULT);

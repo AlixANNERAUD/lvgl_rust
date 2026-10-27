@@ -3,7 +3,11 @@
 //! and nothing touches LVGL; building it is the test.
 
 use core::marker::PhantomData;
-use lvgl_rust::{Event, Lvgl, LvglAccess, Obj, TimerCtx, enums::EventCode};
+use lvgl_rust::{
+    Event, Lvgl, LvglAccess, Obj, TimerCtx,
+    enums::{EventCode, SendableEventCode},
+    widgets::{Button, Label},
+};
 
 struct Guard;
 // SAFETY: the only guard of this program.
@@ -36,6 +40,28 @@ fn register(lv: &Lvgl, object: &Obj) {
     );
 }
 
+/// Creation lends a view of the child; the parent is usable again once
+/// the view is no longer, and the child's own access comes from `edit`.
+fn create(lv: &mut Lvgl) {
+    if let Some(mut screen) = lv.screen_active_mut() {
+        if let Ok(button) = Button::create(&mut screen) {
+            let _ = button.as_ptr();
+        }
+        let _ = screen.view();
+    }
+    let Some(mut button) = lv.edit(|lv| lv.screen_active()?.child(-1)?.downcast::<Button>()) else {
+        return;
+    };
+    let _ = Label::create(&mut button);
+    let _ = button
+        .into_base::<Obj>()
+        .send_event(SendableEventCode::CLICKED);
+    let label = lv.edit(|lv| lv.screen_active()?.child(-1)?.child(0)?.downcast::<Label>());
+    if let Some(label) = label {
+        let _ = label.send_event(SendableEventCode::CLICKED);
+    }
+}
+
 #[cfg(feature = "async")]
 mod queues {
     use lvgl_rust::{Event, StaticQueue};
@@ -55,6 +81,7 @@ fn main() {
         if let Some(screen) = lv.screen_active() {
             register(&lv, screen);
         }
+        create(&mut lv);
         lv.timer_handler();
     }
     #[cfg(feature = "async")]

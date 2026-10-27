@@ -77,7 +77,7 @@ fn buttons_press_their_points() {
     .unwrap();
 
     static CLICKS: AtomicU32 = AtomicU32::new(0);
-    Button::create(lv.screen_active().unwrap())
+    Button::create(&mut lv.screen_active_mut().unwrap())
         .unwrap()
         .on(EventCode::CLICKED, |_| {
             CLICKS.fetch_add(1, Relaxed);

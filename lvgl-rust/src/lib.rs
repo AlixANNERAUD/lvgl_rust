@@ -7,8 +7,13 @@
 //!
 //! - Shared access (`&Lvgl`) gives zero-sized views (`&Obj`, ...) whose calls
 //!   are plain FFI calls; it cannot free objects.
-//! - Exclusive access (`&mut Lvgl`, [`ObjMut`]) is needed to delete, clean or
-//!   reparent objects, so no view can dangle.
+//! - Exclusive access (`&mut Lvgl`, [`ObjMut`]) is needed to create, delete,
+//!   clean or reparent objects, so no view can dangle. Objects are created
+//!   through their parent's `ObjMut` (`Label::create(&mut parent)`), which
+//!   lends a view of the new object borrowing it, like every object an
+//!   exclusive call returns; its own `ObjMut` comes from a handle or
+//!   [`Lvgl::edit`] once that borrow ends. Callbacks, which have shared
+//!   access only, post creation with [`Lvgl::post`].
 //! - [`Handle`]s are 4-byte references that can be stored and sent between
 //!   threads; they report deleted objects instead of dangling. [`Owned`]
 //!   deletes its object when dropped, from any thread.

@@ -70,9 +70,18 @@ fn last_as<W: lvgl_rust::Widget>(lv: &Lvgl) -> Option<&W> {
 fn chart_series_belong_to_their_chart() {
     let mut guard = guard();
     let mut lv = session(&mut guard);
-    let screen = lv.screen_active().unwrap();
-    let first = Chart::create(screen).unwrap();
-    let second = Chart::create(screen).unwrap();
+    let mut screen = lv.screen_active_mut().unwrap();
+    Chart::create(&mut screen).unwrap();
+    Chart::create(&mut screen).unwrap();
+    let chart = |index| {
+        lv.screen_active()
+            .unwrap()
+            .child(index)
+            .unwrap()
+            .downcast::<Chart>()
+            .unwrap()
+    };
+    let (first, second) = (chart(-2), chart(-1));
     second.set_point_count(4).unwrap();
     first.set_point_count(4).unwrap();
     let series = first
@@ -176,7 +185,8 @@ fn chart_series_are_tokens() {
 fn table_cells_are_bounds_checked() {
     let mut guard = guard();
     let mut lv = session(&mut guard);
-    let table = Table::create(lv.screen_active().unwrap()).unwrap();
+    let mut screen = lv.screen_active_mut().unwrap();
+    let table = Table::create(&mut screen).unwrap();
     let mut buf = [0u8; 16];
     // A new table has one empty cell.
     assert_eq!(table.get_cell_value_into(0, 0, &mut buf), Ok(c""));
@@ -253,14 +263,15 @@ fn table_cells_are_bounds_checked() {
 fn closed_widgets_take_no_foreign_children() {
     let mut guard = guard();
     let mut lv = session(&mut guard);
-    let screen = lv.screen_active().unwrap();
-    let roller = Roller::create(screen).unwrap();
+    Roller::create(&mut lv.screen_active_mut().unwrap()).unwrap();
+    let mut roller = lv.edit(last).unwrap();
     // The roller casts its first child to its label.
-    assert_eq!(Obj::create(roller).err(), Some(Error::Internal));
-    assert_eq!(Label::create(roller).err(), Some(Error::Internal));
-    let tileview = TileView::create(screen).unwrap();
-    assert_eq!(Obj::create(tileview).err(), Some(Error::Internal));
-    assert_eq!(Label::create(tileview).err(), Some(Error::Internal));
+    assert_eq!(Obj::create(&mut roller).err(), Some(Error::Internal));
+    assert_eq!(Label::create(&mut roller).err(), Some(Error::Internal));
+    TileView::create(&mut lv.screen_active_mut().unwrap()).unwrap();
+    let mut tileview = lv.edit(last).unwrap();
+    assert_eq!(Obj::create(&mut tileview).err(), Some(Error::Internal));
+    assert_eq!(Label::create(&mut tileview).err(), Some(Error::Internal));
     lv.edit(last).unwrap().delete().unwrap();
     lv.edit(last).unwrap().delete().unwrap();
 }
@@ -274,9 +285,9 @@ mod handles {
     fn tile_views_hold_only_tiles() {
         let mut guard = guard();
         let mut lv = session(&mut guard);
-        let screen = lv.screen_active().unwrap();
-        let tileview = TileView::create(screen).unwrap().handle().unwrap();
-        let stranger = Obj::create(screen).unwrap().handle().unwrap();
+        let mut screen = lv.screen_active_mut().unwrap();
+        let tileview = TileView::create(&mut screen).unwrap().handle().unwrap();
+        let stranger = Obj::create(&mut screen).unwrap().handle().unwrap();
         let (first, second) = {
             let mut edit = tileview.get_mut(&mut lv).unwrap();
             let first = edit.add_tile(0, 0, Dir::RIGHT).unwrap().handle().unwrap();
@@ -284,7 +295,7 @@ mod handles {
             (first, second)
         };
         // Tiles take the application's children.
-        let content = Label::create(first.get(&lv).unwrap())
+        let content = Label::create(&mut first.get_mut(&mut lv).unwrap())
             .unwrap()
             .handle()
             .unwrap();
@@ -337,8 +348,10 @@ mod handles {
     fn zero_size_tile_views_ignore_scroll_end() {
         let mut guard = guard();
         let mut lv = session(&mut guard);
-        let screen = lv.screen_active().unwrap();
-        let tileview = TileView::create(screen).unwrap().handle().unwrap();
+        let tileview = TileView::create(&mut lv.screen_active_mut().unwrap())
+            .unwrap()
+            .handle()
+            .unwrap();
         let mut edit = tileview.get_mut(&mut lv).unwrap();
         edit.add_tile(0, 0, Dir::ALL).unwrap();
         // LVGL's handler would divide by the content width or height: the
@@ -366,8 +379,10 @@ mod handles {
         use lvgl_rust::enums::{Part, State};
         let mut guard = guard();
         let mut lv = session(&mut guard);
-        let screen = lv.screen_active().unwrap();
-        let tileview = TileView::create(screen).unwrap().handle().unwrap();
+        let tileview = TileView::create(&mut lv.screen_active_mut().unwrap())
+            .unwrap()
+            .handle()
+            .unwrap();
         let mut edit = tileview.get_mut(&mut lv).unwrap();
         edit.add_tile(0, 0, Dir::ALL).unwrap();
         edit.set_width(100);
@@ -400,9 +415,11 @@ mod handles {
     fn calendar_headers_stay_in_their_calendar() {
         let mut guard = guard();
         let mut lv = session(&mut guard);
-        let screen = lv.screen_active().unwrap();
-        let screen_handle = screen.handle().unwrap();
-        let calendar = Calendar::create(screen).unwrap().handle().unwrap();
+        let screen_handle = lv.screen_active().unwrap().handle().unwrap();
+        let calendar = Calendar::create(&mut lv.screen_active_mut().unwrap())
+            .unwrap()
+            .handle()
+            .unwrap();
         let header = {
             let mut edit = calendar.get_mut(&mut lv).unwrap();
             assert_eq!(edit.set_month_shown(2024, 13), Err(Error::InvalidArg));
@@ -430,8 +447,11 @@ mod handles {
             assert_eq!(part.own().err(), Some(Error::Internal));
         }
         assert_eq!(header_view.clean_later(), Err(Error::Internal));
-        assert_eq!(Obj::create(header_view).err(), Some(Error::Internal));
         let label = header_view.child(1).unwrap().handle().unwrap();
+        assert_eq!(
+            Obj::create(&mut header.get_mut(&mut lv).unwrap()).err(),
+            Some(Error::Internal)
+        );
         assert_eq!(
             label.get_mut(&mut lv).unwrap().move_to_index(0),
             Err(Error::Internal)
@@ -442,7 +462,7 @@ mod handles {
             Err(Error::Internal)
         );
         // The calendar's other children are the application's.
-        let user = Obj::create(calendar.get(&lv).unwrap())
+        let user = Obj::create(&mut calendar.get_mut(&mut lv).unwrap())
             .unwrap()
             .handle()
             .unwrap();

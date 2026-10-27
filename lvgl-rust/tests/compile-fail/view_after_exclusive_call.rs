@@ -11,7 +11,8 @@ fn main() {
     let mut guard = Guard;
     let mut lv = Lvgl::enter(&mut guard).unwrap();
     let screen = lv.create_screen().unwrap();
-    let child = Obj::create(screen.get(&lv).unwrap()).unwrap();
+    Obj::create(&mut screen.get_mut(&mut lv).unwrap()).unwrap();
+    let child = screen.get(&lv).unwrap().child(0).unwrap();
     screen.delete(&mut lv).unwrap();
     let _ = child.parent();
 }

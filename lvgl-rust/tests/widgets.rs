@@ -34,8 +34,9 @@ fn session(guard: &mut Guard) -> Session<'_> {
 #[test]
 fn labels_take_copied_and_static_text() {
     let mut guard = guard();
-    let lv = session(&mut guard);
-    let label = Label::create(lv.screen_active().unwrap()).unwrap();
+    let mut lv = session(&mut guard);
+    let mut screen = lv.screen_active_mut().unwrap();
+    let label = Label::create(&mut screen).unwrap();
     {
         let text = std::ffi::CString::new("temporary").unwrap();
         label.set_text(Some(&text));
@@ -68,7 +69,7 @@ fn sliders_are_bars() {
     use lvgl_rust::WidgetExt;
     let mut guard = guard();
     let mut lv = session(&mut guard);
-    let slider = Slider::create_owned(lv.screen_active().unwrap()).unwrap();
+    let slider = Slider::create_owned(&mut lv.screen_active_mut().unwrap()).unwrap();
     // Value setters delete and start only the bar's own animations, which
     // install no deleted callback: shared access.
     let view = slider.get(&lv).unwrap();
@@ -84,7 +85,7 @@ fn sliders_are_bars() {
     let as_obj = slider.handle().upcast::<Obj>();
     assert_eq!(as_obj.downcast::<Slider>(&lv), Some(slider.handle()));
     assert_eq!(as_bar.get(&lv).unwrap().get_value(), 42);
-    let button = Button::create(lv.screen_active().unwrap())
+    let button = Button::create(&mut lv.screen_active_mut().unwrap())
         .unwrap()
         .handle()
         .unwrap();
@@ -105,7 +106,7 @@ fn sliders_are_bars() {
 fn slider_views_are_bar_views() {
     let mut guard = guard();
     let mut lv = session(&mut guard);
-    Slider::create(lv.screen_active().unwrap()).unwrap();
+    Slider::create(&mut lv.screen_active_mut().unwrap()).unwrap();
     fn last_slider(lv: &Lvgl) -> Option<&Slider> {
         lv.screen_active()?.child(-1)?.downcast()
     }
@@ -128,7 +129,7 @@ fn slider_views_are_bar_views() {
 fn objects_expose_geometry_flags_and_states() {
     let mut guard = guard();
     let mut lv = session(&mut guard);
-    Obj::create(lv.screen_active().unwrap()).unwrap();
+    Obj::create(&mut lv.screen_active_mut().unwrap()).unwrap();
     fn last(lv: &Lvgl) -> Option<&Obj> {
         lv.screen_active()?.child(-1)
     }
@@ -149,9 +150,11 @@ fn objects_expose_geometry_flags_and_states() {
     assert_eq!(object.get_state(), State::FOCUSED);
     let screen = lv.screen_active().unwrap();
     assert_eq!(object.get_screen().unwrap().as_ptr(), screen.as_ptr());
-    let switch = Switch::create(object).unwrap();
-    assert_eq!(object.get_child_count(), 1);
-    assert_eq!(switch.get_index(), 0);
+    let switch = Switch::create(&mut lv.edit(last).unwrap())
+        .unwrap()
+        .get_index();
+    assert_eq!(switch, 0);
+    assert_eq!(last(&lv).unwrap().get_child_count(), 1);
     lv.edit(last).unwrap().delete().unwrap();
 }
 
@@ -170,7 +173,8 @@ fn pure_functions_need_no_token() {
 fn text_is_copied_out_of_views_and_borrowed_under_exclusive_access() {
     let mut guard = guard();
     let mut lv = session(&mut guard);
-    let label = Label::create(lv.screen_active().unwrap()).unwrap();
+    let mut screen = lv.screen_active_mut().unwrap();
+    let label = Label::create(&mut screen).unwrap();
     label.set_text(Some(c"hello"));
     let mut buf = [0u8; 8];
     assert_eq!(label.get_text_into(&mut buf), Ok(Some(c"hello")));
@@ -187,7 +191,8 @@ fn text_is_copied_out_of_views_and_borrowed_under_exclusive_access() {
         assert_eq!(edit.get_text(), Some(c"hello"));
     }
     // NULL comes back as `None`: a dropdown has no fixed text by default.
-    let dropdown = Dropdown::create(lv.screen_active().unwrap()).unwrap();
+    let mut screen = lv.screen_active_mut().unwrap();
+    let dropdown = Dropdown::create(&mut screen).unwrap();
     assert_eq!(dropdown.get_text_into(&mut buf), Ok(None));
     lv.edit(|lv| lv.screen_active()?.child(-1))
         .unwrap()
@@ -203,7 +208,8 @@ fn text_is_copied_out_of_views_and_borrowed_under_exclusive_access() {
 fn labels_take_str_and_numbers() {
     let mut guard = guard();
     let mut lv = session(&mut guard);
-    let label = Label::create(lv.screen_active().unwrap()).unwrap();
+    let mut screen = lv.screen_active_mut().unwrap();
+    let label = Label::create(&mut screen).unwrap();
     let mut buf = [0u8; 128];
     let mut text = |label: &Label| {
         label
@@ -249,7 +255,7 @@ fn composites_free_their_parts_when_deleted() {
     let mut guard = guard();
     let mut lv = session(&mut guard);
     // The dropdown puts its list on the screen, after itself.
-    let index = Dropdown::create(lv.screen_active().unwrap())
+    let index = Dropdown::create(&mut lv.screen_active_mut().unwrap())
         .unwrap()
         .get_index();
     fn dropdown(lv: &Lvgl, index: i32) -> Option<&Dropdown> {
@@ -265,7 +271,7 @@ fn composites_free_their_parts_when_deleted() {
     fn last_msgbox(lv: &Lvgl) -> Option<&MsgBox> {
         lv.screen_active()?.child(-1)?.downcast()
     }
-    MsgBox::create(lv.screen_active().unwrap()).unwrap();
+    MsgBox::create(&mut lv.screen_active_mut().unwrap()).unwrap();
     // SAFETY: session held, live message box: adds a header and footer.
     unsafe {
         let mbox = last_msgbox(&lv).unwrap().as_ptr();
@@ -284,7 +290,8 @@ fn composites_free_their_parts_when_deleted() {
 fn labels_take_formatted_text() {
     let mut guard = guard();
     let mut lv = session(&mut guard);
-    let label = Label::create(lv.screen_active().unwrap()).unwrap();
+    let mut screen = lv.screen_active_mut().unwrap();
+    let label = Label::create(&mut screen).unwrap();
     let value = 3.5f32;
     label
         .set_text_fmt(format_args!("{} élans, {value:.2} — {:>8}|", 42, "日本"))

@@ -45,7 +45,7 @@ fn animations_call_back_with_values_and_complete() {
     static DONE: AtomicU32 = AtomicU32::new(0);
     let mut guard = guard();
     let mut lv = session(&mut guard);
-    Obj::create(lv.screen_active().unwrap()).unwrap();
+    Obj::create(&mut lv.screen_active_mut().unwrap()).unwrap();
     let anim = Anim::new(7u8)
         .values(0, 100)
         .duration(100)
@@ -79,7 +79,7 @@ fn deleting_the_object_or_its_animations_stops_them() {
     }
     let mut guard = guard();
     let mut lv = session(&mut guard);
-    Obj::create(lv.screen_active().unwrap()).unwrap();
+    Obj::create(&mut lv.screen_active_mut().unwrap()).unwrap();
     let forever = || Anim::new(()).duration(100).repeat(None).exec(count);
     lv.edit(last).unwrap().animate(forever()).unwrap();
     run(&mut lv, 30);

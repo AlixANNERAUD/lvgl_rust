@@ -120,7 +120,7 @@ fn displays_and_input_devices() {
 
     // Rendering flushes through the driver.
     static CLICKS: AtomicU32 = AtomicU32::new(0);
-    Button::create(lv.screen_active().unwrap())
+    Button::create(&mut lv.screen_active_mut().unwrap())
         .unwrap()
         .on(EventCode::CLICKED, |_| {
             CLICKS.fetch_add(1, Relaxed);
@@ -183,7 +183,7 @@ fn displays_and_input_devices() {
         RenderMode::Partial,
     )
     .unwrap();
-    Obj::create(lv.screen_active().unwrap()).unwrap();
+    Obj::create(&mut lv.screen_active_mut().unwrap()).unwrap();
     run(&mut lv, 40);
     display.try_delete(&mut lv).map_err(|e| e.1).unwrap();
 }

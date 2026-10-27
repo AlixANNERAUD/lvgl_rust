@@ -65,7 +65,8 @@ fn object_observers_go_with_their_object() {
     static CALLS: AtomicU32 = AtomicU32::new(0);
     let mut guard = guard();
     let mut lv = session(&mut guard);
-    let object = Obj::create(lv.screen_active().unwrap()).unwrap();
+    let mut screen = lv.screen_active_mut().unwrap();
+    let object = Obj::create(&mut screen).unwrap();
     LEVEL
         .observe_obj(object, (), |ctx, (), _| {
             assert!(ctx.target().is_some());
@@ -89,7 +90,7 @@ fn widgets_bind_to_int_subjects() {
     fn last_slider(lv: &Lvgl) -> Option<&Slider> {
         last(lv)?.downcast()
     }
-    Slider::create(lv.screen_active().unwrap()).unwrap();
+    Slider::create(&mut lv.screen_active_mut().unwrap()).unwrap();
     lv.edit(last_slider).unwrap().bind_value(&VALUE).unwrap();
     assert_eq!(last_slider(&lv).unwrap().get_value(), 30);
     VALUE.set(&mut lv, 60);
@@ -102,7 +103,7 @@ fn widgets_bind_to_int_subjects() {
     fn last_label(lv: &Lvgl) -> Option<&Label> {
         last(lv)?.downcast()
     }
-    Label::create(lv.screen_active().unwrap()).unwrap();
+    Label::create(&mut lv.screen_active_mut().unwrap()).unwrap();
     lv.edit(last_label).unwrap().bind_text(&VALUE).unwrap();
     let mut buf = [0u8; 8];
     assert_eq!(

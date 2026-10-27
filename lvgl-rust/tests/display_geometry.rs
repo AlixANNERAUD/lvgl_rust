@@ -194,7 +194,7 @@ fn geometry_changes_are_checked_against_the_buffers() {
 
     // Small invalidations between frames: direct mode with two buffers
     // copies the areas of the previous frame into the other buffer.
-    Button::create(lv.screen_active().unwrap()).unwrap();
+    Button::create(&mut lv.screen_active_mut().unwrap()).unwrap();
     let moves = |lv: &mut Lvgl, frames: u32| {
         for i in 0..frames {
             let mut button = lv

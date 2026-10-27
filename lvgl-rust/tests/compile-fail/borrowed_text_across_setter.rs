@@ -10,8 +10,7 @@ unsafe impl LvglAccess for Guard {}
 fn main() {
     let mut guard = Guard;
     let mut lv = Lvgl::enter(&mut guard).unwrap();
-    let screen = lv.screen_active().unwrap();
-    let _ = TextArea::create(screen).unwrap();
+    let _ = TextArea::create(&mut lv.screen_active_mut().unwrap()).unwrap();
     let mut textarea = lv
         .edit(|lv| lv.screen_active()?.child(-1)?.downcast::<TextArea>())
         .unwrap();

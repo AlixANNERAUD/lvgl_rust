@@ -42,9 +42,9 @@ fn groups_focus_their_objects_and_take_keys() {
     let mut lv = lvgl_rust::init(&mut guard).unwrap();
     // SAFETY: session held.
     unsafe { lvgl_rust::sys::lv_display_create(240, 160) };
-    let screen = lv.screen_active().unwrap();
-    let first = Button::create(screen).unwrap().handle().unwrap();
-    let second = Button::create(screen).unwrap();
+    let mut screen = lv.screen_active_mut().unwrap();
+    let first = Button::create(&mut screen).unwrap().handle().unwrap();
+    let second = Button::create(&mut screen).unwrap();
     second
         .on(EventCode::KEY, |e| {
             if e.key() == Some(lvgl_rust::sys::lv_key_t_LV_KEY_ENTER) {

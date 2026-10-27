@@ -98,14 +98,16 @@ fn timer_functions_find_their_handle_and_defer_deletions() {
         if ctx.handle() == *OWN.lock().unwrap() {
             FOUND.fetch_add(1, Relaxed);
         }
-        // Shared access: create an object, ask for deletions.
+        // Shared access: ask for deletions (creating objects is exclusive,
+        // posted with `post`).
         let screen = ctx.lv().screen_active().unwrap();
-        Obj::create(screen).unwrap().delete_later().unwrap();
+        screen.child(-1).unwrap().delete_later().unwrap();
         ctx.delete_later();
     }
+    let children = lv.screen_active().unwrap().get_child_count();
+    Obj::create(&mut lv.screen_active_mut().unwrap()).unwrap();
     let timer = lv.timer(10, (), tick).unwrap();
     *OWN.lock().unwrap() = Some(timer.handle());
-    let children = lv.screen_active().unwrap().get_child_count();
     run(&mut lv, 10);
     assert_eq!(FOUND.load(Relaxed), 1);
     // The object and the timer were deleted at the drain.

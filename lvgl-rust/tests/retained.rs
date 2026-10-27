@@ -77,7 +77,7 @@ fn images_draw_constant_descriptors_and_checked_sources() {
         last(lv)?.downcast()
     }
     for (dsc, size) in [(&PICTURE, (3, 2)), (&INDEXED, (2, 2))] {
-        Image::create(lv.screen_active().unwrap()).unwrap();
+        Image::create(&mut lv.screen_active_mut().unwrap()).unwrap();
         {
             let mut image = lv.edit(last_image).unwrap();
             image.set_src(ImageSrc::image(dsc));
@@ -95,7 +95,7 @@ fn images_draw_constant_descriptors_and_checked_sources() {
     assert!(ImageSrc::path(c"A:icon.bin").is_some());
     assert_eq!(ImageSrc::symbol(c"plain"), None);
     let ok = ImageSrc::symbol(c"\u{F00C}").unwrap();
-    ImageButton::create(lv.screen_active().unwrap()).unwrap();
+    ImageButton::create(&mut lv.screen_active_mut().unwrap()).unwrap();
     {
         fn last_button(lv: &Lvgl) -> Option<&ImageButton> {
             last(lv)?.downcast()
@@ -130,7 +130,8 @@ fn button_maps_are_terminated_and_control_maps_cover_them() {
     let mut guard = guard();
     let mut lv = session(&mut guard);
     assert_eq!(KEYPAD.button_count(), 3);
-    let matrix = ButtonMatrix::create(lv.screen_active().unwrap()).unwrap();
+    let mut screen = lv.screen_active_mut().unwrap();
+    let matrix = ButtonMatrix::create(&mut screen).unwrap();
     matrix.set_map(&KEYPAD);
     let mut buf = [0u8; 4];
     assert_eq!(matrix.get_button_text_into(2, &mut buf), Ok(Some(c"3")));
@@ -196,7 +197,7 @@ fn styles_point_to_static_data() {
         style.set_color_filter_dsc(Some(ColorFilter::shade()));
         style.set_bg_image_src(Some(PICTURE_SRC));
     }
-    Obj::create(lv.screen_active().unwrap()).unwrap();
+    Obj::create(&mut lv.screen_active_mut().unwrap()).unwrap();
     {
         let mut object = lv.edit(last).unwrap();
         object.add_style(&FANCY, Selector::DEFAULT);
@@ -218,7 +219,7 @@ fn an_open_dropdown_list_follows_its_options() {
     use lvgl_rust::widgets::{Dropdown, Label};
     let mut guard = guard();
     let mut lv = session(&mut guard);
-    let index = Dropdown::create(lv.screen_active().unwrap())
+    let index = Dropdown::create(&mut lv.screen_active_mut().unwrap())
         .unwrap()
         .get_index();
     fn dropdown(lv: &Lvgl, index: i32) -> Option<&Dropdown> {
@@ -260,13 +261,16 @@ fn textarea_labels_and_degenerate_scales_are_refused() {
     use lvgl_rust::widgets::{Label, Scale, TextArea};
     let mut guard = guard();
     let mut lv = session(&mut guard);
-    let textarea = TextArea::create(lv.screen_active().unwrap()).unwrap();
+    let mut screen = lv.screen_active_mut().unwrap();
+    let textarea = TextArea::create(&mut screen).unwrap();
     let label = textarea.get_label().unwrap().downcast::<Label>().unwrap();
     // The textarea edits this text in place: static text would be written.
     assert_eq!(label.set_text_static(Some(c"x")), Err(Error::Internal));
-    let other = Label::create(lv.screen_active().unwrap()).unwrap();
+    let mut screen = lv.screen_active_mut().unwrap();
+    let other = Label::create(&mut screen).unwrap();
     other.set_text_static(Some(c"fine")).unwrap();
-    let scale = Scale::create(lv.screen_active().unwrap()).unwrap();
+    let mut screen = lv.screen_active_mut().unwrap();
+    let scale = Scale::create(&mut screen).unwrap();
     assert_eq!(scale.set_range(5, 5), Err(Error::InvalidArg));
     scale.set_range(0, 10).unwrap();
     assert_eq!(scale.set_min_value(10), Err(Error::InvalidArg));
@@ -347,9 +351,9 @@ mod grids {
     fn children_beyond_the_template_are_clamped() {
         let mut guard = guard();
         let mut lv = session(&mut guard);
-        let screen = lv.screen_active().unwrap();
-        let container = Obj::create(screen).unwrap();
-        let index = container.get_index();
+        let index = Obj::create(&mut lv.screen_active_mut().unwrap())
+            .unwrap()
+            .get_index();
         fn container_of(lv: &Lvgl, index: i32) -> Option<&Obj> {
             lv.screen_active()?.child(index)
         }
@@ -374,7 +378,7 @@ mod grids {
                 ),
             ];
             for (column, column_span, row, row_span) in cells {
-                Obj::create(container_of(&lv, index).unwrap()).unwrap();
+                Obj::create(&mut lv.edit(|lv| container_of(lv, index)).unwrap()).unwrap();
                 let mut child = lv.edit(|lv| container_of(lv, index)?.child(-1)).unwrap();
                 child
                     .set_grid_cell(
@@ -437,16 +441,16 @@ mod grids {
     fn the_grid_layout_never_goes_without_its_templates() {
         let mut guard = guard();
         let mut lv = session(&mut guard);
-        let screen = lv.screen_active().unwrap();
-        let parent = Obj::create(screen).unwrap();
-        let index = parent.get_index();
+        let index = Obj::create(&mut lv.screen_active_mut().unwrap())
+            .unwrap()
+            .get_index();
         fn parent_of(lv: &Lvgl, index: i32) -> Option<&Obj> {
             lv.screen_active()?.child(index)
         }
         // A grid container without templates inside a grid would be a
         // subgrid, copying the parent's template from its own cell.
-        Obj::create(parent).unwrap();
-        Obj::create(parent.child(0).unwrap()).unwrap();
+        Obj::create(&mut lv.edit(|lv| parent_of(lv, index)).unwrap()).unwrap();
+        Obj::create(&mut lv.edit(|lv| parent_of(lv, index)?.child(0)).unwrap()).unwrap();
         lv.edit(|lv| parent_of(lv, index))
             .unwrap()
             .set_grid_dsc_array(&ONE, &ONE)
@@ -536,7 +540,7 @@ mod scales {
     fn labels_stay_in_bounds_at_every_tick_count() {
         let mut guard = guard();
         let mut lv = session(&mut guard);
-        Scale::create(lv.screen_active().unwrap()).unwrap();
+        Scale::create(&mut lv.screen_active_mut().unwrap()).unwrap();
         lv.edit(last).unwrap().set_size(200, 100);
         let scale = last(&lv).unwrap().downcast::<Scale>().unwrap();
         scale.set_label_show(true);
@@ -618,9 +622,18 @@ mod keyboards {
     fn popovers_follow_the_layout_shown() {
         let mut guard = guard();
         let mut lv = session(&mut guard);
-        let screen = lv.screen_active().unwrap();
-        let first = Keyboard::create(screen).unwrap();
-        let second = Keyboard::create(screen).unwrap();
+        let mut screen = lv.screen_active_mut().unwrap();
+        Keyboard::create(&mut screen).unwrap();
+        Keyboard::create(&mut screen).unwrap();
+        let keyboard = |index| {
+            lv.screen_active()
+                .unwrap()
+                .child(index)
+                .unwrap()
+                .downcast::<Keyboard>()
+                .unwrap()
+        };
+        let (first, second) = (keyboard(-2), keyboard(-1));
         first.set_mode(KeyboardMode::USER_2);
         second.set_mode(KeyboardMode::USER_2);
         // The second keyboard still shows LVGL's 35-button layout: copying

@@ -1,0 +1,11 @@
+error[E0505]: cannot move out of `parent` because it is borrowed
+  --> tests/compile-fail/parent_used_while_child_view_lives.rs:15:5
+   |
+13 |     let mut parent = lv.edit(|lv| lv.screen_active()?.child(0)).unwrap();
+   |         ---------- binding `parent` declared here
+14 |     let child = Obj::create(&mut parent).unwrap();
+   |                             ----------- borrow of `parent` occurs here
+15 |     parent.delete().unwrap();
+   |     ^^^^^^ move out of `parent` occurs here
+16 |     let _ = child.as_ptr();
+   |             ----- borrow later used here
