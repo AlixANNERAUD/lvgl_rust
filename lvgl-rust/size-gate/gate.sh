@@ -2,11 +2,12 @@
 # Size gate for lvgl-rust: builds the firmware in this directory for an
 # embedded target and checks the crate's footprint in the linked image.
 #
-#   gate.sh <target> <slots> <text budget in bytes>
+#   gate.sh <target> <slots> <text budget in bytes> [firmware features: defmt, debug-counters]
 #
 # Checks: the registry static is 8·N + 24 bytes in .bss (8 bytes with N = 0),
 # and the `post` queue 8·P + 4 bytes (none with P = 0,
-# LVGL_RUST_POST_SLOTS, default 4);
+# LVGL_RUST_POST_SLOTS, default 4), plus the 8 bytes of counters with
+# `debug-counters` (and nothing else from them without it);
 # the crate has no .data; no core::fmt or panic code is linked; the OBJ_ID
 # hooks are defined with N > 0 and absent with N = 0; the crate's code fits
 # the budget. The C toolchain comes from the `size-gate` mise task.
@@ -15,6 +16,7 @@ set -euo pipefail
 target=$1
 slots=$2
 budget=$3
+features=${4:-}
 root=$(cd "$(dirname "$0")/../.." && pwd)
 
 if [ "$slots" = 0 ]; then
@@ -23,8 +25,13 @@ else
     conf=$root/lvgl-rust/conf
 fi
 dir=$root/target/size-gate/n$slots
+feature_args=()
+if [ -n "$features" ]; then
+    dir=$dir-${features//,/-}
+    feature_args=(--features "$features") # forwarded by the firmware's Cargo.toml
+fi
 DEP_LV_CONFIG_PATH=$conf LVGL_RUST_HANDLE_SLOTS=$slots CARGO_TARGET_DIR=$dir \
-    cargo build --quiet -p lvgl-rust-size-gate --profile size --target "$target"
+    cargo build --quiet -p lvgl-rust-size-gate --profile size --target "$target" "${feature_args[@]}"
 elf=$dir/$target/size/lvgl-rust-size-gate
 
 case $target in
@@ -33,8 +40,9 @@ riscv*) nm=riscv64-unknown-elf-nm ;;
 *) echo "unsupported target $target" >&2 && exit 2 ;;
 esac
 
+label="$target, N = $slots${features:+, $features}"
 fail() {
-    echo "size gate ($target, N = $slots): $*" >&2
+    echo "size gate ($label): $*" >&2
     exit 1
 }
 
@@ -55,10 +63,20 @@ data=$(awk '$3 ~ /^[dD]$/' <<<"$crate")
 
 post_slots=${LVGL_RUST_POST_SLOTS:-4}
 if [ "$post_slots" = 0 ]; then expected_post=0; else expected_post=$((8 * post_slots + 4)); fi
-expected_bss=$((expected_reg + expected_post))
+counters=$(grep -E ' lvgl_rust::counters::enabled::COUNTERS$' <<<"$symbols" || true)
+if [[ ",$features," == *,debug-counters,* ]]; then
+    expected_counters=8
+    [ -n "$counters" ] || fail "debug counters not found"
+    counters_size=$((16#$(awk '{print $2}' <<<"$counters")))
+    [ "$counters_size" = 8 ] || fail "debug counters are $counters_size B, expected 8 B"
+else
+    expected_counters=0
+    [ -z "$counters" ] || fail "debug counters linked without debug-counters"
+fi
+expected_bss=$((expected_reg + expected_post + expected_counters))
 bss=0
 while read -r _ size _ _; do bss=$((bss + 16#$size)); done < <(awk '$3 ~ /^[bB]$/' <<<"$crate")
-[ "$bss" = "$expected_bss" ] || fail "crate .bss is $bss B, expected $expected_bss B (registry $expected_reg, post queue $expected_post)"
+[ "$bss" = "$expected_bss" ] || fail "crate .bss is $bss B, expected $expected_bss B (registry $expected_reg, post queue $expected_post, counters $expected_counters)"
 
 panics=$("$nm" -C "$elf" | grep -E 'core::fmt|core::panicking|unwrap_failed' || true)
 [ -z "$panics" ] || fail "formatting or panic code linked: $panics"
@@ -72,5 +90,5 @@ fi
 
 text=0
 while read -r _ size _ _; do text=$((text + 16#$size)); done < <(awk '$3 ~ /^[tTrR]$/' <<<"$crate")
-echo "size gate ($target, N = $slots): .bss $bss B, .data 0 B, code $text B (budget $budget B)"
+echo "size gate ($label): .bss $bss B, .data 0 B, code $text B (budget $budget B)"
 [ "$text" -le "$budget" ] || fail "code is $text B, over the $budget B budget"

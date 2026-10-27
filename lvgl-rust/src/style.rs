@@ -225,6 +225,7 @@ impl From<&'static ConstStyle> for StyleRef {
 /// (`lv_style_selector_t`): `Part::MAIN`, `State::PRESSED`,
 /// `Part::INDICATOR | State::CHECKED`, or [`Selector::DEFAULT`].
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct Selector(u32);
 
 impl Selector {
@@ -329,6 +330,7 @@ pub mod color {
 /// constant per property of these bindings (`StyleProp::BG_COLOR`, ...).
 #[repr(transparent)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct StyleProp(pub(crate) sys::lv_style_prop_t);
 
 impl StyleProp {
@@ -357,6 +359,7 @@ unsafe impl Sync for GradDsc {}
 
 /// The direction of a [`GradDsc`].
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum GradDir {
     Horizontal,
     Vertical,
@@ -401,6 +404,7 @@ impl GradDsc {
 
 /// How an animated value moves from start to end (LVGL's built-in paths).
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum AnimPath {
     Linear,
     EaseIn,

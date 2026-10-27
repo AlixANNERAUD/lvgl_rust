@@ -7,6 +7,7 @@ use core::ffi::{CStr, c_void};
 /// Pixel formats of a constant [`ImageDsc`]: uncompressed formats that
 /// LVGL draws in place, with their palette for the indexed ones.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum PixelFormat {
     /// 8-bit luminance.
     L8,

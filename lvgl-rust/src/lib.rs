@@ -17,6 +17,11 @@
 //! `0` for views only, without handles) and `LVGL_RUST_MAX_CALLBACK_DEPTH`
 //! (default 16) and `LVGL_RUST_POST_SLOTS` (entries of [`Lvgl::post`],
 //! default 4).
+//!
+//! Diagnostic features, free when off: `defmt` (`defmt::Format` for
+//! [`Error`], handles and the public enums and plain types) and
+//! `debug-counters` (`DebugCounters`: what the crate did or refused
+//! without returning an error, in 8 bytes of `.bss`).
 
 #![no_std]
 
@@ -32,6 +37,7 @@ mod base;
 mod button_map;
 #[cfg(not(lvgl_rust_views_only))]
 mod component;
+mod counters;
 mod display;
 mod error;
 mod event;
@@ -145,6 +151,8 @@ pub use button_map::KeyboardMap;
 pub use button_map::{ButtonMap, MapEntry};
 #[cfg(not(lvgl_rust_views_only))]
 pub use component::Component;
+#[cfg(feature = "debug-counters")]
+pub use counters::DebugCounters;
 pub use display::{Display, DisplayCell, DrawBuffers, Flush, FlushDone, FlushRequest, RenderMode};
 pub use error::Error;
 #[cfg(not(lvgl_rust_views_only))]
