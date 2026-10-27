@@ -16,6 +16,7 @@ pub trait Read: Send + 'static {
 
 /// What kind of input device a reader is.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum IndevKind {
     /// Touchpad or mouse: a point and pressed state.
     Pointer,
@@ -121,7 +122,8 @@ unsafe fn drop_reader<R>(cell: *const ()) {
 }
 
 /// An input device made by [`Indev::create`]. Dropping it keeps the
-/// device; deletion is explicit ([`Indev::delete`]).
+/// device (a leak, counted by `DebugCounters::leaked` with
+/// `debug-counters`); deletion is explicit ([`Indev::delete`]).
 pub struct Indev {
     indev: NonNull<sys::lv_indev_t>,
     cell: NonNull<()>,
@@ -131,6 +133,14 @@ pub struct Indev {
 // SAFETY: pointers to LVGL's device and a `'static` cell, used only with
 // the token.
 unsafe impl Send for Indev {}
+
+/// Counts the leak (feature `debug-counters`); the device stays.
+#[cfg(feature = "debug-counters")]
+impl Drop for Indev {
+    fn drop(&mut self) {
+        crate::counters::count(crate::counters::Counter::Leaked);
+    }
+}
 
 impl Indev {
     /// Creates an input device of `kind` reading through `reader`, whose
@@ -178,6 +188,9 @@ impl Indev {
             sys::lv_indev_delete(self.indev.as_ptr());
             (self.drop_reader)(self.cell.as_ptr());
         }
+        // Deleted: not a leak.
+        #[cfg(feature = "debug-counters")]
+        core::mem::forget(self);
     }
 
     /// The LVGL input device, for raw calls.

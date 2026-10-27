@@ -157,6 +157,10 @@ fn displays_and_input_devices() {
     let done = PENDING.lock().unwrap().take();
     let display = match (done, display.try_delete(&mut lv)) {
         (Some(done), Err((display, Error::Busy))) => {
+            // WASI has no threads: complete it on this one.
+            #[cfg(target_os = "wasi")]
+            done.ready();
+            #[cfg(not(target_os = "wasi"))]
             std::thread::spawn(move || done.ready()).join().unwrap();
             display
         }

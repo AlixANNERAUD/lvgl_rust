@@ -146,3 +146,110 @@ mod buttonmatrix {
         }
     }
 }
+
+#[cfg(lv_use_buttonmatrix)]
+impl crate::enums::ButtonmatrixCtrl {
+    /// Both flags (`self | other`), usable in constants: a width and
+    /// [`POPOVER`](Self::POPOVER), say.
+    pub const fn union(self, other: Self) -> Self {
+        Self(self.0 | other.0)
+    }
+}
+
+/// A keyboard layout (`lv_keyboard_set_map`): buttons and one control
+/// entry per button, which LVGL keeps together and reads as many control
+/// entries as the map has buttons (`lv_keyboard.c:498-504`). Both are
+/// `'static`, and the lengths are checked when it is made.
+#[cfg(lv_use_keyboard)]
+pub struct KeyboardMap {
+    map: ButtonMap,
+    ctrl: &'static [crate::enums::ButtonmatrixCtrl],
+}
+
+#[cfg(lv_use_keyboard)]
+impl KeyboardMap {
+    /// A layout of `map` with the control flags `ctrl`, one per button
+    /// (widths, [`POPOVER`](crate::enums::ButtonmatrixCtrl::POPOVER), ...).
+    ///
+    /// # Panics
+    ///
+    /// If `ctrl` does not have one entry per button of `map` (a compile
+    /// error in a `static`).
+    pub const fn new(map: ButtonMap, ctrl: &'static [crate::enums::ButtonmatrixCtrl]) -> Self {
+        assert!(
+            ctrl.len() == map.button_count() as usize,
+            "a keyboard map needs one control entry per button"
+        );
+        Self { map, ctrl }
+    }
+
+    /// The buttons.
+    pub const fn map(&self) -> &ButtonMap {
+        &self.map
+    }
+
+    /// The control map.
+    pub const fn ctrl_ptr(&self) -> *const sys::lv_buttonmatrix_ctrl_t {
+        self.ctrl.as_ptr().cast()
+    }
+}
+
+#[cfg(lv_use_keyboard)]
+mod keyboard {
+    use super::KeyboardMap;
+    use crate::{enums::KeyboardMode, sys, widgets::Keyboard};
+
+    impl Keyboard {
+        /// Uses `map` for `mode`, in every keyboard: LVGL keeps one layout
+        /// per mode for all of them (`lv_keyboard.c:188-215, 291-292`).
+        /// This keyboard shows its current mode's layout again; the others
+        /// pick up the new one when they next change mode.
+        ///
+        /// `lv_keyboard_set_map`.
+        pub fn set_map(&self, mode: KeyboardMode, map: &'static KeyboardMap) {
+            // SAFETY: shared access (the audit's), live keyboard; `mode` is
+            // one of LVGL's modes (below the 10 entries of `kb_map`), the
+            // map and its control entries are `'static`, terminated and of
+            // matching lengths.
+            unsafe {
+                sys::lv_keyboard_set_map(
+                    self.as_ptr(),
+                    mode.bits() as sys::lv_keyboard_mode_t,
+                    map.map().as_ptr(),
+                    map.ctrl_ptr(),
+                )
+            };
+        }
+
+        /// Shows popovers on press (or not), for the layout of the current
+        /// mode.
+        ///
+        /// LVGL applies the mode's control map to the buttons the keyboard
+        /// shows, copying one entry per button (`lv_keyboard.c:491-516`):
+        /// if the keyboard shows another map (a button matrix map, or the
+        /// mode's previous layout after [`set_map`](Self::set_map) on
+        /// another keyboard), that reads past the control map. So the
+        /// mode's layout is shown again first (by switching modes and
+        /// back), which also replaces a map set through the button matrix.
+        ///
+        /// `lv_keyboard_set_popovers`.
+        pub fn set_popovers(&self, enabled: bool) {
+            let keyboard = self.as_ptr();
+            // SAFETY: shared access (the audit's, for each call), live
+            // keyboard; every mode's map and control map have matching
+            // lengths (LVGL's, or a `KeyboardMap`), and switching modes
+            // applies both (`lv_keyboard.c:259-267, 479-485`).
+            unsafe {
+                let mode = sys::lv_keyboard_get_mode(keyboard);
+                let other = if mode == sys::lv_keyboard_mode_t_LV_KEYBOARD_MODE_TEXT_LOWER {
+                    sys::lv_keyboard_mode_t_LV_KEYBOARD_MODE_TEXT_UPPER
+                } else {
+                    sys::lv_keyboard_mode_t_LV_KEYBOARD_MODE_TEXT_LOWER
+                };
+                sys::lv_keyboard_set_mode(keyboard, other);
+                sys::lv_keyboard_set_mode(keyboard, mode);
+                sys::lv_keyboard_set_popovers(keyboard, enabled);
+            }
+        }
+    }
+}

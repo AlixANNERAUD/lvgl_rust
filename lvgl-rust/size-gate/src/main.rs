@@ -23,6 +23,10 @@ mod firmware {
     pub extern "C" fn _start() -> ! {
         let mut guard = Guard;
         let _ = run(&mut guard);
+        // What reading the counters costs (the static stays linked even
+        // where nothing below counts).
+        #[cfg(feature = "debug-counters")]
+        core::hint::black_box(lvgl_rust::DebugCounters::read());
         loop {
             tick_inc(1);
             if let Ok(mut lv) = Lvgl::enter(&mut guard) {

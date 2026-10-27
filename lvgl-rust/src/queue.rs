@@ -19,6 +19,7 @@ const RX_TAKEN: u8 = 1 << 2;
 
 /// What a receiver returns.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum Recv<E> {
     /// The oldest recorded event.
     Event(E),

@@ -225,3 +225,96 @@ mod keyboard {
         }
     }
 }
+
+/// Layout setters: the grid layout is set only with its templates
+/// ([`ObjMut::set_grid_dsc_array`](crate::ObjMut::set_grid_dsc_array)), so
+/// LVGL never takes its unchecked subgrid path (`grid.rs`).
+mod layout {
+    use crate::{Error, ObjMut, Selector, StyleMut, Widget, sys};
+
+    /// Whether `layout` (as LVGL stores it: a `uint16_t`,
+    /// `lv_obj_style_gen.c`) is `LV_LAYOUT_GRID`.
+    pub(crate) const fn is_grid(layout: u16) -> bool {
+        #[cfg(lv_use_grid)]
+        {
+            layout == sys::lv_layout_t_LV_LAYOUT_GRID as u16
+        }
+        #[cfg(not(lv_use_grid))]
+        {
+            let _ = layout;
+            false
+        }
+    }
+
+    impl<W: Widget> ObjMut<'_, W> {
+        /// Sets the layout (`LV_LAYOUT_NONE`, `LV_LAYOUT_FLEX`, ...).
+        /// `LV_LAYOUT_GRID` is refused ([`Error::InvalidArg`]): use
+        /// `set_grid_dsc_array`, which sets it with its templates.
+        ///
+        /// `lv_obj_set_layout`.
+        pub fn set_layout(&mut self, layout: u32) -> Result<(), Error> {
+            // LVGL truncates to `uint16_t` (`lv_obj_pos.c:288`).
+            if is_grid(layout as u16) {
+                return Err(Error::InvalidArg);
+            }
+            // SAFETY: exclusive access to a live object (as generated).
+            unsafe { sys::lv_obj_set_layout(self.as_raw(), layout) };
+            Ok(())
+        }
+
+        /// Sets the `layout` style property; `LV_LAYOUT_GRID` is refused
+        /// as in [`set_layout`](Self::set_layout).
+        ///
+        /// `lv_obj_set_style_layout`.
+        pub fn set_style_layout(
+            &mut self,
+            value: u16,
+            selector: impl Into<Selector>,
+        ) -> Result<(), Error> {
+            if is_grid(value) {
+                return Err(Error::InvalidArg);
+            }
+            // SAFETY: as above.
+            unsafe { sys::lv_obj_set_style_layout(self.as_raw(), value, selector.into().bits()) };
+            Ok(())
+        }
+
+        /// Removes a local style property. The grid templates are refused
+        /// ([`Error::InvalidArg`]): the grid layout set with them would stay
+        /// without them. `Ok(false)` if the property was not set.
+        ///
+        /// `lv_obj_remove_local_style_prop`.
+        pub fn remove_local_style_prop(
+            &mut self,
+            prop: sys::lv_style_prop_t,
+            selector: impl Into<Selector>,
+        ) -> Result<bool, Error> {
+            #[cfg(lv_use_grid)]
+            if crate::grid::is_template_prop(prop) {
+                return Err(Error::InvalidArg);
+            }
+            // SAFETY: as above.
+            Ok(unsafe {
+                sys::lv_obj_remove_local_style_prop(self.as_raw(), prop, selector.into().bits())
+            })
+        }
+    }
+
+    impl StyleMut<'_> {
+        /// Sets the `layout` property; `LV_LAYOUT_GRID` is refused
+        /// ([`Error::InvalidArg`]): a style cannot carry an object's grid
+        /// templates.
+        ///
+        /// `lv_style_set_layout`.
+        pub fn set_layout(&mut self, value: u16) -> Result<(), Error> {
+            if is_grid(value) {
+                return Err(Error::InvalidArg);
+            }
+            // SAFETY: exclusive access to the style (as generated).
+            unsafe { sys::lv_style_set_layout(self.as_raw(), value) };
+            Ok(())
+        }
+    }
+}
+
+pub(crate) use layout::is_grid;
