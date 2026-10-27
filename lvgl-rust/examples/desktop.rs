@@ -6,7 +6,7 @@
 //! posted.
 //!
 //! Run with `mise run example` (it needs the configuration with OBJ_ID,
-//! `lvgl-rust/conf`).
+//! `lvgl-rust/conf`), or under wasmtime with `mise run cross-wasip1`.
 
 // The example keeps handles: views-only builds (`LVGL_RUST_HANDLE_SLOTS=0`)
 // have none.

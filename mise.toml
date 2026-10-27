@@ -7,7 +7,7 @@ min_version = "2026.9.2"
 # `targets` are the cross targets built in CI (`cross-*` tasks).
 # `mr_boxington` routes Cargo through mbx, a shared build cache: LVGL's C
 # objects and the build script output are restored instead of recompiled.
-rust = { version = "stable", components = "rustfmt,clippy,llvm-tools", targets = "wasm32-unknown-unknown,riscv32imc-unknown-none-elf,thumbv6m-none-eabi,thumbv7em-none-eabihf,thumbv8m.main-none-eabihf", mr_boxington = true }
+rust = { version = "stable", components = "rustfmt,clippy,llvm-tools", targets = "wasm32-unknown-unknown,wasm32-wasip1,riscv32imc-unknown-none-elf,thumbv6m-none-eabi,thumbv7em-none-eabihf,thumbv8m.main-none-eabihf", mr_boxington = true }
 mr-boxington = "latest"
 # Coverage (`mise run coverage`).
 "aqua:taiki-e/cargo-llvm-cov" = "latest"
@@ -116,6 +116,28 @@ run = [
   "DEP_LV_CONFIG_PATH={{config_root}}/lvgl-rust/conf CARGO_TARGET_DIR=target/safe-wasm32 cargo build -p lvgl-rust --target wasm32-unknown-unknown",
 ]
 
+[tasks.cross-wasip1]
+description = "Build for wasm32-wasip1 with wasi-sdk, then run the tests and the desktop example under wasmtime"
+# Task-scoped: wasi-sdk's `bin` has its own `clang`, `ar` and `nm`, which
+# must not shadow the host ones for other tasks.
+tools = { "github:WebAssembly/wasi-sdk" = "wasi-sdk-33", wasmtime = "50.0.0" }
+env.RUSTFLAGS = "-D warnings"
+# `wasm32-wasip1-clang` targets WASI and finds the SDK's sysroot itself.
+env.CC_wasm32_wasip1 = "wasm32-wasip1-clang"
+env.AR_wasm32_wasip1 = "llvm-ar"
+env.CARGO_TARGET_WASM32_WASIP1_RUNNER = "wasmtime"
+# bindgen's libclang does not read the SDK's `clang.cfg`: it gets the same
+# sysroot explicitly. Tests that spawn threads (WASI has none) or catch
+# panics (wasm aborts) are ignored on this target.
+run = """
+sdk="$(dirname "$(command -v wasm32-wasip1-clang)")/.."
+export BINDGEN_EXTRA_CLANG_ARGS_wasm32_wasip1="--sysroot=$sdk/share/wasi-sysroot"
+cargo test -p lvgl-rust-sys --lib --target wasm32-wasip1
+export DEP_LV_CONFIG_PATH={{config_root}}/lvgl-rust/conf CARGO_TARGET_DIR=target/safe-wasip1
+cargo test -p lvgl-rust --features async,heap,fmt --target wasm32-wasip1
+cargo run -q -p lvgl-rust --example desktop --target wasm32-wasip1
+"""
+
 [tasks.cross-riscv32]
 description = "Build lvgl-rust-sys for riscv32imc-unknown-none-elf (C toolchain from `mise bootstrap packages apply`)"
 env.RUSTFLAGS = "-D warnings"
@@ -136,12 +158,17 @@ description = "Check lvgl-rust's footprint in thumbv6m and riscv32imc firmware (
 env.RUSTFLAGS = "-D warnings"
 # Budgets: the crate's code in bytes, with N = 16 slots and in views-only
 # mode. Raise them only with the feature that needs it (the composite part
-# checks took about 1.35 KB on thumbv6m).
+# checks took about 1.35 KB on thumbv6m). The last runs add the diagnostic
+# features: +8 B of .bss for the counters, defmt built for thumbv6m and free
+# while nothing logs, within the same budgets.
 run = [
   "lvgl-rust/size-gate/gate.sh thumbv6m-none-eabi 16 4608",
   "lvgl-rust/size-gate/gate.sh thumbv6m-none-eabi 0 2304",
   "lvgl-rust/size-gate/gate.sh riscv32imc-unknown-none-elf 16 5888",
   "lvgl-rust/size-gate/gate.sh riscv32imc-unknown-none-elf 0 2816",
+  "lvgl-rust/size-gate/gate.sh thumbv6m-none-eabi 16 4608 defmt,debug-counters",
+  "lvgl-rust/size-gate/gate.sh thumbv6m-none-eabi 0 2304 debug-counters",
+  "lvgl-rust/size-gate/gate.sh riscv32imc-unknown-none-elf 16 5888 debug-counters",
 ]
 
 [tasks.msrv]
@@ -168,14 +195,14 @@ description = "Run clippy on lvgl-rust"
 env.RUSTFLAGS = "-D warnings"
 env.DEP_LV_CONFIG_PATH = "{{config_root}}/lvgl-rust/conf"
 env.CARGO_TARGET_DIR = "target/safe"
-run = "cargo clippy -p lvgl-rust -p lvgl-rust-size-gate --all-targets --features lvgl-rust/async,lvgl-rust/heap,lvgl-rust/fmt"
+run = "cargo clippy -p lvgl-rust -p lvgl-rust-size-gate --all-targets --features lvgl-rust/async,lvgl-rust/heap,lvgl-rust/fmt,lvgl-rust/defmt,lvgl-rust/debug-counters"
 
 [tasks.test-safe]
 description = "Test lvgl-rust against LVGL"
 env.RUSTFLAGS = "-D warnings"
 env.DEP_LV_CONFIG_PATH = "{{config_root}}/lvgl-rust/conf"
 env.CARGO_TARGET_DIR = "target/safe"
-run = "cargo test -p lvgl-rust --features async,heap,fmt"
+run = "cargo test -p lvgl-rust --features async,heap,fmt,defmt,debug-counters"
 
 [tasks.test-views-only]
 description = "Lint and test lvgl-rust without handles, on a config that keeps LVGL's own OBJ_ID support"
@@ -183,7 +210,12 @@ env.RUSTFLAGS = "-D warnings"
 env.LVGL_RUST_HANDLE_SLOTS = "0"
 env.DEP_LV_CONFIG_PATH = "{{config_root}}/lvgl-rust-sys/conf"
 env.CARGO_TARGET_DIR = "target/views-only"
-run = ["cargo clippy -p lvgl-rust --all-targets", "cargo test -p lvgl-rust"]
+run = [
+  "cargo clippy -p lvgl-rust --all-targets",
+  "cargo clippy -p lvgl-rust --all-targets --features defmt,debug-counters",
+  "cargo test -p lvgl-rust",
+  "cargo test -p lvgl-rust --features defmt,debug-counters --test counters",
+]
 
 [tasks.test-asan]
 description = "Test lvgl-rust with LVGL under AddressSanitizer (C library malloc, so freed objects are visible)"

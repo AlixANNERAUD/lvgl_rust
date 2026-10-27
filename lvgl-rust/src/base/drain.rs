@@ -20,6 +20,7 @@ mod slots {
         structural,
         sync::{Ordering, fence},
     };
+    use crate::counters::{Counter, count};
 
     /// Carries out pending requests. Token held, depth 0.
     pub(crate) fn drain() {
@@ -72,9 +73,15 @@ mod slots {
                     reg.hdr.any_req.store(true, Ordering::Relaxed);
                     return Err(Error::Busy);
                 }
-                Err(_) => false,
+                Err(_) => {
+                    count(Counter::Refused);
+                    false
+                }
             }
         };
+        if allowed {
+            count(Counter::Drained);
+        }
 
         if dropped {
             // (a) The `Owned` is gone. With OWNED still set, the hook only
@@ -121,6 +128,7 @@ mod slots {
             return;
         }
         if slot.state() == LIVE {
+            count(Counter::Drained);
             // SAFETY: token held, depth 0; a LIVE slot points to a timer or
             // a group the crate created and nothing else deletes.
             unsafe {
@@ -171,7 +179,10 @@ mod slots {
         }
         let screen = slot.ptr().cast();
         // A refused load is discarded, like a load of a dead screen.
-        let _ = structural::load_screen(screen, hdr.load_anim.get());
+        match structural::load_screen(screen, hdr.load_anim.get()) {
+            Ok(()) => count(Counter::Drained),
+            Err(_) => count(Counter::Refused),
+        }
         release_temp(index);
     }
 }

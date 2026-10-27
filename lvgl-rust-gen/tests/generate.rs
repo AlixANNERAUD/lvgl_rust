@@ -487,6 +487,16 @@ fn event_tables_are_checked_against_the_bindings() {
         "{}",
         output.code
     );
+    // DRAW_MAIN (33) alone gets the restricted context, with a query code.
+    assert!(
+        output.code.contains(&format!(
+            "HANDLER_RESTRICTED: [u64; 2] = [{}, 0]",
+            1u64 << 33
+        )),
+        "{}",
+        output.code
+    );
+    assert!(output.code.contains("pub const DRAW_MAIN: Self"));
     let cases = [
         (
             "value = 10",

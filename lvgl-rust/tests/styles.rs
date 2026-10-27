@@ -125,6 +125,7 @@ fn fonts_are_static() {
 }
 
 #[test]
+#[cfg_attr(panic = "abort", ignore = "catches panics")]
 fn constant_style_terminator_is_checked() {
     let unterminated = std::panic::catch_unwind(|| {
         static PROPS: [lvgl_rust::ConstProp; 1] = [lvgl_rust::props::radius(1)];

@@ -22,6 +22,11 @@
 //! `0` for views only, without handles) and `LVGL_RUST_MAX_CALLBACK_DEPTH`
 //! (default 16) and `LVGL_RUST_POST_SLOTS` (entries of [`Lvgl::post`],
 //! default 4).
+//!
+//! Diagnostic features, free when off: `defmt` (`defmt::Format` for
+//! [`Error`], handles and the public enums and plain types) and
+//! `debug-counters` (`DebugCounters`: what the crate did or refused
+//! without returning an error, in 8 bytes of `.bss`).
 
 #![no_std]
 
@@ -37,9 +42,12 @@ mod base;
 mod button_map;
 #[cfg(not(lvgl_rust_views_only))]
 mod component;
+mod counters;
 mod display;
 mod error;
 mod event;
+#[cfg(lv_use_grid)]
+mod grid;
 #[cfg(not(lvgl_rust_views_only))]
 mod group;
 #[cfg(feature = "heap")]
@@ -54,8 +62,10 @@ mod heap_align {
 }
 mod indev;
 mod manual;
+mod query;
 #[cfg(feature = "async")]
 mod queue;
+mod scale_labels;
 mod screen;
 mod style;
 mod subject;
@@ -78,7 +88,61 @@ mod generated {
     include!(concat!(env!("OUT_DIR"), "/gen.rs"));
 }
 
-pub use generated::{DrawBuf, enums, functions, props, widgets};
+pub use generated::{DrawBuf, enums, functions, widgets};
+
+/// Property constructors for [`const_style!`]: one per style setter whose
+/// value fits a constant.
+pub mod props {
+    pub use crate::generated::props::*;
+
+    /// `layout` (`lv_style_set_layout`).
+    ///
+    /// # Panics
+    ///
+    /// On `LV_LAYOUT_GRID` (a compile error in a `static`): the grid layout
+    /// is set only with its templates, by `ObjMut::set_grid_dsc_array`.
+    pub const fn layout(value: u16) -> crate::ConstProp {
+        assert!(
+            !crate::manual::is_grid(value),
+            "the grid layout is set by ObjMut::set_grid_dsc_array"
+        );
+        crate::ConstProp::new(
+            crate::sys::_lv_style_id_t_LV_STYLE_LAYOUT as crate::sys::lv_style_prop_t,
+            crate::sys::lv_style_value_t { num: value as i32 },
+        )
+    }
+
+    /// `grid_cell_column_span` (`lv_style_set_grid_cell_column_span`).
+    ///
+    /// # Panics
+    ///
+    /// Above [`GridTemplate::MAX_SPAN`](crate::GridTemplate::MAX_SPAN) (a
+    /// compile error in a `static`).
+    #[cfg(lv_use_grid)]
+    pub const fn grid_cell_column_span(value: i32) -> crate::ConstProp {
+        assert!(crate::grid::span_ok(value), "a grid span is at most 65535");
+        crate::ConstProp::new(
+            crate::sys::_lv_style_id_t_LV_STYLE_GRID_CELL_COLUMN_SPAN
+                as crate::sys::lv_style_prop_t,
+            crate::sys::lv_style_value_t { num: value },
+        )
+    }
+
+    /// `grid_cell_row_span` (`lv_style_set_grid_cell_row_span`).
+    ///
+    /// # Panics
+    ///
+    /// Above [`GridTemplate::MAX_SPAN`](crate::GridTemplate::MAX_SPAN) (a
+    /// compile error in a `static`).
+    #[cfg(lv_use_grid)]
+    pub const fn grid_cell_row_span(value: i32) -> crate::ConstProp {
+        assert!(crate::grid::span_ok(value), "a grid span is at most 65535");
+        crate::ConstProp::new(
+            crate::sys::_lv_style_id_t_LV_STYLE_GRID_CELL_ROW_SPAN as crate::sys::lv_style_prop_t,
+            crate::sys::lv_style_value_t { num: value },
+        )
+    }
+}
 
 #[cfg(test)]
 mod tests;
@@ -87,21 +151,32 @@ mod tests;
 pub use allocator::{LvglAllocator, SizedHeader};
 pub use anim::{Anim, AnimCtx};
 pub use base::*;
+#[cfg(lv_use_keyboard)]
+pub use button_map::KeyboardMap;
 pub use button_map::{ButtonMap, MapEntry};
 #[cfg(not(lvgl_rust_views_only))]
 pub use component::Component;
+#[cfg(feature = "debug-counters")]
+pub use counters::DebugCounters;
 pub use display::{Display, DisplayCell, DrawBuffers, Flush, FlushDone, FlushRequest, RenderMode};
 pub use error::Error;
 #[cfg(not(lvgl_rust_views_only))]
 pub use event::EventSub;
 pub use event::{Event, Handler, HandlerResult, UserData, handler_allowed};
+#[cfg(lv_use_grid)]
+pub use grid::{GridTemplate, Track};
 #[cfg(not(lvgl_rust_views_only))]
 pub use group::Group;
 pub use image::{ImageColorkey, ImageData, ImageDsc, ImageSrc, PixelFormat};
 pub use indev::{Indev, IndevCell, IndevData, IndevKind, Read};
 pub use lvgl_rust_sys as sys;
+pub use query::{
+    CoverCheck, CoverResult, DrawTask, ExtDrawSize, HitTest, Layer, QueryEvent, SelfSize,
+    query_handler_allowed,
+};
 #[cfg(feature = "async")]
 pub use queue::{Receiver, Recv, StaticQueue, StaticRx, next_event};
+pub use scale_labels::{ScaleLabel, ScaleLabels};
 pub use screen::{ScreenAnim, ScreenLoadAnim};
 pub use style::{
     AnimPath, ColorFilter, ConstProp, ConstStyle, Font, GradDir, GradDsc, Selector, Style,

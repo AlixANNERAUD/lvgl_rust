@@ -12,8 +12,8 @@
 //! - `sendable`: `"no"` if `param` is not empty (or by hand), else
 //!   `"exclusive"` if `deleting` or if what the send frees is held across
 //!   a send of a shared code, else `"shared"`;
-//! - `handler`: `"shared"` (handlers get `&Lvgl`), `"restricted"` (only
-//!   queries; behaves as `"none"` until the restricted tier exists) or
+//! - `handler`: `"shared"` (handlers get `&Lvgl`), `"restricted"`
+//!   (handlers get a `QueryEvent`: the typed parameter, no `&Lvgl`) or
 //!   `"none"`. Hand decisions (`[event_policy]` in `audit.toml`) come
 //!   first; `blockable_codes` are restricted; the other codes are shared
 //!   unless the held-region analysis finds a hold it cannot resolve by

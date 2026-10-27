@@ -273,6 +273,7 @@ mod handles {
     }
 
     #[test]
+    #[cfg_attr(target_os = "wasi", ignore = "WASI has no threads")]
     fn owned_objects_can_be_dropped_on_another_thread() {
         let mut guard = guard();
         let mut lv = session(&mut guard);

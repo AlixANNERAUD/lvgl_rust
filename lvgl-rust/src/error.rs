@@ -4,6 +4,7 @@
 #[repr(u8)]
 #[non_exhaustive]
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum Error {
     /// The object (or resource) was deleted.
     Dead = 1,

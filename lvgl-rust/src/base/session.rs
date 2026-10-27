@@ -15,6 +15,14 @@ use core::{marker::PhantomData, ops::Deref, ops::DerefMut, ptr::NonNull};
 /// synchronize-with the start of the next one, on any thread (Release/Acquire
 /// or stronger, as mutexes provide): this orders the crate's state and LVGL's
 /// own C globals between successive holders.
+///
+/// No value may ever be borrowed for `'static` by [`init`] or
+/// [`Lvgl::enter`] (a guard leaked with `Box::leak`, or kept in a `static`):
+/// the session would then give a `&'static Lvgl`, which a thread-local could
+/// hand to a restricted handler ([`QueryEvent`](crate::QueryEvent)) running
+/// in the middle of layout or rendering, where shared calls may free what
+/// LVGL holds. Keep the type private to the code that locks LVGL and drop
+/// each value when its access ends, as mutex guards are used.
 pub unsafe trait LvglAccess {}
 
 /// Shared (`&Lvgl`) or exclusive (`&mut Lvgl`) access to LVGL. Zero-sized,
@@ -68,7 +76,8 @@ impl Drop for Session<'_> {
 ///
 /// Fails with [`Error::Reentrant`] if LVGL is already initialized or a
 /// session is active, and with [`Error::NotInitialized`] after
-/// [`Lvgl::deinit`].
+/// [`Lvgl::deinit`]. `guard` is never borrowed for `'static` (see
+/// [`LvglAccess`]).
 #[inline]
 pub fn init<'g, A: LvglAccess>(guard: &'g mut A) -> Result<Session<'g>, Error> {
     let _ = guard;
@@ -124,7 +133,8 @@ impl Lvgl {
     /// session is active or a callback is running (a recursive lock).
     ///
     /// Requests recorded since the previous session (dropped `Owned`
-    /// handles, `delete_later`, ...) are carried out first.
+    /// handles, `delete_later`, ...) are carried out first. `guard` is never
+    /// borrowed for `'static` (see [`LvglAccess`]).
     #[inline]
     pub fn enter<'g, A: LvglAccess>(guard: &'g mut A) -> Result<Session<'g>, Error> {
         let _ = guard;
@@ -180,11 +190,18 @@ impl Lvgl {
     ///
     /// Call it only from a callback that LVGL runs inside a call made by the
     /// session holder (an event, timer or animation callback), and keep the
-    /// guard within that callback.
+    /// guard within that callback. Never use the guard's shared access
+    /// ([`DepthGuard::lv`]) in a restricted handler
+    /// ([`QueryEvent`](crate::QueryEvent)) or a raw handler of a query or
+    /// draw code: LVGL is in the middle of layout or rendering there, and
+    /// shared access could free what it holds. (The crate's restricted
+    /// trampolines enter a level only so that [`Lvgl::enter`] fails, and
+    /// never hand its access out.)
     pub unsafe fn enter_callback() -> Option<DepthGuard> {
         let depth = &reg().hdr.depth;
         let current = depth.get();
         if current >= MAX_CALLBACK_DEPTH {
+            crate::counters::count(crate::counters::Counter::Skipped);
             return None;
         }
         depth.set(current + 1);
