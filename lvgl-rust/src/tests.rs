@@ -775,14 +775,14 @@ mod lvgl_only {
         let mut guard = guard();
         let mut lv = session(&mut guard);
         let screen = lv.screen_active().unwrap();
-        // SAFETY: session held; the calendar is not in the part tables.
-        let calendar = unsafe { sys::lv_calendar_create(screen.as_ptr()) };
-        let calendar = from_raw(&lv, calendar);
-        let inside = calendar.child(0).unwrap();
+        // SAFETY: session held; the menu is not in the part tables.
+        let menu = unsafe { sys::lv_menu_create(screen.as_ptr()) };
+        let menu = from_raw(&lv, menu);
+        let inside = menu.child(0).unwrap();
         assert_eq!(inside.delete_later(), Err(Error::Internal));
-        assert_eq!(calendar.clean_later(), Err(Error::Internal));
-        let calendar = calendar.handle().unwrap();
-        calendar.get_mut(&mut lv).unwrap().delete().unwrap();
+        assert_eq!(menu.clean_later(), Err(Error::Internal));
+        let menu = menu.handle().unwrap();
+        menu.get_mut(&mut lv).unwrap().delete().unwrap();
     }
 
     #[test]
@@ -813,21 +813,15 @@ mod lvgl_only {
         let mut lv = session(&mut guard);
         let screen = lv.screen_active().unwrap();
         // SAFETY: session held, live parent.
-        let (tabview, page, content, bar, calendar) = unsafe {
+        let (tabview, page, content, bar, menu) = unsafe {
             let tv = sys::lv_tabview_create(screen.as_ptr());
             let page = sys::lv_tabview_add_tab(tv, c"One".as_ptr());
             let content = sys::lv_tabview_get_content(tv);
             let bar = sys::lv_tabview_get_tab_bar(tv);
-            (
-                tv,
-                page,
-                content,
-                bar,
-                sys::lv_calendar_create(screen.as_ptr()),
-            )
+            (tv, page, content, bar, sys::lv_menu_create(screen.as_ptr()))
         };
-        // The tab view indexes its pages; the calendar is not in the tables.
-        for parent in [tabview, content, calendar] {
+        // The tab view indexes its pages; the menu is not in the tables.
+        for parent in [tabview, content, menu] {
             let mut parent = lv.edit(|lv| Some(from_raw(lv, parent))).unwrap();
             assert_eq!(Obj::create(&mut parent).err(), Some(Error::Internal));
             assert_eq!(Label::create(&mut parent).err(), Some(Error::Internal));
@@ -851,7 +845,7 @@ mod lvgl_only {
             Err(Error::Internal)
         );
         parent_handle.get_mut(&mut lv).unwrap().delete().unwrap();
-        for widget in [tabview, calendar] {
+        for widget in [tabview, menu] {
             let widget = from_raw(&lv, widget).handle().unwrap();
             widget.get_mut(&mut lv).unwrap().delete().unwrap();
         }

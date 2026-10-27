@@ -1,0 +1,5 @@
+error[E0599]: no method named `clone` found for struct `lvgl_rust::Owned<W>` in the current scope
+  --> tests/compile-fail/owned_cloned.rs:14:26
+   |
+14 |     let _second = screen.clone();
+   |                          ^^^^^ method not found in `lvgl_rust::Owned<Obj>`

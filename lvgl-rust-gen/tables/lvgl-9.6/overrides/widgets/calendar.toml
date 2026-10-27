@@ -1,4 +1,0 @@
-# Parameter kinds, each checked against the LVGL sources (file:line in `why`).
-[fn.lv_calendar_header_dropdown_set_year_list]
-params.years_list = { kind = "copied_str" }
-why = "widgets/calendar/lv_calendar_header_dropdown.c:96 passes `years_list` only to lv_dropdown_set_options, which copies it (widgets/dropdown/lv_dropdown.c:1566-1579). NULL is rejected by LV_CHECK_ARG at :76."

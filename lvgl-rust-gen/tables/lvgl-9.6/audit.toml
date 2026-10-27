@@ -183,6 +183,19 @@ why = "removes a driver that open files and image sources may still use (lv_fs.c
 access = "raw"
 why = "runs a class constructor again on an initialised object (lv_obj_class.c): only for objects made with lv_obj_class_create_obj"
 
+# The dropdown header's handlers parse the year dropdown's options as
+# "YYYY\n" entries without bounds checks (lv_calendar_header_dropdown.c:161-169,
+# where LV_ASSERT is off in most configurations, and 189-193), and those
+# options can be changed through any dropdown setter of a view of the year
+# dropdown: the header stays out of safe code.
+[exceptions.lv_calendar_add_header_dropdown]
+access = "raw"
+why = "its handlers read the year dropdown's options as fixed YYYY entries, unchecked (lv_calendar_header_dropdown.c:161-169, 189-193), and dropdown setters reached through views can change them"
+
+[exceptions.lv_calendar_header_dropdown_set_year_list]
+access = "raw"
+why = "any text becomes the year options, which the dropdown header's handlers parse as fixed YYYY entries, unchecked (lv_calendar_header_dropdown.c:161-169, 189-193)"
+
 [exceptions.lv_color_make]
 access = "pure"
 why = "computes a value"

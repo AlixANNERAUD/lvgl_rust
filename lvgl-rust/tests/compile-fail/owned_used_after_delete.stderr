@@ -1,0 +1,9 @@
+error[E0382]: borrow of moved value: `screen`
+  --> tests/compile-fail/owned_used_after_delete.rs:14:13
+   |
+12 |     let screen = lv.create_screen().unwrap();
+   |         ------ move occurs because `screen` has type `lvgl_rust::Owned<Obj>`, which does not implement the `Copy` trait
+13 |     screen.delete(&mut lv).unwrap();
+   |     ------ value moved here
+14 |     let _ = screen.get(&lv);
+   |             ^^^^^^ value borrowed here after move

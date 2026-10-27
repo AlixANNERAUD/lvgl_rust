@@ -1,0 +1,9 @@
+error[E0499]: cannot borrow `textarea` as mutable more than once at a time
+  --> tests/compile-fail/borrowed_text_across_setter.rs:18:5
+   |
+17 |     let text = textarea.get_text();
+   |                -------- first mutable borrow occurs here
+18 |     textarea.set_text(c"replaced");
+   |     ^^^^^^^^ second mutable borrow occurs here
+19 |     let _ = text;
+   |             ---- first borrow later used here

@@ -1,0 +1,35 @@
+error[E0080]: evaluation panicked: post takes a function item or a closure without captures
+ --> $RUST/core/src/panic.rs
+  |
+  = note: evaluation of `lvgl_rust::base::post::<impl lvgl_rust::Lvgl>::post::<(), {closure@$DIR/tests/compile-fail/post_capturing_state.rs:15:9: 15:22}>::{constant#0}` failed here
+  |
+ ::: src/base/post.rs
+  |
+  | /             assert!(
+  | |                 mem::size_of::<F>() == 0,
+  | |                 "post takes a function item or a closure without captures"
+  | |             )
+  | |_____________- in this macro invocation
+
+note: erroneous constant encountered
+  --> src/base/post.rs
+   |
+   | /         const {
+   | |             assert!(
+   | |                 mem::size_of::<F>() == 0,
+   | |                 "post takes a function item or a closure without captures"
+   | |             )
+   | |         };
+   | |_________^
+
+note: the above error was encountered while instantiating `fn lvgl_rust::base::post::<impl Lvgl>::post::<(), {closure@$DIR/tests/compile-fail/post_capturing_state.rs:15:9: 15:22}>`
+  --> tests/compile-fail/post_capturing_state.rs:14:13
+   |
+14 |       let _ = lv.post(
+   |  _____________^
+15 | |         move |lv, ()| {
+16 | |             let _ = (lv.timer_handler(), delay);
+17 | |         },
+18 | |         (),
+19 | |     );
+   | |_____^

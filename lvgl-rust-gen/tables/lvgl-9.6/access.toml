@@ -631,8 +631,8 @@ access = "exclusive"
 why = "lv_calendar_add_header_arrow -> lv_obj_class_init_obj#class(lv_calendar_header_arrow_class) -> lv_group_add_obj#infeasible(fresh_object_group) -> core/lv_group::lv_group_refocus -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child"
 
 [fn.lv_calendar_add_header_dropdown]
-access = "exclusive"
-why = "lv_calendar_add_header_dropdown -> lv_obj_class_init_obj#class(lv_calendar_header_dropdown_class) -> lv_group_add_obj#infeasible(fresh_object_group) -> core/lv_group::lv_group_refocus -> lv_group_focus_next -> core/lv_group::focus_next_core -> lv_obj_send_event#body -> core/lv_obj_event::event_send_core -> lv_obj_event_base -> widgets/dropdown/lv_dropdown::lv_dropdown_event -> lv_dropdown_open -> lv_obj_set_parent -> lv_obj_remove_child"
+access = "raw"
+why = "its handlers read the year dropdown's options as fixed YYYY entries, unchecked (lv_calendar_header_dropdown.c:161-169, 189-193), and dropdown setters reached through views can change them"
 
 [fn.lv_calendar_create]
 access = "exclusive"
@@ -657,7 +657,8 @@ access = "shared"
 access = "shared"
 
 [fn.lv_calendar_header_dropdown_set_year_list]
-access = "shared"
+access = "raw"
+why = "any text becomes the year options, which the dropdown header's handlers parse as fixed YYYY entries, unchecked (lv_calendar_header_dropdown.c:161-169, 189-193)"
 
 [fn.lv_calendar_set_day_names]
 access = "shared"
@@ -6418,6 +6419,9 @@ access = "shared"
 access = "shared"
 
 [fn.lv_zalloc]
+access = "shared"
+
+[fn.lvgl_sys_display_reshape_buffers]
 access = "shared"
 
 [fn.lvgl_sys_hit_test_point]

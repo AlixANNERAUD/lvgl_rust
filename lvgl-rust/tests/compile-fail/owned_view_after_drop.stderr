@@ -1,0 +1,10 @@
+error[E0502]: cannot borrow `lv` as mutable because it is also borrowed as immutable
+  --> tests/compile-fail/owned_view_after_drop.rs:17:5
+   |
+15 |     let view = screen.get(&lv).unwrap();
+   |                           --- immutable borrow occurs here
+16 |     drop(screen);
+17 |     lv.timer_handler();
+   |     ^^ mutable borrow occurs here
+18 |     let _ = view.child(0);
+   |             ---- immutable borrow later used here

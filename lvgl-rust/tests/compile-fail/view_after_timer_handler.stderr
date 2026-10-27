@@ -1,0 +1,9 @@
+error[E0502]: cannot borrow `lv` as mutable because it is also borrowed as immutable
+  --> tests/compile-fail/view_after_timer_handler.rs:14:5
+   |
+13 |     let screen = lv.screen_active().unwrap();
+   |                  -- immutable borrow occurs here
+14 |     lv.timer_handler();
+   |     ^^ mutable borrow occurs here
+15 |     let _ = screen.child(0);
+   |             ------ immutable borrow later used here

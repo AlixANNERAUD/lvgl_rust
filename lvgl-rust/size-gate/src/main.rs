@@ -55,19 +55,13 @@ mod firmware {
     #[cfg(lvgl_rust_views_only)]
     fn run(guard: &mut Guard) -> Result<(), lvgl_rust::Error> {
         let mut lv = init(guard)?;
+        // A panel in a new screen and one in the active screen, created
+        // through the screen's `ObjMut`, which then cleans and loads it.
         Obj::create(&mut lv.create_screen()?)?;
-        Obj::create(&mut lv.screen_active_mut().ok_or(lvgl_rust::Error::Dead)?)?;
-        Obj::create(
-            &mut lv
-                .edit(|lv| lv.screen_active()?.child(0))
-                .ok_or(lvgl_rust::Error::Dead)?,
-        )?;
-        lv.edit(|lv| lv.screen_active()?.child(0))
-            .ok_or(lvgl_rust::Error::Dead)?
-            .clean()?;
-        lv.edit(|lv| lv.screen_active())
-            .ok_or(lvgl_rust::Error::Dead)?
-            .load_screen(ScreenAnim::NONE)?;
+        let mut screen = lv.screen_active_mut().ok_or(lvgl_rust::Error::Dead)?;
+        Obj::create(&mut screen)?;
+        screen.clean()?;
+        screen.load_screen(ScreenAnim::NONE)?;
         lv.timer_handler();
         Ok(())
     }

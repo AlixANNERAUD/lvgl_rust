@@ -1,0 +1,12 @@
+error[E0597]: `text` does not live long enough
+  --> tests/compile-fail/static_text_borrowed.rs:17:66
+   |
+16 |     let text = *b"local\0";
+   |         ---- binding `text` declared here
+17 |     let _ = label.set_text_static(Some(CStr::from_bytes_with_nul(&text).unwrap()));
+   |             -----------------------------------------------------^^^^^------------
+   |             |                                                    |
+   |             |                                                    borrowed value does not live long enough
+   |             argument requires that `text` is borrowed for `'static`
+18 | }
+   | - `text` dropped here while still borrowed

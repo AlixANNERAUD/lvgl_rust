@@ -1,0 +1,5 @@
+error[E0596]: cannot borrow data in a `&` reference as mutable
+ --> tests/compile-fail/handler_exclusive_call.rs:8:5
+  |
+8 |     event.lv().timer_handler();
+  |     ^^^^^^^^^^ cannot borrow as mutable

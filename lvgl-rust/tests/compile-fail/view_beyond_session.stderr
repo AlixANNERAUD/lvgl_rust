@@ -1,0 +1,11 @@
+error[E0597]: `lv` does not live long enough
+  --> tests/compile-fail/view_beyond_session.rs:15:16
+   |
+14 |         let lv = Lvgl::enter(&mut guard).unwrap();
+   |             -- binding `lv` declared here
+15 |         view = lv.screen_active().unwrap();
+   |                ^^ borrowed value does not live long enough
+16 |     }
+   |     - `lv` dropped here while still borrowed
+17 |     let _ = view.child(0);
+   |             ---- borrow later used here

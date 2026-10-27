@@ -297,10 +297,24 @@ mod grids {
     const GRID: u16 = sys::lv_layout_t_LV_LAYOUT_GRID as u16;
     const FLEX: u16 = sys::lv_layout_t_LV_LAYOUT_FLEX as u16;
 
+    /// The constant constructors refuse what the setters refuse, by
+    /// panicking at compile time (here, at run time).
     #[test]
-    fn templates_are_terminated_and_never_empty() {
+    #[cfg_attr(panic = "abort", ignore = "catches panics")]
+    fn constant_properties_refuse_grid_layouts_and_huge_spans() {
+        assert!(std::panic::catch_unwind(|| props::grid_cell_row_span(i32::MAX)).is_err());
+        assert!(std::panic::catch_unwind(|| props::layout(GRID)).is_err());
+    }
+
+    #[test]
+    fn templates_count_their_tracks() {
         assert_eq!(COLUMNS.track_count(), 3);
         assert_eq!(ONE.track_count(), 1);
+    }
+
+    #[test]
+    #[cfg_attr(panic = "abort", ignore = "catches panics")]
+    fn templates_are_terminated_and_never_empty() {
         let refused: [fn() -> GridTemplate; 4] = [
             // No track: placing a child would read x[-1].
             || GridTemplate::new(&[Track::END]),
@@ -411,7 +425,6 @@ mod grids {
                     .unwrap();
                 style.reset();
             }
-            assert!(std::panic::catch_unwind(|| props::grid_cell_row_span(i32::MAX)).is_err());
             render();
             lv.edit(|lv| container_of(lv, index))
                 .unwrap()
@@ -460,7 +473,6 @@ mod grids {
             inner.set_style_layout(FLEX, Part::MAIN).unwrap();
             inner.set_layout(0).unwrap();
         }
-        assert!(std::panic::catch_unwind(|| props::layout(GRID)).is_err());
         let _ = props::layout(FLEX);
         {
             let mut style = lv.style(&DYNAMIC);
@@ -510,9 +522,14 @@ mod scales {
     static LABELS: ScaleLabels = scale_labels![c"low", c"", c"high"];
 
     #[test]
-    fn labels_are_terminated() {
+    fn labels_count_their_entries() {
         assert_eq!(LABELS.label_count(), 3);
         assert_eq!(scale_labels![].label_count(), 0);
+    }
+
+    #[test]
+    #[cfg_attr(panic = "abort", ignore = "catches panics")]
+    fn labels_are_terminated() {
         static EARLY: [ScaleLabel; 3] = [ScaleLabel::new(c"a"), ScaleLabel::END, ScaleLabel::END];
         assert!(std::panic::catch_unwind(|| ScaleLabels::new(&EARLY)).is_err());
         static OPEN: [ScaleLabel; 1] = [ScaleLabel::new(c"a")];
@@ -581,8 +598,13 @@ mod keyboards {
     ];
 
     #[test]
-    fn keyboard_maps_need_one_control_entry_per_button() {
+    fn keyboard_maps_count_their_buttons() {
         assert_eq!(TINY.map().button_count(), 2);
+    }
+
+    #[test]
+    #[cfg_attr(panic = "abort", ignore = "catches panics")]
+    fn keyboard_maps_need_one_control_entry_per_button() {
         let short = std::panic::catch_unwind(|| {
             static ENTRIES: [MapEntry; 3] =
                 [MapEntry::new(c"a"), MapEntry::new(c"b"), MapEntry::END];

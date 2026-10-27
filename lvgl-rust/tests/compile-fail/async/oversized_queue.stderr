@@ -1,0 +1,15 @@
+error[E0080]: evaluation panicked: a queue holds 1 to 255 events
+ --> $RUST/core/src/panic.rs
+  |
+  = note: evaluation of `lvgl_rust::StaticQueue::<u8, 256>::new::{constant#0}` failed here
+  |
+ ::: src/queue.rs
+  |
+  |         const { assert!(N >= 1 && N <= 255, "a queue holds 1 to 255 events") };
+  |                 ------------------------------------------------------------ in this macro invocation
+
+note: erroneous constant encountered
+  --> src/queue.rs
+   |
+   |         const { assert!(N >= 1 && N <= 255, "a queue holds 1 to 255 events") };
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

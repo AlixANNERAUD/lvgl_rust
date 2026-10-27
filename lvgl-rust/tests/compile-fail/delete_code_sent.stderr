@@ -1,0 +1,5 @@
+error[E0599]: no associated function or constant named `DELETE` found for struct `SendableEventCode` in the current scope
+  --> tests/compile-fail/delete_code_sent.rs:14:50
+   |
+14 |     let _ = screen.send_event(SendableEventCode::DELETE);
+   |                                                  ^^^^^^ associated function or constant not found in `SendableEventCode`

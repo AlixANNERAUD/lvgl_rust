@@ -40,6 +40,10 @@ mod allocator;
 mod anim;
 mod base;
 mod button_map;
+#[cfg(lv_use_calendar)]
+mod calendar;
+#[cfg(lv_use_chart)]
+mod chart;
 #[cfg(not(lvgl_rust_views_only))]
 mod component;
 mod counters;
@@ -61,6 +65,31 @@ mod heap_align {
     pub(crate) const HEAP_ALIGN: usize = core::mem::size_of::<usize>();
 }
 mod indev;
+mod layout {
+    /// The address of the value that follows a header `H` at `header`: the
+    /// first address after it aligned for `T`. It is the field offset of a
+    /// `#[repr(C)]` struct `{ header: H, value: T }` placed at an address
+    /// aligned for `T` (driver cells), and the value of an `LvBox<H, T>`.
+    /// The result has `header`'s provenance.
+    pub(crate) fn trailing<H, T>(header: *const H) -> *mut T {
+        let start = header.cast::<u8>().wrapping_add(size_of::<H>());
+        let padding = start.addr().wrapping_neg() & (align_of::<T>() - 1);
+        start.wrapping_add(padding).cast_mut().cast()
+    }
+
+    /// The bytes of a block holding `H` then `T` (`trailing`) at any
+    /// address aligned to `block_align` (and to `H`): a `T` no more
+    /// aligned than the block sits at a fixed offset; a more aligned one
+    /// needs up to `align - 1` more bytes.
+    #[cfg_attr(not(any(feature = "heap", test)), allow(dead_code))]
+    pub(crate) const fn block_size<H, T>(block_align: usize) -> usize {
+        if align_of::<T>() <= block_align {
+            size_of::<H>().next_multiple_of(align_of::<T>()) + size_of::<T>()
+        } else {
+            size_of::<H>() + align_of::<T>() - 1 + size_of::<T>()
+        }
+    }
+}
 mod manual;
 mod query;
 #[cfg(feature = "async")]
@@ -69,7 +98,11 @@ mod scale_labels;
 mod screen;
 mod style;
 mod subject;
+#[cfg(lv_use_table)]
+mod table;
 mod text;
+#[cfg(lv_use_tileview)]
+mod tileview;
 #[cfg(not(lvgl_rust_views_only))]
 mod timer;
 
@@ -154,11 +187,16 @@ pub use base::*;
 #[cfg(lv_use_keyboard)]
 pub use button_map::KeyboardMap;
 pub use button_map::{ButtonMap, MapEntry};
+#[cfg(lv_use_chart)]
+pub use chart::ChartSeries;
 #[cfg(not(lvgl_rust_views_only))]
 pub use component::Component;
 #[cfg(feature = "debug-counters")]
 pub use counters::DebugCounters;
-pub use display::{Display, DisplayCell, DrawBuffers, Flush, FlushDone, FlushRequest, RenderMode};
+pub use display::{
+    Display, DisplayCell, DisplayFormat, DrawBuffers, Flush, FlushDone, FlushRequest, RenderMode,
+    Rotation,
+};
 pub use error::Error;
 #[cfg(not(lvgl_rust_views_only))]
 pub use event::EventSub;
@@ -183,5 +221,7 @@ pub use style::{
     StyleMut, StyleProp, StyleRef, TransitionDsc, color,
 };
 pub use subject::{ColorSubject, IntSubject, ObserverCtx};
+#[cfg(lv_use_table)]
+pub use table::TABLE_CELL_LIMIT;
 #[cfg(not(lvgl_rust_views_only))]
 pub use timer::{Timer, TimerCtx};
