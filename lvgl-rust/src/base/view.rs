@@ -182,13 +182,35 @@ impl Obj {
     /// }
     /// ```
     ///
+    /// The generated `create` of every widget has the same shape:
+    ///
+    /// ```compile_fail
+    /// # use lvgl_rust::{Error, Obj, ObjMut, widgets::Button};
+    /// fn f(parent: &mut ObjMut<'_, Obj>) -> Result<(), Error> {
+    ///     let button: ObjMut<'_, Button> = Button::create(parent)?;
+    ///     Ok(())
+    /// }
+    /// ```
+    ///
+    /// ```compile_fail
+    /// # use lvgl_rust::{Error, Obj, ObjMut, widgets::Button};
+    /// fn f(parent: &mut ObjMut<'_, Obj>) -> Result<(), Error> {
+    ///     let button = Button::create(parent)?;
+    ///     parent.clean()?;
+    ///     let _ = button.as_ptr();
+    ///     Ok(())
+    /// }
+    /// ```
+    ///
     /// What compiles:
     ///
     /// ```no_run
-    /// # use lvgl_rust::{Error, Obj, ObjMut};
+    /// # use lvgl_rust::{Error, Obj, ObjMut, widgets::Button};
     /// fn f(parent: &mut ObjMut<'_, Obj>) -> Result<(), Error> {
     ///     let child = Obj::create(parent)?;
     ///     let _ = child.as_ptr();
+    ///     let button: &Button = Button::create(parent)?;
+    ///     let _ = button.as_ptr();
     ///     parent.clean()
     /// }
     /// ```
