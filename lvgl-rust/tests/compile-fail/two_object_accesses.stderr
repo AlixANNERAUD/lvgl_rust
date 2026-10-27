@@ -1,0 +1,9 @@
+error[E0499]: cannot borrow `lv` as mutable more than once at a time
+  --> tests/compile-fail/two_object_accesses.rs:20:35
+   |
+19 |     let parent = parent.get_mut(&mut lv).unwrap();
+   |                                 ------- first mutable borrow occurs here
+20 |     let mut child = child.get_mut(&mut lv).unwrap();
+   |                                   ^^^^^^^ second mutable borrow occurs here
+21 |     parent.delete().unwrap();
+   |     ------ first borrow later used here

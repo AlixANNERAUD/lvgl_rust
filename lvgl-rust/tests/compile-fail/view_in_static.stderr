@@ -1,0 +1,28 @@
+error[E0597]: `guard` does not live long enough
+  --> tests/compile-fail/view_in_static.rs:16:26
+   |
+15 |     let mut guard = Guard;
+   |         --------- binding `guard` declared here
+16 |     let lv = Lvgl::enter(&mut guard).unwrap();
+   |                          ^^^^^^^^^^ borrowed value does not live long enough
+17 |     let _keep = Keep {
+18 |         object: lv.screen_active().unwrap(),
+   |                 --------------------------- this usage requires that `guard` is borrowed for `'static`
+19 |     };
+20 | }
+   | - `guard` dropped here while still borrowed
+
+error[E0597]: `lv` does not live long enough
+  --> tests/compile-fail/view_in_static.rs:18:17
+   |
+16 |     let lv = Lvgl::enter(&mut guard).unwrap();
+   |         -- binding `lv` declared here
+17 |     let _keep = Keep {
+18 |         object: lv.screen_active().unwrap(),
+   |                 ^^-------------------------
+   |                 |
+   |                 borrowed value does not live long enough
+   |                 this usage requires that `lv` is borrowed for `'static`
+19 |     };
+20 | }
+   | - `lv` dropped here while still borrowed

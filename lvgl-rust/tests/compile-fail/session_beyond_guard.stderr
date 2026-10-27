@@ -1,0 +1,20 @@
+error[E0505]: cannot move out of `guard` because it is borrowed
+  --> tests/compile-fail/session_beyond_guard.rs:13:10
+   |
+11 |     let mut guard = Guard;
+   |         --------- binding `guard` declared here
+12 |     let lv = Lvgl::enter(&mut guard).unwrap();
+   |                          ---------- borrow of `guard` occurs here
+13 |     drop(guard);
+   |          ^^^^^ move out of `guard` occurs here
+14 |     let _ = lv.screen_active();
+   |             -- borrow later used here
+   |
+note: if `Guard` implemented `Clone`, you could clone the value
+  --> tests/compile-fail/session_beyond_guard.rs:6:1
+   |
+ 6 | struct Guard;
+   | ^^^^^^^^^^^^ consider implementing `Clone` for this type
+...
+12 |     let lv = Lvgl::enter(&mut guard).unwrap();
+   |                               ----- you could clone this value

@@ -1,0 +1,24 @@
+error[E0277]: `*mut ()` cannot be shared between threads safely
+  --> tests/compile-fail/access_sent_to_thread.rs:14:21
+   |
+14 |         scope.spawn(move || lv.screen_active().is_some());
+   |               ----- ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `*mut ()` cannot be shared between threads safely
+   |               |
+   |               required by a bound introduced by this call
+   |
+   = help: within `Lvgl`, the trait `Sync` is not implemented for `*mut ()`
+note: required because it appears within the type `PhantomData<*mut ()>`
+  --> $RUST/core/src/marker.rs
+note: required because it appears within the type `Lvgl`
+  --> src/base/session.rs
+   |
+   | pub struct Lvgl {
+   |            ^^^^
+   = note: required for `&Lvgl` to implement `Send`
+note: required because it's used within this closure
+  --> tests/compile-fail/access_sent_to_thread.rs:14:21
+   |
+14 |         scope.spawn(move || lv.screen_active().is_some());
+   |                     ^^^^^^^
+note: required by a bound in `Scope::<'scope, 'env>::spawn`
+  --> $RUST/std/src/thread/scoped.rs

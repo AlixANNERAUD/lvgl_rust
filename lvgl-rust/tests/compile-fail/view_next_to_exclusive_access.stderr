@@ -1,0 +1,8 @@
+error[E0502]: cannot borrow `lv` as immutable because it is also borrowed as mutable
+  --> tests/compile-fail/view_next_to_exclusive_access.rs:18:19
+   |
+18 |     both(&mut lv, lv.screen_active().unwrap());
+   |     ---- -------  ^^ immutable borrow occurs here
+   |     |    |
+   |     |    mutable borrow occurs here
+   |     mutable borrow later used by call

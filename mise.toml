@@ -54,9 +54,11 @@ run = [
 ]
 
 [tasks.fmt]
-description = "Check formatting of the workspace, the example, the fixture and the social banner program"
+description = "Check formatting of the workspace, the example, the fixture, the compile-fail cases and the social banner program"
 run = [
   "cargo fmt --all --check",
+  # trybuild cases are not cargo targets: `cargo fmt` does not see them.
+  "rustfmt --edition 2024 --check lvgl-rust/tests/compile-fail/*.rs lvgl-rust/tests/compile-fail/*/*.rs lvgl-rust/tests/compile-pass/*.rs",
   "cargo fmt --check --manifest-path lvgl-rust-sys/examples/external-fonts/Cargo.toml",
   "cargo fmt --check --manifest-path lvgl-rust-sys/tests/fixtures/font_incremental/Cargo.toml",
   "cargo fmt --check --manifest-path assets/social-banner/screen/Cargo.toml",
@@ -258,6 +260,17 @@ run = [
   "CARGO_TARGET_DIR=target/matrix-16 cargo test -q -p lvgl-rust --features color_depth_16,async,heap,fmt",
   "CARGO_TARGET_DIR=target/matrix-32 cargo test -q -p lvgl-rust --features color_depth_32,shadcn-theme,async,heap,fmt",
 ]
+
+[tasks.test-compile-fail]
+description = "Check that lvgl-rust rejects the programs of lvgl-rust/tests/compile-fail, with the expected errors (trybuild)"
+# The expected messages are rustc's: the compiler is pinned, and the
+# snapshots are refreshed with `TRYBUILD=overwrite` when it is raised.
+tools = { rust = "1.99.1" }
+env.DEP_LV_CONFIG_PATH = "{{config_root}}/lvgl-rust/conf"
+# Absolute: the test runs in lvgl-rust/, and trybuild puts its project
+# under the target directory.
+env.CARGO_TARGET_DIR = "{{config_root}}/target/compile-fail"
+run = "cargo test -p lvgl-rust --features async,heap --test compile_fail -- --ignored"
 
 [tasks.test-allocator]
 description = "Lint and test lvgl-rust's allocator feature, on a configuration whose heap is the Rust allocator (LV_STDLIB_CUSTOM)"
