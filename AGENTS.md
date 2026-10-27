@@ -279,6 +279,12 @@ checks:
   would and each built from its package. `lvgl-rust-sys` ships only what the
   build script reads (its `include` list keeps it under crates.io's 10 MB
   limit); a new input directory of the build script must be added there.
+  Cargo verifies `lvgl-rust` against the other two through a temporary
+  registry with the same path and versions on every run, and never
+  re-extracts or rebuilds a registry package it has seen: the task deletes
+  `target/package` and the extracted `lvgl-rust-*` copies in
+  `$CARGO_HOME/registry/src` (the mbx cache carries that directory between
+  jobs) first. Anything else that runs `cargo package` needs the same.
 
 Other workflows:
 
