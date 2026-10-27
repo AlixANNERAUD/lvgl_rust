@@ -124,7 +124,7 @@ Structural rules, checked before LVGL is called (`base/structural.rs`):
 | `Owned<W: Tracked>` | The single owner of an object, a timer or a group. Not `Clone`. Dropping it records a deletion, carried out at the next drain, from any thread and without a session. | — | 4 B; `Option<Owned<W>>` 4 B |
 | `Owned::handle(&self) -> Handle<W>` | A handle to what it owns. | none | — |
 | `Owned::get`, `Owned::get_mut` | As for `Handle`. | shared / exclusive | — |
-| `Owned::delete(self, &mut Lvgl) -> Result<(), Error>` | Deletes at once. A screen LVGL is still loading gives `Busy` and stays pending, retried at each drain. A permanent structural refusal is not returned: the object stays alive and the request is dropped (counted as `refused` with `debug-counters`). What is already dead is released. | exclusive | — |
+| `Owned::delete(self, &mut Lvgl) -> Result<(), Error>` | Deletes at once. A screen LVGL is still loading gives `Busy` and stays pending, retried at each drain. A permanent structural refusal (`Internal`, only reachable after raw code moved the object) is returned: the object stays alive, released from its owner, and its handles report `Dead`. If a pending `Busy` deletion is later refused for good, the drain releases it the same way (counted as `refused` with `debug-counters`). What is already dead is released and gives `Ok(())`. | exclusive | — |
 | `Owned::upcast::<B>(self) -> Owned<B>` | The same owner as a base class. | none | — |
 | `HandleCell<W>` | An optional handle in a `static`: `new()` (const), `get() -> Option<Handle<W>>`, `set(Option<Handle<W>>)`. Atomic loads and stores only. | none | 4 B |
 | `trait WidgetExt` | Implemented for every widget. `handle(&self) -> Result<Handle<Self>, Error>` takes a registry slot the first time (`RegistryFull`); `own(&self) -> Result<Owned<Self>, Error>` (`AlreadyOwned`, `Internal`, `RegistryFull`). | shared | one registry slot |
@@ -453,7 +453,7 @@ Needs `#define LV_USE_STDLIB_MALLOC LV_STDLIB_CUSTOM` in `lv_conf.h`
 | `Error` | `#[non_exhaustive]`, `Copy`, `Eq`, `Hash`, `Debug`; see [Errors](errors.md). | — | 1 B |
 | `impl Display for Error`, `impl core::error::Error for Error` | Messages for each variant. | `fmt` | links `core::fmt` |
 | `defmt::Format` | For `Error`, `Handle`, `Owned`, the event codes and the other public enums and plain types. | `defmt` | — |
-| `DebugCounters::read() -> DebugCounters` | Four 16-bit counters, wrapping at 65,536, readable from any thread: `drained` (deferred requests the drain carried out, and `Owned::delete`), `refused` (deferred requests and `Owned::delete` calls dropped by a permanent structural refusal; refused `load_screen_later` loads), `skipped` (callbacks skipped at `LVGL_RUST_MAX_CALLBACK_DEPTH`), `leaked` (`Display`s and `Indev`s dropped without being deleted). | `debug-counters` | 8 B of `.bss` |
+| `DebugCounters::read() -> DebugCounters` | Four 16-bit counters, wrapping at 65,536, readable from any thread: `drained` (deferred requests the drain carried out, and `Owned::delete`), `refused` (deferred requests dropped by a permanent structural refusal, not the refusals `Owned::delete` returns; refused `load_screen_later` loads), `skipped` (callbacks skipped at `LVGL_RUST_MAX_CALLBACK_DEPTH`), `leaked` (`Display`s and `Indev`s dropped without being deleted). | `debug-counters` | 8 B of `.bss` |
 | `DebugCounters::reset()` | Sets every counter to zero. | `debug-counters` | — |
 
 Both features cost nothing when off.

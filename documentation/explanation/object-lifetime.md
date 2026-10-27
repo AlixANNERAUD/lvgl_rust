@@ -217,8 +217,10 @@ memory, and loading the previous screen while `auto_delete` is set would
 make LVGL delete it and then load the freed object. Those operations
 return `Error::Busy`. A deferred request that meets `Busy` stays pending,
 and the drain retries it until the load completes; `Owned::delete`
-behaves the same way. Every other refusal is permanent and drops the
-request (counted as `refused` with feature `debug-counters`).
+behaves the same way. Every other refusal is permanent: the drain drops
+the request (counted as `refused` with feature `debug-counters`), and
+`Owned::delete` returns it (`Error::Internal`), leaving the object alive
+and unowned, as a refused drop does.
 
 Related: [Access model](access-model.md),
 [Event handlers](event-handlers.md), [Overhead](overhead.md),
