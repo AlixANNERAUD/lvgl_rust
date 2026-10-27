@@ -126,7 +126,6 @@ fn image_descriptors_check_their_data() {
 static KEYPAD: ButtonMap = button_map![c"1", c"2", c"\n", c"3"];
 
 #[test]
-#[cfg_attr(panic = "abort", ignore = "catches panics")]
 fn button_maps_are_terminated_and_control_maps_cover_them() {
     let mut guard = guard();
     let mut lv = session(&mut guard);
@@ -140,13 +139,19 @@ fn button_maps_are_terminated_and_control_maps_cover_them() {
     assert_eq!(matrix.set_ctrl_map(&ctrl[..2]), Err(Error::InvalidArg));
     matrix.set_ctrl_map(&ctrl).unwrap();
     assert!(matrix.has_button_ctrl(1, ButtonmatrixCtrl::CHECKABLE));
+    lv.edit(last).unwrap().delete().unwrap();
+}
+
+// Kept apart so the bounds checks above still run where panics abort.
+#[test]
+#[cfg_attr(panic = "abort", ignore = "catches panics")]
+fn button_maps_refuse_an_empty_text_before_the_end() {
     // An empty text before the end would hide the buttons after it.
     let hidden = std::panic::catch_unwind(|| {
         static ENTRIES: [MapEntry; 3] = [MapEntry::new(c"a"), MapEntry::new(c""), MapEntry::END];
         ButtonMap::new(&ENTRIES)
     });
     assert!(hidden.is_err());
-    lv.edit(last).unwrap().delete().unwrap();
 }
 
 static GRADIENT: GradDsc = GradDsc::new(

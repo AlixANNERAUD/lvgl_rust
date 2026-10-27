@@ -234,8 +234,9 @@ checks:
 - cross builds for `wasm32-unknown-unknown` and `riscv32imc-unknown-none-elf`,
   `wasm32-wasip1` (`mise run cross-wasip1`: wasi-sdk and wasmtime as task
   tools, then the `-sys` library tests, the `lvgl-rust` tests and the
-  desktop example under wasmtime) and `lvgl-rust` firmware for Cortex-M4/M7 and Cortex-M33 (`mise run
-  cross-arm`: thumbv7em and thumbv8m.main, with handles and views only);
+  desktop example under wasmtime) and `lvgl-rust` firmware for Cortex-M4/M7
+  and Cortex-M33 (`mise run cross-arm`: thumbv7em and thumbv8m.main, with
+  handles and views only);
 - `lvgl-rust` with 16-bit color, and with 32-bit color and the shadcn
   theme (`mise run test-matrix`);
 - `cargo check` with the minimum Rust version (`mise run msrv`) on the host
@@ -544,12 +545,16 @@ review the `access.toml` and `events.toml` diffs.
   `wasm32-wasip1` uses wasi-sdk (`CC_wasm32_wasip1=wasm32-wasip1-clang`,
   bindgen gets `--sysroot`); WASI has no threads and wasm aborts on panic,
   so tests that spawn threads or catch panics carry
-  `cfg_attr(target_os = "wasi", ignore)` or `cfg_attr(panic = "abort",
-  ignore)`. The root `[env]` of `mise.toml` points `cc` and bindgen at the Debian/Ubuntu
-  riscv32 and arm-none-eabi toolchains. CI builds
-  `wasm32-unknown-unknown` and `riscv32imc-unknown-none-elf` (the riscv C
-  toolchain is declared in `[bootstrap.packages]` of `mise.toml`, installed
-  with `mise bootstrap packages apply`); host builds do
+  `cfg_attr(target_os = "wasi", ignore)` or
+  `cfg_attr(panic = "abort", ignore)`: keep the ignored part in a test of
+  its own so the rest still runs there. The root `[env]` of `mise.toml`
+  points `cc` and bindgen at the Debian/Ubuntu riscv32 and arm-none-eabi
+  toolchains. CI builds `wasm32-unknown-unknown`,
+  `riscv32imc-unknown-none-elf` (the riscv C toolchain is declared in
+  `[bootstrap.packages]` of `mise.toml`, installed with
+  `mise bootstrap packages apply`) and `wasm32-wasip1` (wasi-sdk and
+  wasmtime are tools of the `cross-wasip1` task, no bootstrap packages),
+  and runs the wasip1 tests under wasmtime; host builds do
   not prove that a change works on other targets (xtensa included), so say
   what you actually checked.
 - **Submodules.** Never edit files under `lvgl/` or `lvgl_theme_shadcn/`. Fix
