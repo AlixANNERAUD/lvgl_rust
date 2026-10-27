@@ -168,7 +168,7 @@ directory, as its mise tasks do: `mise run clippy-safe`, `test-safe`,
 (the `allocator` feature on a copy of the configuration with
 `LV_STDLIB_CUSTOM`), `test-asan` (LVGL under
 AddressSanitizer, with C library malloc so freed objects are visible),
-`miri`, `loom` and `size-gate`. Do
+`miri`, `loom`, `size-gate` and `test-compile-fail`. Do
 not use `--workspace` for cargo commands that build `lvgl-rust`.
 
 What the suites cover:
@@ -193,6 +193,21 @@ What the suites cover:
   racing the drain (`--cfg loom`).
 - `lvgl-rust/tests/lifecycle.rs`: `init`, ticks, `deinit` (terminal, so in
   its own process).
+- `lvgl-rust/tests/compile_fail.rs`: trybuild cases
+  (`tests/compile-fail/**/*.rs`, with `async/` and `heap/` for those
+  features) that must fail to build, each with its expected `.stderr`: views
+  used across exclusive calls or past their session, two `ObjMut`, `!Send`
+  values crossing threads or given to `on`/`timer`/`post`, capturing
+  closures (post-monomorphization `const` asserts: trybuild builds to
+  codegen, so they are caught), exclusive calls from handlers, event
+  codes sent without the access they need, `Owned`,
+  `Handle` and `StaticRx` misuse, non-`'static` retained data. Ignored by
+  plain `cargo test` (rustc's messages change between versions); `mise run
+  test-compile-fail` runs it on a pinned compiler. When raising that
+  version, or after changing a message the cases hit, refresh the snapshots
+  with `TRYBUILD=overwrite mise run test-compile-fail` and check that every
+  case still fails for its stated reason. A new soundness guarantee
+  enforced by types gets a case here.
 - `lvgl-rust/size-gate/gate.sh`: links firmware for thumbv6m and riscv32imc
   (16 slots and views-only) and checks the crate's symbols: registry size and
   `.bss` placement, no `.data`, no `core::fmt` or panic code, the OBJ_ID
@@ -236,6 +251,8 @@ checks:
   cross-arm`: thumbv7em and thumbv8m.main, with handles and views only);
 - `lvgl-rust` with 16-bit color, and with 32-bit color and the shadcn
   theme (`mise run test-matrix`);
+- the compile-fail cases of `lvgl-rust` (`mise run test-compile-fail`, on
+  the compiler version that task pins);
 - `cargo check` with the minimum Rust version (`mise run msrv`) on the host
   and both cross targets; raise the version in the task and in the root
   `rust-version` together;

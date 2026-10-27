@@ -1,0 +1,24 @@
+error[E0277]: the trait bound `u64: UserData` is not satisfied
+ --> tests/compile-fail/on_with_wide_data.rs:16:38
+  |
+ 16 |         .on_with(EventCode::CLICKED, 3u64, |_, _| ());
+    |          -------                     ^^^^ the trait `UserData` is not implemented for `u64`
+    |          |
+    |          required by a bound introduced by this call
+    |
+    = help: the following other types implement trait `UserData`:
+              f32
+              i16
+              i32
+              i8
+              u16
+              u32
+              u8
+note: required by a bound in `lvgl_rust::event::<impl Obj>::on_with`
+   --> src/event.rs
+    |
+    |     pub fn on_with<D, F, R>(&self, code: EventCode, data: D, f: F) -> Result<(), Error>
+    |            ------- required by a bound in this associated function
+    |     where
+    |         D: UserData,
+    |            ^^^^^^^^ required by this bound in `lvgl_rust::event::<impl Obj>::on_with`

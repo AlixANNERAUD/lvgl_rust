@@ -1,0 +1,23 @@
+error[E0373]: closure may outlive the current function, but it borrows `name`, which is owned by the current function
+  --> tests/compile-fail/heap/boxed_handler_borrowing_local.rs:17:39
+   |
+17 |         .on_boxed(EventCode::CLICKED, |_| {
+   |                                       ^^^ may outlive borrowed value `name`
+18 |             let _ = name.len();
+   |                     ---- `name` is borrowed here
+   |
+note: function requires argument type to outlive `'static`
+  --> tests/compile-fail/heap/boxed_handler_borrowing_local.rs:14:13
+   |
+14 |       let _ = lv
+   |  _____________^
+15 | |         .screen_active()
+16 | |         .unwrap()
+17 | |         .on_boxed(EventCode::CLICKED, |_| {
+18 | |             let _ = name.len();
+19 | |         });
+   | |__________^
+help: to force the closure to take ownership of `name` (and any other referenced variables), use the `move` keyword
+   |
+17 |         .on_boxed(EventCode::CLICKED, move |_| {
+   |                                       ++++

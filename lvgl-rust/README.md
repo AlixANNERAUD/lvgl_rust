@@ -70,6 +70,14 @@ else stays reachable through `lvgl_rust::sys`.
   targets (`LVGL_RUST_HANDLE_SLOTS`, default 32), plus a 24-byte header.
   `LVGL_RUST_HANDLE_SLOTS=0` keeps only views (8 bytes of state).
 
+What the compiler refuses is tested: each program of
+[`tests/compile-fail/`](tests/compile-fail) (a view used after
+`timer_handler`, two `ObjMut` at once, a view kept past its session or
+sent to another thread, a capturing closure given to `on`, `timer` or
+`post`, an exclusive call from a handler, a cloned `Owned` or `StaticRx`,
+non-`'static` text for `set_text_static`, ...) must fail to build with the
+error recorded next to it (`mise run test-compile-fail`).
+
 ## Configuration
 
 Handles rely on LVGL's OBJ_ID hooks, which the crate defines. Add to your

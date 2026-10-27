@@ -1,0 +1,20 @@
+error[E0373]: closure may outlive the current function, but it borrows `ticks`, which is owned by the current function
+  --> tests/compile-fail/heap/boxed_timer_borrowing_local.rs:14:38
+   |
+14 |     let _timer = lv.timer_boxed(100, |_| {
+   |                                      ^^^ may outlive borrowed value `ticks`
+15 |         let _ = ticks.len();
+   |                 ----- `ticks` is borrowed here
+   |
+note: function requires argument type to outlive `'static`
+  --> tests/compile-fail/heap/boxed_timer_borrowing_local.rs:14:18
+   |
+14 |       let _timer = lv.timer_boxed(100, |_| {
+   |  __________________^
+15 | |         let _ = ticks.len();
+16 | |     });
+   | |______^
+help: to force the closure to take ownership of `ticks` (and any other referenced variables), use the `move` keyword
+   |
+14 |     let _timer = lv.timer_boxed(100, move |_| {
+   |                                      ++++

@@ -37,6 +37,10 @@ color_depth_32 = ["lvgl-rust-sys/color_depth_32"]
 # The safe layer calls into the linked C library: `build-lvgl` is required.
 lvgl-rust-sys = { version = "0.1.0", path = "../lvgl-rust-sys", default-features = false, features = ["build-lvgl"] }
 
+[dev-dependencies]
+# Compile-fail cases (`tests/compile_fail.rs`, `mise run test-compile-fail`).
+trybuild = "1.0.99"
+
 [build-dependencies]
 lvgl-rust-gen = { version = "0.1.0", path = "../lvgl-rust-gen" }
 
