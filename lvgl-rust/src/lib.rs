@@ -35,6 +35,10 @@ mod allocator;
 mod anim;
 mod base;
 mod button_map;
+#[cfg(lv_use_calendar)]
+mod calendar;
+#[cfg(lv_use_chart)]
+mod chart;
 #[cfg(not(lvgl_rust_views_only))]
 mod component;
 mod counters;
@@ -64,7 +68,11 @@ mod scale_labels;
 mod screen;
 mod style;
 mod subject;
+#[cfg(lv_use_table)]
+mod table;
 mod text;
+#[cfg(lv_use_tileview)]
+mod tileview;
 #[cfg(not(lvgl_rust_views_only))]
 mod timer;
 
@@ -149,6 +157,8 @@ pub use base::*;
 #[cfg(lv_use_keyboard)]
 pub use button_map::KeyboardMap;
 pub use button_map::{ButtonMap, MapEntry};
+#[cfg(lv_use_chart)]
+pub use chart::ChartSeries;
 #[cfg(not(lvgl_rust_views_only))]
 pub use component::Component;
 #[cfg(feature = "debug-counters")]
@@ -178,5 +188,7 @@ pub use style::{
     StyleMut, StyleProp, StyleRef, TransitionDsc, color,
 };
 pub use subject::{ColorSubject, IntSubject, ObserverCtx};
+#[cfg(lv_use_table)]
+pub use table::TABLE_CELL_LIMIT;
 #[cfg(not(lvgl_rust_views_only))]
 pub use timer::{Timer, TimerCtx};

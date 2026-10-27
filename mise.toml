@@ -162,16 +162,19 @@ description = "Check lvgl-rust's footprint in thumbv6m and riscv32imc firmware (
 env.RUSTFLAGS = "-D warnings"
 # Budgets: the crate's code in bytes, with N = 16 slots and in views-only
 # mode. Raise them only with the feature that needs it (the composite part
-# checks took about 1.35 KB on thumbv6m). The last runs add the diagnostic
-# features: +8 B of .bss for the counters, defmt built for thumbv6m and free
-# while nothing logs, within the same budgets.
+# checks took about 1.35 KB on thumbv6m, the calendar and tile view part
+# tables 242 B on riscv32imc). The last runs add the diagnostic features:
+# +8 B of .bss for the counters, defmt built for thumbv6m and free while
+# nothing logs, within the same budgets, except views-only thumbv6m with
+# the counters: 2368 B, since the part tables and the counters together
+# took 2310 B.
 run = [
   "lvgl-rust/size-gate/gate.sh thumbv6m-none-eabi 16 4608",
   "lvgl-rust/size-gate/gate.sh thumbv6m-none-eabi 0 2304",
   "lvgl-rust/size-gate/gate.sh riscv32imc-unknown-none-elf 16 5888",
-  "lvgl-rust/size-gate/gate.sh riscv32imc-unknown-none-elf 0 2816",
+  "lvgl-rust/size-gate/gate.sh riscv32imc-unknown-none-elf 0 2944",
   "lvgl-rust/size-gate/gate.sh thumbv6m-none-eabi 16 4608 defmt,debug-counters",
-  "lvgl-rust/size-gate/gate.sh thumbv6m-none-eabi 0 2304 debug-counters",
+  "lvgl-rust/size-gate/gate.sh thumbv6m-none-eabi 0 2368 debug-counters",
   "lvgl-rust/size-gate/gate.sh riscv32imc-unknown-none-elf 16 5888 debug-counters",
 ]
 

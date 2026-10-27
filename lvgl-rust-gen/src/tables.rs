@@ -88,6 +88,15 @@ pub struct Composite {
     /// it reaches (a tab view's bar: buttons and their labels, 2).
     #[serde(default)]
     pub indexed: BTreeMap<String, u8>,
+    /// LVGL finds or casts the widget's children by position (a roller's
+    /// label, a tile view's tiles): no child can be created in it, moved
+    /// into it or reordered within it, except through its own API.
+    #[serde(default)]
+    pub closed: bool,
+    /// The widget's handlers read its parent as the widget that created it
+    /// (a calendar header): it can never move to another parent.
+    #[serde(default)]
+    pub pinned: bool,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -518,6 +527,11 @@ impl Tables {
                         "classes.toml: [composite.{class}] indexed part `{part}` is not in `parts`"
                     ));
                 }
+            }
+            if !composite.closed && composite.parts.iter().any(|p| p.starts_with("child:")) {
+                diags.error(format!(
+                    "classes.toml: [composite.{class}] child:N parts need `closed = true`: a child created or moved before them would take their place"
+                ));
             }
             if composite.max_depth == 0 {
                 diags.error(format!(

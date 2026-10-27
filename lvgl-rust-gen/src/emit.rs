@@ -999,15 +999,22 @@ fn emit_composites(classifier: &Classifier) -> TokenStream {
         max_parts = max_parts.max(parts.len());
         let class_static = format_ident!("lv_{}_class", class);
         let count = parts.len();
-        // Widgets without parts only need their class.
-        if count == 0 {
+        // Widgets without parts or rules only need their class.
+        if count == 0 && !composite.closed && !composite.pinned {
             leaves.push(quote!(crate::base::structural::ClassRef(
                 core::ptr::addr_of!(crate::sys::#class_static)
             )));
             continue;
         }
         let parts_fn = format_ident!("{}_parts", class);
-        {
+        if count == 0 {
+            functions.push(quote! {
+                #[cfg_attr(miri, allow(dead_code))]
+                fn #parts_fn(_: *mut crate::sys::lv_obj_t, _: &mut [*mut crate::sys::lv_obj_t; MAX_PARTS]) -> usize {
+                    0
+                }
+            });
+        } else {
             let indices = 0..count;
             functions.push(quote! {
                 #[cfg_attr(miri, allow(dead_code))]
@@ -1025,10 +1032,13 @@ fn emit_composites(classifier: &Classifier) -> TokenStream {
             .iter()
             .map(|p| composite.indexed.get(p).copied().unwrap_or(0))
             .collect();
+        let (closed, pinned) = (composite.closed, composite.pinned);
         entries.push(quote! {
             crate::base::structural::Composite {
                 class: core::ptr::addr_of!(crate::sys::#class_static),
                 max_depth: #max_depth,
+                closed: #closed,
+                pinned: #pinned,
                 indexed: &[#(#indexed),*],
                 parts: #parts_fn,
             }
