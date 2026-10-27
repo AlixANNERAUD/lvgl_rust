@@ -1,5 +1,5 @@
 //! Input devices: a Rust reader in an application static (or on LVGL's
-//! heap, with [`Indev::create_boxed`]). Readers get no token: they only
+//! heap, with `Indev::create_boxed`). Readers get no token: they only
 //! report the device's state.
 
 #[cfg(feature = "heap")]
@@ -173,7 +173,7 @@ unsafe fn release_boxed<R>(base: *const ()) {
 }
 
 /// An input device made by [`Indev::create`], [`Indev::create_button`] or
-/// [`Indev::create_boxed`]. Dropping it keeps the device (a leak, counted
+/// `Indev::create_boxed`. Dropping it keeps the device (a leak, counted
 /// by `DebugCounters::leaked` with `debug-counters`); deletion is explicit
 /// ([`Indev::delete`]).
 pub struct Indev {

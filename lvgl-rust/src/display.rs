@@ -1,6 +1,6 @@
 //! Displays: a Rust flush driver, its state and the draw buffers, in
 //! application statics (or the driver on LVGL's heap, with
-//! [`Display::create_boxed`]). Drivers get no token: they cannot touch
+//! `Display::create_boxed`). Drivers get no token: they cannot touch
 //! objects.
 
 #[cfg(feature = "heap")]
@@ -327,7 +327,7 @@ impl DrawBuffers {
 }
 
 /// The crate's state of a display: the start of its [`DisplayCell`], or of
-/// its block on LVGL's heap ([`Display::create_boxed`]), the driver right
+/// its block on LVGL's heap (`Display::create_boxed`), the driver right
 /// after it ([`trailing`]). The display's driver data points to it.
 struct DisplayCore {
     /// Set before calling the driver, cleared by the driver (any thread or
@@ -526,7 +526,7 @@ unsafe fn release_boxed<D>(core: *const DisplayCore) {
     unsafe { LvBox::<DisplayCore, D>::free(core.cast_mut().cast()) }
 }
 
-/// A display made by [`Display::create`] or [`Display::create_boxed`]: 8
+/// A display made by [`Display::create`] or `Display::create_boxed`: 8
 /// bytes. Dropping it keeps the display (a leak, counted by
 /// `DebugCounters::leaked` with `debug-counters`); deletion is explicit
 /// ([`Display::try_delete`]).
