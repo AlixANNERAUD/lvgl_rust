@@ -169,7 +169,7 @@ run = [
 [tasks.msrv]
 description = "Check the workspace with the minimum Rust version, on the host and the cross targets"
 # Keep in sync with `rust-version` in the root Cargo.toml.
-tools = { rust = { version = "1.89", targets = "wasm32-unknown-unknown,wasm32-wasip1,riscv32imc-unknown-none-elf" } }
+tools = { rust = { version = "1.89", targets = "wasm32-unknown-unknown,riscv32imc-unknown-none-elf" } }
 env.RUSTFLAGS = "-D warnings"
 # A separate target directory: another compiler version invalidates the
 # regular build.
