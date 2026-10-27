@@ -46,6 +46,11 @@ defmt = { version = "1.0.1", optional = true }
 # Compile-fail cases (`tests/compile_fail.rs`, `mise run test-compile-fail`).
 trybuild = "1.0.99"
 
+# Overhead of the safe API over raw calls (`mise run overhead`).
+[[bench]]
+name = "overhead"
+harness = false
+
 [build-dependencies]
 lvgl-rust-gen = { version = "0.1.0", path = "../lvgl-rust-gen" }
 

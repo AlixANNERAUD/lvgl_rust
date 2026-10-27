@@ -687,7 +687,7 @@ fn owned_image_sources_live_until_replaced_or_deleted() {
         ImageBuffer::new(PixelFormat::Rgb565, 4, 4, 0, [0; 8]).err(),
         Some(Error::InvalidArg)
     );
-    Image::create(lv.screen_active().unwrap()).unwrap();
+    Image::create(&mut lv.screen_active_mut().unwrap()).unwrap();
     let base = events(&lv);
     {
         let mut image = lv.edit(last_image).unwrap();
@@ -753,7 +753,7 @@ fn retired_image_sources_are_freed_at_the_next_drain() {
     fn last_image(lv: &Lvgl) -> Option<&Image> {
         last(lv)?.downcast()
     }
-    Image::create(lv.screen_active().unwrap()).unwrap();
+    Image::create(&mut lv.screen_active_mut().unwrap()).unwrap();
     for _ in 0..2 {
         let pixels = ImageBuffer::new(PixelFormat::Rgb565, 4, 3, 0, [0x55; 24]).unwrap();
         lv.edit(last_image).unwrap().set_src_owned(pixels).unwrap();
@@ -786,7 +786,7 @@ fn image_buffers_are_filled_in_place() {
     fn last_image(lv: &Lvgl) -> Option<&Image> {
         last(lv)?.downcast()
     }
-    Image::create(lv.screen_active().unwrap()).unwrap();
+    Image::create(&mut lv.screen_active_mut().unwrap()).unwrap();
     let used = used_blocks();
     {
         let mut image = lv.edit(last_image).unwrap();

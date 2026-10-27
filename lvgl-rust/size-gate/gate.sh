@@ -11,6 +11,12 @@
 # the crate has no .data; no core::fmt or panic code is linked; the OBJ_ID
 # hooks are defined with N > 0 and absent with N = 0; the crate's code fits
 # the budget. The C toolchain comes from the `size-gate` mise task.
+#
+# It also prints the whole firmware's sizes (LVGL included), and with
+# SIZE_GATE_REPORT set to a file appends one tab-separated line there:
+# target, slots, features, crate .bss, .data and code, budget, firmware
+# text, data and bss (`size`, Berkeley format), registry, post queue and
+# counters bytes (read by `mise run overhead`).
 set -euo pipefail
 
 target=$1
@@ -35,8 +41,8 @@ DEP_LV_CONFIG_PATH=$conf LVGL_RUST_HANDLE_SLOTS=$slots CARGO_TARGET_DIR=$dir \
 elf=$dir/$target/size/lvgl-rust-size-gate
 
 case $target in
-thumb*) nm=arm-none-eabi-nm ;;
-riscv*) nm=riscv64-unknown-elf-nm ;;
+thumb*) nm=arm-none-eabi-nm size_tool=arm-none-eabi-size ;;
+riscv*) nm=riscv64-unknown-elf-nm size_tool=riscv64-unknown-elf-size ;;
 *) echo "unsupported target $target" >&2 && exit 2 ;;
 esac
 
@@ -91,4 +97,11 @@ fi
 text=0
 while read -r _ size _ _; do text=$((text + 16#$size)); done < <(awk '$3 ~ /^[tTrR]$/' <<<"$crate")
 echo "size gate ($label): .bss $bss B, .data 0 B, code $text B (budget $budget B)"
+read -r fw_text fw_data fw_bss _ < <("$size_tool" "$elf" | awk 'NR == 2')
+echo "size gate ($label): firmware text $fw_text B, data $fw_data B, bss $fw_bss B (LVGL included)"
+if [ -n "${SIZE_GATE_REPORT:-}" ]; then
+    printf '%s\t%s\t%s\t%s\t0\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$target" "$slots" "${features:--}" \
+        "$bss" "$text" "$budget" "$fw_text" "$fw_data" "$fw_bss" "$expected_reg" "$expected_post" \
+        "$expected_counters" >>"$SIZE_GATE_REPORT"
+fi
 [ "$text" -le "$budget" ] || fail "code is $text B, over the $budget B budget"
