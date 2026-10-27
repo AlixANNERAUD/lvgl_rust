@@ -184,6 +184,17 @@ run = [
   "DEP_LV_CONFIG_PATH={{config_root}}/lvgl-rust/conf CARGO_TARGET_DIR=target/size-gate/features cargo check -q -p lvgl-rust --features async,heap --target riscv32imc-unknown-none-elf",
 ]
 
+[tasks.overhead]
+description = "Measure lvgl-rust's time and memory overhead over raw calls and write documentation/reference/overhead.md"
+# Not in CI: host times vary between machines. The benchmark (release
+# profile) runs first, then the size gate builds (with the C toolchains of
+# `mise bootstrap packages apply`; otherwise the script reads the size gate
+# of CI), one after the other.
+env.RUSTFLAGS = "-D warnings"
+env.DEP_LV_CONFIG_PATH = "{{config_root}}/lvgl-rust/conf"
+env.CARGO_TARGET_DIR = "target/overhead"
+run = "lvgl-rust/benches/overhead-report.sh"
+
 [tasks.msrv]
 description = "Check the workspace with the minimum Rust version, on the host and the cross targets"
 # Keep in sync with `rust-version` in the root Cargo.toml.
@@ -252,11 +263,14 @@ run = [
 ]
 
 [tasks.example]
-description = "Run the desktop example of lvgl-rust (a scripted desktop shell on the host)"
+description = "Run the examples of lvgl-rust on the host: the tutorial's first application, then the scripted desktop shell"
 env.RUSTFLAGS = "-D warnings"
 env.DEP_LV_CONFIG_PATH = "{{config_root}}/lvgl-rust/conf"
 env.CARGO_TARGET_DIR = "target/safe"
-run = "cargo run -q -p lvgl-rust --example desktop"
+run = [
+  "cargo run -q -p lvgl-rust --example first_application",
+  "cargo run -q -p lvgl-rust --example desktop",
+]
 
 [tasks.test-matrix]
 description = "Test lvgl-rust with 16-bit color, and with 32-bit color and the shadcn theme"

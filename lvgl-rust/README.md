@@ -1,156 +1,146 @@
-# lvgl-rust
+# lvgl-rust: safe, no_std Rust bindings for LVGL 9
 
-Safe, `no_std` Rust bindings to [LVGL](https://lvgl.io) 9, on top of
-[`lvgl-rust-sys`](../lvgl-rust-sys). Work in progress: the core (sessions,
-views, handles, ownership, deferred deletion) is in place, and wrappers are
-generated at build time from your configuration's bindings and the reviewed
-tables of [`lvgl-rust-gen`](../lvgl-rust-gen). They cover the base object and
-a first set of widgets (button, label, bar, slider, switch) so far; anything
-else stays reachable through `lvgl_rust::sys`.
+[![crates.io](https://img.shields.io/crates/v/lvgl-rust.svg)](https://crates.io/crates/lvgl-rust)
+[![docs.rs](https://img.shields.io/docsrs/lvgl-rust)](https://docs.rs/lvgl-rust)
+[![CI](https://github.com/AlixANNERAUD/lvgl_rust/actions/workflows/ci.yml/badge.svg)](https://github.com/AlixANNERAUD/lvgl_rust/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/AlixANNERAUD/lvgl_rust/graph/badge.svg)](https://codecov.io/gh/AlixANNERAUD/lvgl_rust)
+[![LVGL](https://img.shields.io/badge/LVGL-9.6.0-blue)](https://github.com/lvgl/lvgl)
+[![no_std](https://img.shields.io/badge/no__std-no%20alloc-success)](https://docs.rs/lvgl-rust)
+[![MSRV 1.89](https://img.shields.io/badge/MSRV-1.89-informational)](https://github.com/AlixANNERAUD/lvgl_rust/blob/main/Cargo.toml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](https://github.com/AlixANNERAUD/lvgl_rust/blob/main/LICENSE)
 
-- **No locking, no allocator.** Prove exclusive access with your own lock by
-  implementing `LvglAccess` for its guard, then work through a `Session`.
-- **No dangling objects.** Views (`&Obj`) borrow the session; creating,
-  deleting and moving objects need exclusive access. Objects are created
-  through their parent's `ObjMut` (`Label::create(&mut parent)?`), which
-  lends a view of the new object borrowing it (an `ObjMut` of the child
-  would allow calls that delete the parent); exclusive calls on the child
-  go through its handle once that borrow ends. `create_owned` returns an
-  `Owned`. `Handle`s (4 bytes) report deleted objects as
-  `Error::Dead`, whatever deleted them. `Owned` deletes its object when
-  dropped, from any thread. A generated function the access audit finds
-  shared is a view method only (from an `ObjMut`, call it through
-  `.view()`), an exclusive one an `ObjMut` method only: when a new audit
-  moves a function from exclusive to shared, its method moves too.
-- **Styles without RAM.** `const_style![...]` builds a `ConstStyle` in
-  `.rodata`; a `Style` is a 12-byte static changed through
-  `lv.style(&STYLE)`, which refreshes the objects using it. Styles and fonts
-  are always `'static`, since LVGL keeps pointers to them.
-- **Constant data stays in flash.** Images (`ImageDsc` over aligned
-  `ImageData`, checked against their format and size), button maps
-  (`button_map![...]`), keyboard layouts (`KeyboardMap`, a button map with
-  one control entry per button), grid templates (`grid_template![...]`,
-  never empty), scale labels (`scale_labels![...]`), gradients and
-  transitions are `const` and `'static`, as LVGL keeps pointers to them.
-  Their shape is checked at compile time. A grid layout is set only with
-  its templates (`ObjMut::set_grid_dsc_array`) and cell spans are bounded,
-  which keeps LVGL's grid code within the templates.
-- **Event handlers without allocation.** `obj.on(code, |e| ...)` (a closure
-  without captures), `on_with(code, data, ...)` (a value of up to 4 bytes),
-  `on_static` (a `static` context), `on_removable`. Handlers get shared
-  access; `delete_later` and `lv.post(f, data)` defer what needs exclusive
-  access (creating objects included) to the next drain.
-- **Restricted handlers for query and draw codes.** Codes sent in the
-  middle of layout or rendering (`GET_SELF_SIZE`, `HIT_TEST`,
-  `COVER_CHECK`, `REFR_EXT_DRAW_SIZE`, `DRAW_*`, `DRAW_TASK_ADDED`) go to
-  `obj.on_query(QueryCode::X, |e| ...)` (also `on_query_with`,
-  `on_query_fn`). The handler gets a `QueryEvent`, with no `Lvgl` access
-  and no views: it reads the typed parameter and writes the answer (`if
-  let Some(size) = e.self_size() { size.extend(w, h) }`, likewise
-  `hit_test()` with `set_result`, `draw_task()` with `set_color`), and the
-  compiler rejects anything else, given the `LvglAccess` contract that a
-  guard is never borrowed for `'static` (a leaked guard would let a
-  thread-local keep shared access). Drawing into a layer stays raw
-  (`Layer::as_ptr`).
-- **Widgets LVGL trusts blindly.** `chart.add_series(color, axis)` returns
-  a `ChartSeries` token (one pointer, not `Clone`) that every series call
-  checks against the chart's list: a series of another chart or already
-  removed is `Error::InvalidArg` (one of a deleted chart too, unless a
-  newer series reuses its address), point counts whose arrays would wrap
-  the address space are refused, and X points of scatter charts read as
-  `LV_CHART_POINT_NONE` until written. Table cell getters and setters
-  check rows and columns against the table and its size against
-  `TABLE_CELL_LIMIT` (and at least one row and one column); cell text is
-  copied out of views and borrowed under `ObjMut`. Tile views take
-  children only from `add_tile`, `get_tile_active` forgets a deleted tile
-  (unless a newer tile reuses its address), and LVGL's scroll handler
-  runs only while the content size it divides by is positive (checked in
-  the same descriptor, no extra cost); calendar headers keep their parts
-  and their calendar, and the shown month stays in `1..=12`.
-- **Timers.** `lv.timer(period_ms, data, f)` returns an `Owned<Timer>`
-  (dropping it deletes the timer); `Handle<Timer>` pauses, resumes and
-  changes the period and repeat count. No allocation besides LVGL's timer.
-- **Animations.** `Anim::new(data).values(0, 255).duration(300).exec(f)`,
-  started with `ObjMut::animate`; LVGL copies it and deletes it with the
-  object.
-- **Subjects.** `static VOLUME: IntSubject = IntSubject::new(50);` (also
-  `ColorSubject`), bound with `slider.bind_value(&VOLUME)`, `bind_checked`,
-  `label.bind_text`, observed with `observe`/`observe_obj`. Subjects
-  initialise themselves on first use, so LVGL never sees one of the wrong
-  type.
-- **Drivers in statics.** `Display::create(lv, &CELL, driver, w, h,
-  DrawBuffers::double(&BUF_A, &BUF_B), RenderMode::Partial)` with a `Flush`
-  driver, `Indev::create(lv, &CELL, reader, IndevKind::Pointer)` with a
-  `Read` driver: `DisplayCell`, `IndevCell` and `DrawBuf` (aligned to
-  `LV_DRAW_BUF_ALIGN`) are application statics, claimed while in use.
-  Flushes can complete from an interrupt (`FlushRequest::defer`), without
-  touching LVGL's own flag. `set_resolution`, `set_rotation`,
-  `set_color_format` (`DisplayFormat`) and `set_render_mode` check that
-  the draw buffers hold what LVGL will render (a row in partial mode, the
-  screen in full and direct modes) and return `Error::TooSmall`
-  otherwise, or `Error::InvalidArg` for sizes that would wrap LVGL's
-  32-bit size arithmetic; `set_tile_count` refuses counts above the
-  buffer size in bytes. Button devices (`Indev::create_button(lv, &CELL, reader,
-  &POINTS)`) report a button id (`IndevData::set_button`) and press
-  `POINTS[id]`, a `'static` array; an id past it reads as released.
-- **Focus groups.** `lv.create_group()` returns an `Owned<Group>`;
-  `Handle<Group>` adds objects and moves focus, `Indev::set_group` attaches
-  a keypad or encoder.
-- **Async (feature `async`).** `obj.subscribe(code, &QUEUE)` records
-  events into a `StaticQueue` through a `capture` function;
-  `next_event(lock, &rx).await` takes your async lock, returns the next
-  event with the guard, or waits. No executor dependency, no atomics.
-  `SubscribeOptions::new(code).bubble_children()` also records the events
-  of the object's children (they get `EVENT_BUBBLE`, now and when created).
-- **Closures and owned values (feature `heap`).** `obj.on_boxed(code, move
-  |e| ...)` and `lv.timer_boxed(period, move |ctx| ...)` keep the closure on
-  LVGL's own heap (a header of 4 bytes on 32-bit targets for timers, 8 for
-  handlers), dropped with the object or the timer; a handler's block is
-  freed at the next `enter` or `timer_handler`, as LVGL may still call it
-  during the deletion.
-  `image.set_src_owned(ImageBuffer::new(format, w, h, 0, pixels)?)` moves
-  an image (or an `ImageDsc`) there: when it is replaced or the image is
-  deleted, LVGL's image caches drop it and the block is freed at the next
-  `enter` or `timer_handler` (4 bytes of `.bss` for that list).
-  `image.set_src_buffer::<N>(format, w, h, 0, |pixels| ...)` allocates the
-  block first and fills the pixels in it, so a large image never goes
-  through the stack. With
-  `async` too, `obj.subscribe_owned::<E, N>(code, capture)` puts the queue
-  there and returns its `OwnedQueue` receiver (8 bytes, using the object's
-  registry slot); the queue goes with the object, or with
-  `OwnedQueue::close`, and its block is freed at the next drain too.
-  `bubble_children` cannot be undone: it stays for the object's lifetime.
-  `Display::create_boxed` and `Indev::create_boxed` (or
-  `create_button_boxed`) put a driver there instead of a static cell,
-  freed when the display or device is deleted (never while a flush is
-  pending).
-- **Your allocator (feature `allocator`).** With
-  `LV_USE_STDLIB_MALLOC LV_STDLIB_CUSTOM`, `lvgl_allocator!(HEAP)` makes
-  LVGL allocate from a static implementing `LvglAllocator`;
-  `SizedHeader(GlobalAlloc)` adapts a Rust allocator.
-- **Formatting (feature `fmt`).** `label.set_text_fmt(format_args!(...))`
-  streams into the label in 32-byte chunks; `Error` implements `Display`.
-  Without it, `set_text_i32`/`u32` avoid `core::fmt`.
-- **Diagnostics (features `defmt` and `debug-counters`).** With `defmt`,
-  `Error`, handles, the event codes and the other public enums and plain
-  types implement `defmt::Format`. With `debug-counters`,
-  `DebugCounters::read()` returns four 16-bit counters (8 bytes of `.bss`)
-  of what the crate does without returning an error: deferred requests
-  carried out by the drain (`drained`) or refused for good by the
-  structural checks (`refused`), callbacks skipped at
-  `LVGL_RUST_MAX_CALLBACK_DEPTH` (`skipped`), and `Display`s or `Indev`s
-  dropped without being deleted (`leaked`). Both cost nothing when off.
-- **Small.** The handle registry is a static array of 8-byte slots on 32-bit
-  targets (`LVGL_RUST_HANDLE_SLOTS`, default 32), plus a 24-byte header.
-  `LVGL_RUST_HANDLE_SLOTS=0` keeps only views (8 bytes of state).
+**Embedded GUIs in safe Rust, on top of [LVGL](https://lvgl.io) 9.** `lvgl-rust`
+wraps LVGL's widgets, styles, events, timers, animations, subjects and
+display and input drivers in a safe, `no_std` API, generated at build time
+for your `lv_conf.h`. It needs no allocator and takes no lock, and it runs on
+ESP32, STM32, nRF, RP2040 and other Cortex-M and RISC-V microcontrollers, on
+embedded Linux, in WebAssembly and on desktop simulators. The raw C API stays
+one path away, in `lvgl_rust::sys`.
 
-What the compiler refuses is tested: each program of
-[`tests/compile-fail/`](tests/compile-fail) (a view used after
-`timer_handler`, two `ObjMut` at once, a view kept past its session or
-sent to another thread, a capturing closure given to `on`, `timer` or
-`post`, an exclusive call from a handler, a cloned `Owned` or `StaticRx`,
-non-`'static` text for `set_text_static`, ...) must fail to build with the
-error recorded next to it (`mise run test-compile-fail`).
+| At a glance | |
+| --- | --- |
+| Safety | Views borrow the session, deletion needs exclusive access, handles report deleted objects (`Error::Dead`) |
+| Heap | None required; closures and owned images on LVGL's heap with feature `heap` |
+| Locking | None: implement `LvglAccess` on the guard of your own lock |
+| Speed | Setter through a view: **1.7 ns**, as the raw call. Event to a closure: **+1.6 to +2.7 ns** over a raw callback |
+| Size | **4498 B** of code, **188 B** of `.bss` on `thumbv6m-none-eabi` with 16 handle slots; **2246 B** and **44 B** with views only |
+| Handles | `Handle<W>` and `Owned<W>` are **4 bytes**, `Option` of either too |
+
+Numbers from the [overhead measurements](https://github.com/AlixANNERAUD/lvgl_rust/blob/main/documentation/reference/overhead.md),
+regenerated by `mise run overhead`.
+
+## Highlights
+
+- **No dangling objects.** Shared access (`&Lvgl`) gives views (`&Obj`,
+  `&Label`, ...) whose calls are plain FFI calls and cannot free anything.
+  Creating, deleting, cleaning and moving objects need exclusive access
+  (`&mut Lvgl` or an `ObjMut`), so no view can be held across them.
+  `Label::create(&mut parent)?` lends a view of the new object;
+  `.handle()?` gives a 4-byte `Handle` you can store, send to another thread
+  and resolve later with `get` or `get_mut`. `Owned` deletes its object when
+  dropped, from any thread.
+- **Access decided by an audit, not by hand.** Whether a generated function
+  is a view method (shared) or an `ObjMut` method (exclusive) comes from an
+  analysis of LVGL's call graph compiled to LLVM IR: anything that can reach
+  a deletion is exclusive.
+- **Generated for your configuration.** Every widget your `lv_conf.h`
+  enables gets typed methods (29 widget types with the vendored
+  configuration); `$OUT_DIR/coverage.txt` lists what stays raw and why.
+- **Event handlers without allocation.** `obj.on(code, |e| ...)` for a
+  closure without captures, `on_with(code, data, ...)` for up to 4 bytes of
+  data, `on_static` for a `static` context. Handlers get shared access and
+  defer exclusive work with `delete_later` and `lv.post(f, data)`. Query and
+  draw codes go to restricted handlers (`on_query`).
+- **Constant data in flash.** `const_style![...]` builds a `ConstStyle` in
+  `.rodata`; images (`ImageDsc`), button maps, keyboard layouts, grid
+  templates, scale labels, gradients and transitions are `const` and
+  `'static`, with their shape checked at compile time.
+- **Drivers in statics.** `Display::create` with a `Flush` driver and
+  `Indev::create` with a `Read` driver keep their state in application
+  `static`s (`DisplayCell`, `IndevCell`, `DrawBuf`). Flushes can complete
+  from an interrupt (`FlushRequest::defer`).
+- **Timers, animations, subjects, focus groups, async event queues**, and
+  widgets LVGL trusts blindly (charts, tables, tile views, calendars)
+  wrapped with the checks LVGL leaves out.
+
+The full list, feature by feature, is in the
+[API overview](https://github.com/AlixANNERAUD/lvgl_rust/blob/main/documentation/reference/api-overview.md).
+
+## Quick start
+
+```toml
+[dependencies]
+lvgl-rust = "0.1"
+```
+
+Point `DEP_LV_CONFIG_PATH` at the directory that holds your `lv_conf.h`
+(for example in `.cargo/config.toml`, `[env] DEP_LV_CONFIG_PATH = { value =
+"lvgl-configuration", relative = true }`), add the three OBJ_ID lines of
+[Configuration](#configuration) to it, then:
+
+```rust,ignore
+use lvgl_rust::{
+    Display, DisplayCell, DrawBuf, DrawBuffers, Error, Flush, FlushRequest, Lvgl, LvglAccess,
+    RenderMode, WidgetExt,
+    enums::EventCode,
+    tick_inc,
+    widgets::{Button, Label},
+};
+use std::sync::{Mutex, MutexGuard};
+
+static LVGL: Mutex<()> = Mutex::new(());
+struct Guard(#[allow(dead_code)] MutexGuard<'static, ()>);
+// SAFETY: every LVGL call of the program holds this mutex.
+unsafe impl LvglAccess for Guard {}
+
+struct Panel;
+impl Flush for Panel {
+    fn flush(&mut self, mut req: FlushRequest<'_>) {
+        let (area, pixels) = (req.area(), req.pixels());
+        // Send `pixels` for `area` to the panel; returning frees the buffer.
+        let _ = (area, pixels);
+    }
+}
+static PANEL: DisplayCell<Panel> = DisplayCell::new();
+static BUFFER: DrawBuf<{ 320 * 2 * 24 }> = DrawBuf::new(); // 24 rows of RGB565
+
+fn main() -> Result<(), Error> {
+    {
+        let mut guard = Guard(LVGL.lock().unwrap());
+        let mut lv = lvgl_rust::init(&mut guard)?;
+        let _display = Display::create(
+            &mut lv, &PANEL, Panel, 320, 240,
+            DrawBuffers::single(&BUFFER), RenderMode::Partial,
+        )?;
+
+        let mut screen = lv.screen_active_mut().expect("the display has a screen");
+        let button = Button::create(&mut screen)?.handle()?; // Handle<Button>
+        let mut button = button.get_mut(&mut lv)?;           // ObjMut<Button>
+        button.set_size(120, 50);
+        button.center();
+        let label = Label::create(&mut button)?;             // &Label
+        label.set_text_str("Press me")?;
+        let label = label.handle()?;
+        button.view().on_with(EventCode::CLICKED, label, |e, label| {
+            if let Ok(label) = label.get(e.lv()) {
+                let _ = label.set_text_str("Clicked");
+            }
+        })?;
+    }
+    loop {
+        let mut guard = Guard(LVGL.lock().unwrap());
+        tick_inc(5);
+        let wait = Lvgl::enter(&mut guard)?.timer_handler();
+        drop(guard);
+        std::thread::sleep(std::time::Duration::from_millis(u64::from(wait.min(5))));
+    }
+}
+```
+
+The [first application tutorial](https://github.com/AlixANNERAUD/lvgl_rust/blob/main/documentation/tutorials/first-application.md)
+explains each step. The desktop example (`mise run example`,
+[`examples/desktop.rs`](https://github.com/AlixANNERAUD/lvgl_rust/blob/main/lvgl-rust/examples/desktop.rs))
+puts most of the API together and also runs on `wasm32-wasip1`.
 
 ## Configuration
 
@@ -163,72 +153,97 @@ Handles rely on LVGL's OBJ_ID hooks, which the crate defines. Add to your
 #define LV_USE_OBJ_ID_BUILTIN 0
 ```
 
+Without them the build stops with a `compile_error!` that says what to add.
+This costs 4 bytes per LVGL object (`lv_obj_t::id`). With
+`LVGL_RUST_HANDLE_SLOTS=0` the crate keeps only views and defines no hook:
+use a configuration where LVGL provides them (`LV_USE_OBJ_ID_BUILTIN 1`),
+where OBJ_ID is off, or where your application defines them.
 `conf/lv_conf.h` is the vendored configuration used by this crate's tests.
-With `LVGL_RUST_HANDLE_SLOTS=0` the crate defines no hook: use a
-configuration where LVGL provides them (`LV_USE_OBJ_ID_BUILTIN 1`), where
-OBJ_ID is off, or where your application defines them.
 
-## Example
+| Build variable | Default | Effect |
+| --- | --- | --- |
+| `LVGL_RUST_HANDLE_SLOTS` | 32 | Handle registry slots (8 bytes each on 32-bit targets, plus a 24-byte header), rounded up to a power of two, at most 32768; `0` for views only (8 bytes of state) |
+| `LVGL_RUST_POST_SLOTS` | 4 | Entries of the `Lvgl::post` queue, 0 to 255 |
+| `LVGL_RUST_MAX_CALLBACK_DEPTH` | 16 | Nested callback depth, 1 to 254; deeper callbacks are skipped |
 
-```rust,ignore
-use lvgl_rust::{
-    color, const_style, init, ConstStyle, Font, LvglAccess, Obj, ScreenAnim, Selector,
-    WidgetExt,
-};
+`DEP_LV_CONFIG_PATH`, `LVGL_CFLAGS` and the other inputs of the LVGL build
+are those of [`lvgl-rust-sys`](https://crates.io/crates/lvgl-rust-sys); see
+the [build configuration reference](https://github.com/AlixANNERAUD/lvgl_rust/blob/main/documentation/reference/build-configuration.md).
 
-static PANEL: ConstStyle = const_style![
-    radius(8),
-    bg_color(color::hex(0x202020)),
-    text_font(Font::montserrat_14()),
-];
+## Cargo features
 
-struct Guard(/* your mutex guard */);
-unsafe impl LvglAccess for Guard {}
+| Feature | Default | Effect |
+| --- | :---: | --- |
+| `use-string-functions` | yes | C string functions (`strlen`, `strcmp`, ...) in Rust, for targets without a C library |
+| `async` | | Event queues (`subscribe`, `StaticQueue`) and `next_event` for async code, no executor dependency |
+| `heap` | | Closures and owned values on LVGL's heap: `on_boxed`, `timer_boxed`, `set_src_owned`, `set_src_buffer`, `create_boxed` drivers, and `subscribe_owned` with `async` |
+| `allocator` | | LVGL's heap from a Rust allocator (`lvgl_allocator!`, with `LV_USE_STDLIB_MALLOC LV_STDLIB_CUSTOM`) |
+| `fmt` | | `Label::set_text_fmt` and `Display for Error` (links `core::fmt`) |
+| `defmt` | | `defmt::Format` for `Error`, handles, the event codes and the other public enums and plain types |
+| `debug-counters` | | `DebugCounters::read()`: four 16-bit counters (8 bytes of `.bss`) of what the crate did or refused without returning an error |
+| `shadcn-theme` | | The shadcn theme of `lvgl-rust-sys` |
+| `color_depth_1` ... `color_depth_32` | | LVGL's color depth (1, 8, 16, 24 or 32 bits), as in `lvgl-rust-sys` |
 
-let mut guard = Guard(/* lock */);
-let mut lv = init(&mut guard)?;
-let screen = lv.create_screen()?;              // Owned<Obj>
-let mut parent = screen.get_mut(&mut lv)?;     // ObjMut<Obj>, borrows `lv`
-let panel = Obj::create(&mut parent)?;         // &Obj, borrows `parent`
-let panel = panel.handle()?;                   // Handle<Obj>, storable
-panel.get_mut(&mut lv)?.add_style(&PANEL, Selector::DEFAULT);
-lv.load_screen(screen.handle(), ScreenAnim::NONE)?;
-loop {
-    let wait = lv.timer_handler();
-    // ...
-}
-```
+`defmt` and `debug-counters` cost nothing when off. Details in the
+[features reference](https://github.com/AlixANNERAUD/lvgl_rust/blob/main/documentation/reference/features.md).
 
-The desktop example (`mise run example`, `examples/desktop.rs`) puts most
-of the API together: drivers in statics, a clock bound to a subject, a
-launcher posting work, window components with a close button, a
-textarea and a keyboard, styles, a timer and an animation. It also runs
-on `wasm32-wasip1` (`mise run cross-wasip1` builds it with wasi-sdk and
-runs it, with the tests, under wasmtime): the crate needs no threads.
+## Overhead
 
-## Migrating from raw `lvgl-rust-sys` code
+| Operation | lvgl-rust | Raw C call |
+| --- | ---: | ---: |
+| Shared setter through a view | 1.7 ns | 1.7 ns |
+| Resolve a handle, then a shared setter | 3.7 ns | 1.8 ns |
+| Event to a handler without captures | 20.7 ns | 18.1 ns |
+| Create and delete an object | 1395.9 ns | 1250.8 ns |
 
-The crate builds on `lvgl-rust-sys` and does not change it, so raw and
-safe code can live side by side while modules move over:
+Host medians, release profile, on the machine the page was generated on
+(a virtualised aarch64 host): compare the two columns, not absolute times
+across machines. Firmware sizes,
+per-item costs and the full table are in the
+[overhead measurements](https://github.com/AlixANNERAUD/lvgl_rust/blob/main/documentation/reference/overhead.md);
+[where the costs come from](https://github.com/AlixANNERAUD/lvgl_rust/blob/main/documentation/explanation/overhead.md)
+explains them.
 
-1. In `lv_conf.h`, set `LV_USE_OBJ_ID 1` and `LV_USE_OBJ_ID_BUILTIN 0`
-   (`LV_OBJ_ID_AUTO_ASSIGN` stays 1): the crate defines the five OBJ_ID
-   functions, so the application must not. Cost: 4 bytes per object.
-2. Make the lock return a guard type of its own and implement `LvglAccess`
-   only on it (not on a `MutexGuard` shared with other mutexes).
-3. The graphics task runs `Lvgl::enter(&mut guard)?.timer_handler()`.
-   Raw `lv_timer_handler` stays valid meanwhile; deferred deletions and
-   posted work then run at the next `enter` or `timer_handler`.
-4. Replace hand-written allocator exports with `lvgl_allocator!` (feature
-   `allocator`, `LV_STDLIB_CUSTOM`).
-5. Windows and dialogs become components (a root handle and part
-   handles); closing
-   from a handler is `delete_later`, which replaces synchronous locks and
-   unlocked `lv_obj_delete_async` in drops.
-6. Displays and input devices move to `Display::create` and
-   `Indev::create` with drivers in statics, or to `create_boxed` (feature
-   `heap`) with the driver on LVGL's heap, freed with the display.
-7. Modules migrate one by one with `as_ptr()` and `Obj::from_raw`; raw C
-   callbacks that call safe code take `Lvgl::enter_callback()` first. What
-   stays raw is listed in `$OUT_DIR/coverage.txt`.
+## Tested refusals
 
+What the compiler must refuse is tested: each program of
+[`tests/compile-fail/`](https://github.com/AlixANNERAUD/lvgl_rust/tree/main/lvgl-rust/tests/compile-fail)
+(a view used after `timer_handler`, two `ObjMut` at once, a view sent to
+another thread, a capturing closure given to `on`, an exclusive call from a
+handler, ...) must fail to build with the recorded error
+(`mise run test-compile-fail`). The core also runs under Miri, loom and
+AddressSanitizer in CI.
+
+## Documentation
+
+- Tutorial: [your first application](https://github.com/AlixANNERAUD/lvgl_rust/blob/main/documentation/tutorials/first-application.md)
+- How-to guides: [configure LVGL](https://github.com/AlixANNERAUD/lvgl_rust/blob/main/documentation/how-to-guides/configure-lvgl.md),
+  [share LVGL between threads](https://github.com/AlixANNERAUD/lvgl_rust/blob/main/documentation/how-to-guides/share-lvgl-between-threads.md),
+  [write a display driver](https://github.com/AlixANNERAUD/lvgl_rust/blob/main/documentation/how-to-guides/write-a-display-driver.md),
+  [write an input driver](https://github.com/AlixANNERAUD/lvgl_rust/blob/main/documentation/how-to-guides/write-an-input-driver.md),
+  [handle events](https://github.com/AlixANNERAUD/lvgl_rust/blob/main/documentation/how-to-guides/handle-events.md),
+  [use the heap](https://github.com/AlixANNERAUD/lvgl_rust/blob/main/documentation/how-to-guides/use-the-heap.md),
+  [receive events asynchronously](https://github.com/AlixANNERAUD/lvgl_rust/blob/main/documentation/how-to-guides/receive-events-asynchronously.md),
+  [build for embedded targets](https://github.com/AlixANNERAUD/lvgl_rust/blob/main/documentation/how-to-guides/build-for-embedded-targets.md),
+  [reduce the footprint](https://github.com/AlixANNERAUD/lvgl_rust/blob/main/documentation/how-to-guides/reduce-the-footprint.md),
+  [migrate from raw bindings](https://github.com/AlixANNERAUD/lvgl_rust/blob/main/documentation/how-to-guides/migrate-from-raw-bindings.md),
+  [use external fonts](https://github.com/AlixANNERAUD/lvgl_rust/blob/main/documentation/how-to-guides/use-external-fonts.md)
+- Explanation: [access model](https://github.com/AlixANNERAUD/lvgl_rust/blob/main/documentation/explanation/access-model.md),
+  [object lifetime](https://github.com/AlixANNERAUD/lvgl_rust/blob/main/documentation/explanation/object-lifetime.md),
+  [event handlers](https://github.com/AlixANNERAUD/lvgl_rust/blob/main/documentation/explanation/event-handlers.md),
+  [generated bindings](https://github.com/AlixANNERAUD/lvgl_rust/blob/main/documentation/explanation/generated-bindings.md),
+  [overhead](https://github.com/AlixANNERAUD/lvgl_rust/blob/main/documentation/explanation/overhead.md)
+- Reference: [API overview](https://github.com/AlixANNERAUD/lvgl_rust/blob/main/documentation/reference/api-overview.md),
+  [features](https://github.com/AlixANNERAUD/lvgl_rust/blob/main/documentation/reference/features.md),
+  [build configuration](https://github.com/AlixANNERAUD/lvgl_rust/blob/main/documentation/reference/build-configuration.md),
+  [errors](https://github.com/AlixANNERAUD/lvgl_rust/blob/main/documentation/reference/errors.md),
+  [supported targets](https://github.com/AlixANNERAUD/lvgl_rust/blob/main/documentation/reference/supported-targets.md),
+  [overhead measurements](https://github.com/AlixANNERAUD/lvgl_rust/blob/main/documentation/reference/overhead.md),
+  [development tasks](https://github.com/AlixANNERAUD/lvgl_rust/blob/main/documentation/reference/development-tasks.md)
+- API documentation: [docs.rs](https://docs.rs/lvgl-rust)
+
+## License
+
+MIT, see [LICENSE](https://github.com/AlixANNERAUD/lvgl_rust/blob/main/LICENSE).
+LVGL is distributed under its own
+[MIT licence](https://github.com/lvgl/lvgl/blob/master/LICENCE.txt).
