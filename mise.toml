@@ -178,6 +178,10 @@ run = [
   "lvgl-rust/size-gate/gate.sh thumbv6m-none-eabi 16 4608 defmt,debug-counters",
   "lvgl-rust/size-gate/gate.sh thumbv6m-none-eabi 0 2368 debug-counters",
   "lvgl-rust/size-gate/gate.sh riscv32imc-unknown-none-elf 16 5888 debug-counters",
+  # The firmware builds with every feature off: check `async` and `heap`
+  # compile for both targets too.
+  "DEP_LV_CONFIG_PATH={{config_root}}/lvgl-rust/conf CARGO_TARGET_DIR=target/size-gate/features cargo check -q -p lvgl-rust --features async,heap --target thumbv6m-none-eabi",
+  "DEP_LV_CONFIG_PATH={{config_root}}/lvgl-rust/conf CARGO_TARGET_DIR=target/size-gate/features cargo check -q -p lvgl-rust --features async,heap --target riscv32imc-unknown-none-elf",
 ]
 
 [tasks.msrv]
@@ -223,6 +227,8 @@ run = [
   "cargo clippy -p lvgl-rust --all-targets",
   "cargo clippy -p lvgl-rust --all-targets --features defmt,debug-counters",
   "cargo test -p lvgl-rust",
+  "cargo clippy -p lvgl-rust --all-targets --features async,heap",
+  "cargo test -p lvgl-rust --features async,heap",
   "cargo test -p lvgl-rust --features defmt,debug-counters --test counters",
 ]
 
@@ -291,8 +297,12 @@ env.DEP_LV_CONFIG_PATH = "{{config_root}}/lvgl-rust/conf"
 env.CARGO_TARGET_DIR = "target/miri"
 # The model passes C pointers through exposed provenance, as C code does.
 env.MIRIFLAGS = "-Zmiri-permissive-provenance"
-# Miri provides its own `strlen` & co.
-run = "cargo miri test -p lvgl-rust --lib --no-default-features"
+# Miri provides its own `strlen` & co. The second run adds `heap`: the
+# deferred-free list and `LvBox` against the model's heap.
+run = [
+  "cargo miri test -p lvgl-rust --lib --no-default-features",
+  "cargo miri test -p lvgl-rust --lib --no-default-features --features heap",
+]
 
 [tasks.loom]
 description = "Model-check the cross-thread request protocol of lvgl-rust with loom"

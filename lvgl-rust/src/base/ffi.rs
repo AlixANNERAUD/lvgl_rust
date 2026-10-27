@@ -26,6 +26,18 @@ pub(crate) unsafe fn timer_handler() -> u32 {
     unsafe { sys::lv_timer_handler() }
 }
 
+/// A block of LVGL's heap (`lv_malloc`), null when out of memory.
+#[cfg(feature = "heap")]
+pub(crate) unsafe fn malloc(size: usize) -> *mut core::ffi::c_void {
+    unsafe { sys::lv_malloc(size) }
+}
+
+/// Frees a block of [`malloc`] (`lv_free`).
+#[cfg(feature = "heap")]
+pub(crate) unsafe fn free(block: *mut core::ffi::c_void) {
+    unsafe { sys::lv_free(block) }
+}
+
 pub(crate) unsafe fn obj_create(parent: *mut lv_obj_t) -> *mut lv_obj_t {
     unsafe { sys::lv_obj_create(parent) }
 }

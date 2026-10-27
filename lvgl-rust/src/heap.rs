@@ -2,7 +2,7 @@
 //! one `lv_malloc` block, so closures and owned data need no Rust
 //! allocator.
 
-use crate::sys;
+use crate::base::ffi;
 use core::{
     mem::align_of,
     ptr::{self, NonNull},
@@ -25,20 +25,10 @@ pub(crate) struct LvBox<H, T> {
 impl<H, T> LvBox<H, T> {
     /// Allocates and fills the block; gives the value back on failure.
     pub(crate) fn new(header: H, value: T) -> Result<Self, T> {
-        const {
-            assert!(
-                align_of::<H>() <= HEAP_ALIGN,
-                "box headers align to the heap"
-            )
-        };
-        // Blocks align to the heap.
-        let size = crate::layout::block_size::<H, T>(HEAP_ALIGN);
-        // SAFETY: under the token (every caller has shared access).
-        let block = unsafe { sys::lv_malloc(size.max(1)) }.cast::<u8>();
-        let Some(block) = NonNull::new(block) else {
+        let Some(block) = Self::allocate() else {
             return Err(value);
         };
-        // SAFETY: a fresh block of `size` bytes, aligned to the heap: the
+        // SAFETY: a fresh block for `H` and `T`, aligned to the heap: the
         // header at its start, the value aligned within it.
         unsafe {
             block.as_ptr().cast::<H>().write(header);
@@ -48,6 +38,41 @@ impl<H, T> LvBox<H, T> {
             block,
             _t: core::marker::PhantomData,
         })
+    }
+
+    /// Allocates the block and fills the value with zero bytes, in place:
+    /// a large value never goes through the stack. `None` if the heap is
+    /// full.
+    ///
+    /// # Safety
+    ///
+    /// All-zero bytes are a valid `T`.
+    #[cfg_attr(not(lv_use_image), allow(dead_code))]
+    pub(crate) unsafe fn new_zeroed(header: H) -> Option<Self> {
+        let block = Self::allocate()?;
+        // SAFETY: as in `new`; caller contract for the zeroed value.
+        unsafe {
+            block.as_ptr().cast::<H>().write(header);
+            ptr::write_bytes(value_ptr::<H, T>(block), 0, 1);
+        }
+        Some(Self {
+            block,
+            _t: core::marker::PhantomData,
+        })
+    }
+
+    /// An uninitialized block for `H` then `T`.
+    fn allocate() -> Option<NonNull<u8>> {
+        const {
+            assert!(
+                align_of::<H>() <= HEAP_ALIGN,
+                "box headers align to the heap"
+            )
+        };
+        // Blocks align to the heap.
+        let size = crate::layout::block_size::<H, T>(HEAP_ALIGN);
+        // SAFETY: under the token (every caller has shared access).
+        NonNull::new(unsafe { ffi::malloc(size.max(1)) }.cast::<u8>())
     }
 
     /// The block pointer, for LVGL (`user_data`).
@@ -79,7 +104,7 @@ impl<H, T> LvBox<H, T> {
         unsafe {
             ptr::drop_in_place(Self::value(block));
             ptr::drop_in_place(Self::header(block));
-            sys::lv_free(block);
+            ffi::free(block);
         }
     }
 }

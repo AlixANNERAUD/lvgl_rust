@@ -88,3 +88,65 @@ fn boxed_timers_drop_their_closure_with_the_timer() {
     lv.timer_handler();
     assert_eq!(Arc::strong_count(&counter), 1);
 }
+
+/// DELETE handler sending READY to the object's parent, which trickles it
+/// back down to the object while LVGL still holds its handlers (safe code
+/// can do the same: `set_event_trickle(true)` on the parent, then
+/// `Obj::send_event(SafeEventCode::READY)` through a handle).
+unsafe extern "C" fn send_to_parent(e: *mut sys::lv_event_t) {
+    // SAFETY: a live event of a live object, under the session.
+    unsafe {
+        let object = sys::lv_event_get_current_target(e).cast::<sys::lv_obj_t>();
+        let parent = sys::lv_obj_get_parent(object);
+        sys::lv_obj_send_event(
+            parent,
+            sys::lv_event_code_t_LV_EVENT_READY,
+            core::ptr::null_mut(),
+        );
+    }
+}
+
+#[test]
+fn boxed_handlers_ignore_events_trickled_after_delete() {
+    let mut guard = guard();
+    let mut lv = session(&mut guard);
+    let parent = Obj::create(lv.screen_active().unwrap()).unwrap();
+    // SAFETY: session held, live object.
+    unsafe {
+        sys::lv_obj_add_flag(
+            parent.as_ptr(),
+            sys::lv_obj_flag_t_LV_OBJ_FLAG_EVENT_TRICKLE,
+        )
+    };
+    let child = Obj::create(parent).unwrap();
+    let counter = Arc::new(AtomicU32::new(0));
+    let mine = counter.clone();
+    child
+        .on_boxed(EventCode::READY, move |_| {
+            mine.fetch_add(1, Relaxed);
+        })
+        .unwrap();
+    // SAFETY: session held, live object; the callback needs no data.
+    unsafe {
+        sys::lv_obj_add_event_cb(
+            child.as_ptr(),
+            Some(send_to_parent),
+            sys::lv_event_code_t_LV_EVENT_DELETE,
+            core::ptr::null_mut(),
+        )
+    };
+    send(parent, EventCode::READY);
+    assert_eq!(counter.load(Relaxed), 1);
+    lv.edit(|lv| lv.screen_active()?.child(-1)?.child(0))
+        .unwrap()
+        .delete()
+        .unwrap();
+    // The closure was dropped at DELETE and not called again; its block
+    // waited for the drain (AddressSanitizer checks the order).
+    assert_eq!(counter.load(Relaxed), 1);
+    assert_eq!(Arc::strong_count(&counter), 1);
+    lv.edit(|lv| lv.screen_active()?.child(-1))
+        .unwrap()
+        .delete()
+        .unwrap();
+}

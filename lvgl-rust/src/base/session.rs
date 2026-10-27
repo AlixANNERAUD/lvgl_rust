@@ -162,6 +162,9 @@ impl Lvgl {
     /// [`init`] and [`Lvgl::enter`] fail afterwards.
     pub fn deinit(session: Session<'_>) -> Result<(), Error> {
         super::drain::drain();
+        // Blocks retired by the deletions of `lv_deinit` are freed at once.
+        #[cfg(feature = "heap")]
+        super::deferred::begin_deinit();
         // SAFETY: exclusive access; no session can follow.
         unsafe { ffi::deinit() };
         reg().hdr.init.store(2, Ordering::SeqCst);

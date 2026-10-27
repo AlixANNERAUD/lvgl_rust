@@ -198,6 +198,92 @@ fn only_parentless_objects_load_as_screens() {
         .unwrap();
 }
 
+/// The deferred-free list and `LvBox` (also under Miri, against the
+/// stub's heap, whose leak check catches a block never freed).
+#[cfg(feature = "heap")]
+mod heap {
+    use super::*;
+    use crate::{
+        base::{deferred, ffi},
+        heap::LvBox,
+    };
+    use core::ffi::c_void;
+    use std::sync::Arc;
+
+    #[test]
+    fn deferred_blocks_are_freed_at_the_next_drain() {
+        let mut guard = guard();
+        let lv = session(&mut guard);
+        for size in [8, 24, 100] {
+            // SAFETY: under the token; a fresh block, big enough for the
+            // link, needing no drop.
+            unsafe {
+                let block = ffi::malloc(size);
+                assert!(!block.is_null());
+                deferred::defer_free(block);
+            }
+        }
+        assert_eq!(deferred::queued(), 3);
+        drop(lv);
+        let _lv = Lvgl::enter(&mut guard).unwrap();
+        assert_eq!(deferred::queued(), 0);
+    }
+
+    #[test]
+    fn boxes_align_their_value_and_drop_it_once() {
+        #[repr(align(32))]
+        struct Aligned(Arc<()>);
+        let mut guard = guard();
+        let _lv = session(&mut guard);
+        let shared = Arc::new(());
+        let block = LvBox::<u8, Aligned>::new(7, Aligned(shared.clone()))
+            .ok()
+            .unwrap()
+            .into_raw();
+        let value = LvBox::<u8, Aligned>::value(block);
+        assert_eq!(value.addr() % 32, 0);
+        // SAFETY: the box's own header and value.
+        unsafe {
+            assert_eq!(*LvBox::<u8, Aligned>::header(block), 7);
+            assert_eq!(Arc::strong_count(&(*value).0), 2);
+            LvBox::<u8, Aligned>::free(block);
+        }
+        assert_eq!(Arc::strong_count(&shared), 1);
+        // A box whose header is the link goes through the list.
+        let block = LvBox::<*mut c_void, [u32; 3]>::new(core::ptr::null_mut(), [1, 2, 3])
+            .ok()
+            .unwrap()
+            .into_raw();
+        // SAFETY: as in `deferred_blocks_are_freed_at_the_next_drain`.
+        unsafe { deferred::defer_free(block) };
+        assert_eq!(deferred::queued(), 1);
+        crate::base::drain::drain();
+        assert_eq!(deferred::queued(), 0);
+    }
+
+    #[test]
+    fn zeroed_boxes_are_built_in_place() {
+        #[repr(align(16))]
+        struct Wide([u8; 40]);
+        let mut guard = guard();
+        let _lv = session(&mut guard);
+        // SAFETY: zero bytes are a valid `Wide`.
+        let block = unsafe { LvBox::<*mut c_void, Wide>::new_zeroed(core::ptr::null_mut()) }
+            .unwrap()
+            .into_raw();
+        let value = LvBox::<*mut c_void, Wide>::value(block);
+        assert_eq!(value.addr() % 16, 0);
+        // SAFETY: the box's own value, then a block needing no drop.
+        unsafe {
+            assert!((*value).0.iter().all(|&byte| byte == 0));
+            (*value).0[39] = 1;
+            deferred::defer_free(block);
+        }
+        crate::base::drain::drain();
+        assert_eq!(deferred::queued(), 0);
+    }
+}
+
 #[cfg(not(lvgl_rust_views_only))]
 mod handles {
     use super::*;

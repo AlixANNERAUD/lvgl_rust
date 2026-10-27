@@ -497,10 +497,14 @@ impl Obj {
     }
 }
 
-/// Header of an [`Obj::on_boxed`] closure: its code, the frames running it,
-/// and whether its object was deleted meanwhile. 4 bytes.
+/// Header of an [`Obj::on_boxed`] closure: the deferred-free link, its
+/// code, the frames running it, and whether its object was deleted
+/// meanwhile. 8 bytes on 32-bit targets; the link comes first, so the
+/// other fields stay readable once the block is queued.
 #[cfg(feature = "heap")]
+#[repr(C)]
 struct BoxedHandler {
+    link: *mut c_void,
     code: u16,
     busy: u8,
     doomed: bool,
@@ -515,10 +519,18 @@ where
     use crate::heap::LvBox;
     // SAFETY: the user data of this descriptor is its box (`on_boxed`); it
     // is reached through raw pointers only, never a reference held while
-    // user code runs.
+    // user code runs. The closure is dropped once (the frame that sees
+    // `doomed` with no frame left running it), and the block freed at the
+    // next drain: LVGL may still call this handler after DELETE (a DELETE
+    // handler can send to an ancestor that trickles events down to the
+    // object, `lv_obj_event.c:381-397`, until `lv_event_remove_all` runs
+    // after the DELETE send, `lv_obj_tree.c:673-688`).
     unsafe {
         let block = sys::lv_event_get_user_data(e);
         let header = LvBox::<BoxedHandler, F>::header(block);
+        if (*header).doomed {
+            return;
+        }
         let code = sys::lv_event_get_code(e) as u32;
         let wanted = (*header).code as u32;
         if wanted == EventCode::ALL.bits() || wanted == code {
@@ -529,13 +541,14 @@ where
             });
             (*header).busy -= 1;
         }
-        // DELETE never bubbles: this is the box's own object. The
-        // outermost frame frees it.
+        // DELETE never bubbles and is sent once: this is the box's own
+        // object. The outermost frame retires the closure.
         if code == EventCode::DELETE.bits() {
             (*header).doomed = true;
         }
         if (*header).doomed && (*header).busy == 0 {
-            LvBox::<BoxedHandler, F>::free(block);
+            core::ptr::drop_in_place(LvBox::<BoxedHandler, F>::value(block));
+            crate::base::deferred::defer_free(block);
         }
     }
 }
@@ -544,7 +557,8 @@ where
 impl Obj {
     /// Calls the closure `f` for every `code` event of this object. `f` and
     /// what it captures live on LVGL's heap until the object is deleted
-    /// (header of 4 bytes).
+    /// (header of 8 bytes on 32-bit targets): `f` is dropped then, and the
+    /// block freed at the next drain.
     pub fn on_boxed<F, R>(&self, code: EventCode, f: F) -> Result<(), Error>
     where
         F: Fn(&Event<'_>) -> R + Send + 'static,
@@ -555,6 +569,7 @@ impl Obj {
             return Err(Error::InvalidArg);
         }
         let header = BoxedHandler {
+            link: core::ptr::null_mut(),
             code: code.bits() as u16,
             busy: 0,
             doomed: false,

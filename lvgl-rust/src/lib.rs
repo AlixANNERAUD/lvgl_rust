@@ -200,6 +200,8 @@ pub use event::{Event, Handler, HandlerResult, UserData, handler_allowed};
 pub use grid::{GridTemplate, Track};
 #[cfg(not(lvgl_rust_views_only))]
 pub use group::Group;
+#[cfg(all(feature = "heap", lv_use_image))]
+pub use image::{ImageBuffer, OwnedImageSource};
 pub use image::{ImageColorkey, ImageData, ImageDsc, ImageSrc, PixelFormat};
 pub use indev::{Indev, IndevCell, IndevData, IndevKind, Read};
 pub use lvgl_rust_sys as sys;
@@ -207,8 +209,10 @@ pub use query::{
     CoverCheck, CoverResult, DrawTask, ExtDrawSize, HitTest, Layer, QueryEvent, SelfSize,
     query_handler_allowed,
 };
+#[cfg(all(feature = "async", feature = "heap", not(lvgl_rust_views_only)))]
+pub use queue::OwnedQueue;
 #[cfg(feature = "async")]
-pub use queue::{Receiver, Recv, StaticQueue, StaticRx, next_event};
+pub use queue::{Receiver, Recv, StaticQueue, StaticRx, SubscribeOptions, next_event};
 pub use scale_labels::{ScaleLabel, ScaleLabels};
 pub use screen::{ScreenAnim, ScreenLoadAnim};
 pub use style::{

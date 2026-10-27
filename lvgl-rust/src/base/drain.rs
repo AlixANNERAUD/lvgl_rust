@@ -6,6 +6,8 @@
 #[cfg(lvgl_rust_views_only)]
 pub(crate) fn drain() {
     super::post::run_posted();
+    #[cfg(feature = "heap")]
+    super::deferred::free_deferred();
 }
 
 #[cfg(not(lvgl_rust_views_only))]
@@ -38,6 +40,9 @@ mod slots {
         }
         apply_pending_load();
         crate::base::post::run_posted();
+        // Last: the deletions above may have retired blocks.
+        #[cfg(feature = "heap")]
+        crate::base::deferred::free_deferred();
     }
 
     /// Carries out the requests of one slot. Returns `Err(Busy)` when the

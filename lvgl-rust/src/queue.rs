@@ -3,6 +3,8 @@
 //! token: no atomics, no critical section, no compare-and-swap.
 
 use crate::{Error, Event, Lvgl, LvglAccess, Obj, enums::EventCode, event::dispatch, sys};
+#[cfg(all(feature = "heap", not(lvgl_rust_views_only)))]
+use crate::{Handle, base::deferred, heap::LvBox};
 use core::{
     cell::UnsafeCell,
     future::Future,
@@ -86,11 +88,8 @@ impl<E: Copy + Send + 'static, const N: usize> StaticQueue<E, N> {
     /// flag.
     pub fn take_overflow(&'static self, lv: &Lvgl) -> bool {
         let _ = lv;
-        // SAFETY: as above.
-        let q = unsafe { &mut *self.0.get() };
-        let overflow = q.flags & OVERFLOW != 0;
-        q.flags &= !OVERFLOW;
-        overflow
+        // SAFETY: under the token.
+        unsafe { take_overflow(self.0.get()) }
     }
 }
 
@@ -102,79 +101,86 @@ impl<E: Copy + Send + 'static, const N: usize> Receiver for StaticRx<E, N> {
 
     fn try_recv(&self, lv: &Lvgl) -> Recv<E> {
         let _ = lv;
-        // SAFETY: under the token; no user code runs during the borrow.
-        let q = unsafe { &mut *self.0.0.get() };
-        if q.len == 0 {
-            return if q.flags & CLOSED != 0 {
-                Recv::Closed
-            } else {
-                Recv::Empty
-            };
-        }
-        let head = q.head as usize;
-        // SAFETY: `head` is below `N` and holds a pushed event.
-        let event = unsafe { q.buf.get_unchecked(head).assume_init() };
-        q.head = if head + 1 == N { 0 } else { head as u8 + 1 };
-        q.len -= 1;
-        Recv::Event(event)
+        // SAFETY: under the token.
+        unsafe { pop(self.0.0.get()) }
     }
 
     fn register(&self, lv: &Lvgl, waker: &Waker) {
         let _ = lv;
-        // SAFETY: as above; the old waker is dropped after the borrow.
-        let old = {
-            let q = unsafe { &mut *self.0.0.get() };
-            if q.waker.as_ref().is_some_and(|w| w.will_wake(waker)) {
-                return;
-            }
-            q.waker.replace(waker.clone())
-        };
-        drop(old);
+        // SAFETY: under the token.
+        unsafe { register(self.0.0.get(), waker) }
     }
 }
 
-unsafe extern "C" fn push_trampoline<E: Copy + Send + 'static, const N: usize>(
-    e: *mut sys::lv_event_t,
-) {
-    // SAFETY: the user data of a subscription is its `'static` queue.
-    let queue = unsafe { &*sys::lv_event_get_user_data(e).cast::<StaticQueue<E, N>>() };
-    dispatch(e, &mut |event| {
-        // `capture` runs with no borrow of the queue held: it may send
-        // events that push into it.
-        // SAFETY: under the token, short borrows.
-        let capture = unsafe { (*queue.0.get()).capture };
-        let Some(record) = capture(event) else { return };
-        let waker = {
-            let q = unsafe { &mut *queue.0.get() };
-            if q.len as usize >= N {
-                q.flags |= OVERFLOW;
-            } else {
-                let mut tail = q.head as usize + q.len as usize;
-                if tail >= N {
-                    tail -= N;
-                }
-                if let Some(slot) = q.buf.get_mut(tail) {
-                    slot.write(record);
-                    q.len += 1;
-                }
-            }
-            q.waker.take()
+/// Pops the oldest event of `q`.
+///
+/// # Safety
+///
+/// Under the token; `q` is a live queue with no reference into it.
+unsafe fn pop<E: Copy, const N: usize>(q: *mut EventQueue<E, N>) -> Recv<E> {
+    // SAFETY: caller contract; no user code runs during the borrow.
+    let q = unsafe { &mut *q };
+    if q.len == 0 {
+        return if q.flags & CLOSED != 0 {
+            Recv::Closed
+        } else {
+            Recv::Empty
         };
-        if let Some(waker) = waker {
-            waker.wake();
-        }
-    });
+    }
+    let head = q.head as usize;
+    // SAFETY: `head` is below `N` and holds a pushed event.
+    let event = unsafe { q.buf.get_unchecked(head).assume_init() };
+    q.head = if head + 1 == N { 0 } else { head as u8 + 1 };
+    q.len -= 1;
+    Recv::Event(event)
 }
 
-unsafe extern "C" fn close_trampoline<E: Copy + Send + 'static, const N: usize>(
-    e: *mut sys::lv_event_t,
-) {
-    // SAFETY: as above; DELETE of a subscribed object. Runs no user code
-    // but the waker's.
-    let queue = unsafe { &*sys::lv_event_get_user_data(e).cast::<StaticQueue<E, N>>() };
+/// Makes `waker` the one woken at the next event of `q`.
+///
+/// # Safety
+///
+/// As for [`pop`].
+unsafe fn register<E, const N: usize>(q: *mut EventQueue<E, N>, waker: &Waker) {
+    // SAFETY: caller contract; the new waker is cloned before the borrow
+    // and the old one dropped after it.
+    let old = {
+        let q = unsafe { &mut *q };
+        if q.waker.as_ref().is_some_and(|w| w.will_wake(waker)) {
+            return;
+        }
+        let new = waker.clone();
+        q.waker.replace(new)
+    };
+    drop(old);
+}
+
+/// Records `event` into `q` through its `capture`, then wakes its waker.
+///
+/// # Safety
+///
+/// As for [`pop`]; `q` stays allocated during the call.
+unsafe fn record<E, const N: usize>(q: *mut EventQueue<E, N>, event: &Event<'_>) {
+    // `capture` runs with no borrow of the queue held: it may send events
+    // that push into it.
+    // SAFETY: caller contract, short borrows.
+    let capture = unsafe { (*q).capture };
+    let Some(record) = capture(event) else { return };
     let waker = {
-        let q = unsafe { &mut *queue.0.get() };
-        q.flags |= CLOSED;
+        // SAFETY: as above; `len` and `flags` are read again, after
+        // `capture`.
+        let q = unsafe { &mut *q };
+        if q.len as usize >= N {
+            q.flags |= OVERFLOW;
+        } else {
+            let mut tail = q.head as usize + q.len as usize;
+            if tail >= N {
+                tail -= N;
+            }
+            if let Some(slot) = q.buf.get_mut(tail) {
+                slot.write(record);
+                q.len += 1;
+            }
+        }
         q.waker.take()
     };
     if let Some(waker) = waker {
@@ -182,19 +188,450 @@ unsafe extern "C" fn close_trampoline<E: Copy + Send + 'static, const N: usize>(
     }
 }
 
+/// Closes `q` (sticky) and takes its waker, to wake once nothing borrows
+/// the queue.
+///
+/// # Safety
+///
+/// As for [`pop`].
+unsafe fn close<E, const N: usize>(q: *mut EventQueue<E, N>) -> Option<Waker> {
+    // SAFETY: caller contract; a short borrow.
+    let q = unsafe { &mut *q };
+    q.flags |= CLOSED;
+    q.waker.take()
+}
+
+/// Takes and clears the overflow flag of `q`.
+///
+/// # Safety
+///
+/// As for [`pop`].
+unsafe fn take_overflow<E, const N: usize>(q: *mut EventQueue<E, N>) -> bool {
+    // SAFETY: caller contract; a short borrow.
+    let q = unsafe { &mut *q };
+    let overflow = q.flags & OVERFLOW != 0;
+    q.flags &= !OVERFLOW;
+    overflow
+}
+
+unsafe extern "C" fn push_trampoline<E: Copy + Send + 'static, const N: usize>(
+    e: *mut sys::lv_event_t,
+) {
+    // SAFETY: the user data of a subscription is its `'static` queue.
+    let queue = unsafe { &*sys::lv_event_get_user_data(e).cast::<StaticQueue<E, N>>() };
+    // SAFETY: under the token; the queue is never freed.
+    dispatch(e, &mut |event| unsafe { record(queue.0.get(), event) });
+}
+
+unsafe extern "C" fn close_trampoline<E: Copy + Send + 'static, const N: usize>(
+    e: *mut sys::lv_event_t,
+) {
+    // SAFETY: as above; DELETE of a subscribed object. Runs no user code
+    // but the waker's, after the borrow.
+    let queue = unsafe { &*sys::lv_event_get_user_data(e).cast::<StaticQueue<E, N>>() };
+    if let Some(waker) = unsafe { close(queue.0.get()) } {
+        waker.wake();
+    }
+}
+
+/// How [`Obj::subscribe`] records events: the code (`EventCode::ALL` for
+/// every allowed one) and whether the object's children report theirs.
+/// An [`EventCode`] converts into options with only that code.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct SubscribeOptions {
+    code: EventCode,
+    bubble_children: bool,
+}
+
+impl SubscribeOptions {
+    /// Records `code` events of the subscribed object.
+    pub const fn new(code: EventCode) -> Self {
+        Self {
+            code,
+            bubble_children: false,
+        }
+    }
+
+    /// Also records the events of the object's children: they get the
+    /// `EVENT_BUBBLE` flag now, and children created later get it when
+    /// they are created (`CHILD_CREATED`). Their events then also reach
+    /// the object's other handlers and the class handlers of widgets.
+    ///
+    /// This cannot be undone: the flag and the `CHILD_CREATED` handler
+    /// (one per object, shared by every subscription asking for it) stay
+    /// for the object's lifetime, after `OwnedQueue::close` too.
+    pub const fn bubble_children(mut self) -> Self {
+        self.bubble_children = true;
+        self
+    }
+}
+
+impl From<EventCode> for SubscribeOptions {
+    fn from(code: EventCode) -> Self {
+        Self::new(code)
+    }
+}
+
+/// `CHILD_CREATED` (which always bubbles) of an object subscribed with
+/// `bubble_children`: the new object bubbles if it is a direct child.
+unsafe extern "C" fn bubble_trampoline(e: *mut sys::lv_event_t) {
+    // SAFETY: a live event; for CHILD_CREATED the param is the new object
+    // or NULL (safe code sends NULL), fully constructed
+    // (`lv_obj_class.c:131`). `lv_obj_set_event_bubble` only writes the
+    // flag bit (`lv_obj.c:644-648`).
+    unsafe {
+        if sys::lv_event_get_code(e) != sys::lv_event_code_t_LV_EVENT_CHILD_CREATED {
+            return;
+        }
+        let child = sys::lv_event_get_param(e).cast::<sys::lv_obj_t>();
+        let parent = sys::lv_event_get_current_target(e).cast::<sys::lv_obj_t>();
+        if !child.is_null() && sys::lv_obj_get_parent(child) == parent {
+            sys::lv_obj_set_event_bubble(child, true);
+        }
+    }
+}
+
 impl Obj {
-    /// Records `code` events of this object (or every allowed one with
-    /// `EventCode::ALL`) into `queue`, through its `capture`. Deleting the
-    /// object closes the queue.
+    /// Records the events `options` select (an [`EventCode`], or
+    /// [`SubscribeOptions`]) into `queue`, through its `capture`. Deleting
+    /// the object closes the queue.
     pub fn subscribe<E: Copy + Send + 'static, const N: usize>(
         &self,
-        code: EventCode,
+        options: impl Into<SubscribeOptions>,
         queue: &'static StaticQueue<E, N>,
     ) -> Result<(), Error> {
+        let options = options.into();
         let data = core::ptr::from_ref(queue).cast_mut().cast();
-        self.add_handler(code, push_trampoline::<E, N>, data)?;
-        self.add_handler(EventCode::DELETE, close_trampoline::<E, N>, data)?;
+        self.attach(
+            options,
+            [
+                (options.code, push_trampoline::<E, N>, data),
+                (EventCode::DELETE, close_trampoline::<E, N>, data),
+            ],
+        )?;
+        self.bubble_current_children(options);
         Ok(())
+    }
+
+    /// Adds `handlers` in order, then `bubble_children`'s `CHILD_CREATED`
+    /// handler (one per object). If one is refused, removes those already
+    /// added, so a refused subscription changes nothing; on success,
+    /// returns them for [`Obj::detach`].
+    fn attach(
+        &self,
+        options: SubscribeOptions,
+        handlers: [(EventCode, Callback, *mut core::ffi::c_void); 2],
+    ) -> Result<Attached, Error> {
+        let mut added: Attached = [core::ptr::null_mut(); 3];
+        let mut add = || -> Result<(), Error> {
+            for (dsc, (code, cb, data)) in added.iter_mut().zip(handlers) {
+                *dsc = self.add_handler(code, cb, data)?;
+            }
+            if options.bubble_children && !self.has_bubble_handler() {
+                added[2] = self.add_handler(
+                    EventCode::CHILD_CREATED,
+                    bubble_trampoline,
+                    core::ptr::null_mut(),
+                )?;
+            }
+            Ok(())
+        };
+        match add() {
+            Ok(()) => Ok(added),
+            Err(error) => {
+                self.detach(&added);
+                Err(error)
+            }
+        }
+    }
+
+    /// Removes the handlers [`Obj::attach`] added.
+    fn detach(&self, added: &Attached) {
+        for &dsc in added.iter().rev().filter(|dsc| !dsc.is_null()) {
+            // SAFETY: descriptors this call added to a live object, under
+            // the token. `add_handler` succeeded, so LVGL is not walking
+            // this object's handlers (it checks that in callbacks; outside
+            // them nothing sends): removing one frees nothing anyone holds.
+            unsafe { sys::lv_obj_remove_event_dsc(self.as_ptr(), dsc) };
+        }
+    }
+
+    /// Whether `bubble_children` already installed its handler here.
+    fn has_bubble_handler(&self) -> bool {
+        let o = self.as_ptr();
+        // SAFETY: a live object under the token; descriptors are only
+        // read.
+        unsafe {
+            (0..sys::lv_obj_get_event_count(o)).any(|i| {
+                sys::lv_event_dsc_get_cb(sys::lv_obj_get_event_dsc(o, i)).is_some_and(|cb| {
+                    core::ptr::fn_addr_eq(cb, bubble_trampoline as unsafe extern "C" fn(_))
+                })
+            })
+        }
+    }
+
+    /// The last step of `bubble_children`, once the subscription can no
+    /// longer fail: the flag on the current children.
+    fn bubble_current_children(&self, options: SubscribeOptions) {
+        if !options.bubble_children {
+            return;
+        }
+        let o = self.as_ptr();
+        // SAFETY: a live object under the token; setting the flag only
+        // writes a bit (`lv_obj.c:644-648`).
+        unsafe {
+            for i in 0..sys::lv_obj_get_child_count(o) {
+                sys::lv_obj_set_event_bubble(sys::lv_obj_get_child(o, i as i32), true);
+            }
+        }
+    }
+}
+
+type Callback = unsafe extern "C" fn(*mut sys::lv_event_t);
+
+/// The descriptors one subscription added (null where none was needed).
+type Attached = [*mut sys::lv_event_dsc_t; 3];
+
+/// A queue on LVGL's heap, attached to one object by
+/// [`Obj::subscribe_owned`] (features `async` and `heap`): the receiver
+/// of its events. 8 bytes on 32-bit targets, not `Clone`.
+///
+/// The queue lives as long as its object: deleting the object closes it
+/// (events still queued are dropped). Dropping an `OwnedQueue` needs no
+/// token and leaves the queue attached until then; [`OwnedQueue::close`]
+/// detaches it at once. Either way the block (a pointer-sized header,
+/// then the queue) is freed at the next drain, once LVGL no longer runs
+/// its handlers.
+#[cfg(all(feature = "heap", not(lvgl_rust_views_only)))]
+#[must_use = "dropping it keeps the queue until its object is deleted"]
+pub struct OwnedQueue<E, const N: usize> {
+    object: Handle<Obj>,
+    /// The block returned by the allocator, also the handlers' user data.
+    block: core::ptr::NonNull<core::ffi::c_void>,
+    _e: core::marker::PhantomData<fn() -> E>,
+}
+
+// SAFETY: the block is reached only under the token, after the handle and
+// the object's handlers confirm it is still attached; events are `Send`.
+#[cfg(all(feature = "heap", not(lvgl_rust_views_only)))]
+unsafe impl<E: Send, const N: usize> Send for OwnedQueue<E, N> {}
+
+/// The block of an owned queue: the deferred-free link, then the queue.
+#[cfg(all(feature = "heap", not(lvgl_rust_views_only)))]
+type QueueBox<E, const N: usize> = LvBox<*mut core::ffi::c_void, EventQueue<E, N>>;
+
+/// Closes the owned queue in `block` and queues the block for the next
+/// drain; returns its waker, to wake (or drop) once nothing borrows it.
+///
+/// The block outlives the call: LVGL may still run its push handler
+/// before removing it (a DELETE handler can send to an ancestor that
+/// trickles events down to the object, `lv_obj_event.c:381-397`, until
+/// `lv_event_remove_all` runs after the DELETE send,
+/// `lv_obj_tree.c:673-688`), and a frame may be recording into it.
+///
+/// # Safety
+///
+/// Token held; `block` is an attached owned queue that nothing retires
+/// again: its DELETE handler runs once, and `close` removes it first.
+#[cfg(all(feature = "heap", not(lvgl_rust_views_only)))]
+unsafe fn retire_queue<E, const N: usize>(block: *mut core::ffi::c_void) -> Option<Waker> {
+    // SAFETY: caller contract. Once closed, the queue holds nothing that
+    // needs a drop (the waker is taken, events are `Copy`), and its push
+    // handler no longer touches it.
+    unsafe {
+        let waker = close(QueueBox::<E, N>::value(block));
+        deferred::defer_free(block);
+        waker
+    }
+}
+
+#[cfg(all(feature = "heap", not(lvgl_rust_views_only)))]
+unsafe extern "C" fn owned_push_trampoline<E: Copy + Send + 'static, const N: usize>(
+    e: *mut sys::lv_event_t,
+) {
+    // SAFETY: the user data is the queue's block, freed only by the drain
+    // after its handlers are gone (`retire_queue`), and reached through
+    // raw pointers only.
+    unsafe {
+        let q = QueueBox::<E, N>::value(sys::lv_event_get_user_data(e));
+        if (*q).flags & CLOSED == 0 {
+            dispatch(e, &mut |event| record(q, event));
+        }
+    }
+}
+
+#[cfg(all(feature = "heap", not(lvgl_rust_views_only)))]
+unsafe extern "C" fn owned_delete_trampoline<E: Copy + Send + 'static, const N: usize>(
+    e: *mut sys::lv_event_t,
+) {
+    // SAFETY: as above; DELETE of the queue's object, which never bubbles
+    // (`lv_obj_event.c:431`) and is sent once (`is_deleting`,
+    // `lv_obj_tree.c:666-670`).
+    if let Some(waker) = unsafe { retire_queue::<E, N>(sys::lv_event_get_user_data(e)) } {
+        waker.wake();
+    }
+}
+
+#[cfg(all(feature = "heap", not(lvgl_rust_views_only)))]
+impl Obj {
+    /// Records the events `options` select into a queue of `N` events
+    /// (1 to 255) on LVGL's heap, through `capture`, and returns its
+    /// receiver. Takes the object's registry slot ([`Error::RegistryFull`]),
+    /// or shares the one it has.
+    pub fn subscribe_owned<E: Copy + Send + 'static, const N: usize>(
+        &self,
+        options: impl Into<SubscribeOptions>,
+        capture: fn(&Event<'_>) -> Option<E>,
+    ) -> Result<OwnedQueue<E, N>, Error> {
+        use crate::WidgetExt;
+        const { assert!(N >= 1 && N <= 255, "a queue holds 1 to 255 events") };
+        let options = options.into();
+        let queue = EventQueue::<E, N> {
+            head: 0,
+            len: 0,
+            flags: 0,
+            waker: None,
+            capture,
+            buf: [const { MaybeUninit::uninit() }; N],
+        };
+        let block = QueueBox::new(core::ptr::null_mut(), queue)
+            .map_err(|_| Error::OutOfMemory)?
+            .into_raw();
+        // The handle comes last: a slot, once taken, stays until the
+        // object is deleted, so a refused subscription must not take one.
+        let attached = self
+            .attach(
+                options,
+                [
+                    (options.code, owned_push_trampoline::<E, N>, block),
+                    (EventCode::DELETE, owned_delete_trampoline::<E, N>, block),
+                ],
+            )
+            .and_then(|attached| match self.handle() {
+                Ok(object) => Ok(object),
+                Err(error) => {
+                    self.detach(&attached);
+                    Err(error)
+                }
+            });
+        let object = match attached {
+            Ok(object) => object,
+            Err(error) => {
+                // SAFETY: not attached (or detached again): nothing else
+                // has the block.
+                unsafe { QueueBox::<E, N>::free(block) };
+                return Err(error);
+            }
+        };
+        self.bubble_current_children(options);
+        Ok(OwnedQueue {
+            object,
+            // SAFETY: `into_raw` returns the non-null block.
+            block: unsafe { core::ptr::NonNull::new_unchecked(block) },
+            _e: core::marker::PhantomData,
+        })
+    }
+}
+
+#[cfg(all(feature = "heap", not(lvgl_rust_views_only)))]
+impl<E: Copy + Send + 'static, const N: usize> OwnedQueue<E, N> {
+    /// The queue, if its object is alive and still has this queue's
+    /// handlers and it is open (a block is only ever reached after this
+    /// check).
+    fn queue(&self, lv: &Lvgl) -> Option<*mut EventQueue<E, N>> {
+        let object = self.object.get(lv).ok()?;
+        let o = object.as_ptr();
+        let block = self.block.as_ptr();
+        // SAFETY: a live object under the token; descriptors are only
+        // read and compared.
+        let attached = unsafe {
+            (0..sys::lv_obj_get_event_count(o)).any(|i| {
+                let dsc = sys::lv_obj_get_event_dsc(o, i);
+                sys::lv_event_dsc_get_user_data(dsc) == block
+                    && sys::lv_event_dsc_get_cb(dsc).is_some_and(|cb| {
+                        core::ptr::fn_addr_eq(
+                            cb,
+                            owned_delete_trampoline::<E, N> as unsafe extern "C" fn(_),
+                        )
+                    })
+            })
+        };
+        let q = QueueBox::<E, N>::value(block);
+        // SAFETY: attached, so not freed yet; a short read.
+        (attached && unsafe { (*q).flags } & CLOSED == 0).then_some(q)
+    }
+
+    /// Whether events were dropped because the queue was full; clears the
+    /// flag. `false` once closed.
+    pub fn take_overflow(&self, lv: &Lvgl) -> bool {
+        // SAFETY: under the token, an attached queue.
+        self.queue(lv).is_some_and(|q| unsafe { take_overflow(q) })
+    }
+
+    /// Detaches the queue from its object (exclusive access: the object's
+    /// handler list shrinks) and drops its waker; the block is freed at the
+    /// next drain. Does nothing if the object was deleted (the queue went
+    /// with it) or is about to be. A `bubble_children` option stays in
+    /// effect (see [`SubscribeOptions::bubble_children`]).
+    pub fn close(self, lv: &mut Lvgl) {
+        let Ok(object) = self.object.get(lv) else {
+            return;
+        };
+        let o = object.as_ptr();
+        let block = self.block.as_ptr();
+        let mut attached = false;
+        // SAFETY: exclusive access, depth 0: LVGL is not walking the
+        // object's handlers. Indices go downwards, so a removal never
+        // shifts one still to visit.
+        unsafe {
+            let mut i = sys::lv_obj_get_event_count(o);
+            while i > 0 {
+                i -= 1;
+                let dsc = sys::lv_obj_get_event_dsc(o, i);
+                if sys::lv_event_dsc_get_user_data(dsc) != block {
+                    continue;
+                }
+                let Some(cb) = sys::lv_event_dsc_get_cb(dsc) else {
+                    continue;
+                };
+                let delete = core::ptr::fn_addr_eq(
+                    cb,
+                    owned_delete_trampoline::<E, N> as unsafe extern "C" fn(_),
+                );
+                let push = core::ptr::fn_addr_eq(
+                    cb,
+                    owned_push_trampoline::<E, N> as unsafe extern "C" fn(_),
+                );
+                if (delete || push) && sys::lv_obj_remove_event(o, i) {
+                    attached |= delete;
+                }
+            }
+            // The block outlives the call: a frame may be recording into
+            // it (raw code can close a queue from its own handler).
+            if attached {
+                drop(retire_queue::<E, N>(block));
+            }
+        }
+    }
+}
+
+#[cfg(all(feature = "heap", not(lvgl_rust_views_only)))]
+impl<E: Copy + Send + 'static, const N: usize> Receiver for OwnedQueue<E, N> {
+    type Item = E;
+
+    fn try_recv(&self, lv: &Lvgl) -> Recv<E> {
+        match self.queue(lv) {
+            // SAFETY: under the token, an attached queue.
+            Some(q) => unsafe { pop(q) },
+            None => Recv::Closed,
+        }
+    }
+
+    fn register(&self, lv: &Lvgl, waker: &Waker) {
+        if let Some(q) = self.queue(lv) {
+            // SAFETY: as above.
+            unsafe { register(q, waker) }
+        }
     }
 }
 

@@ -95,11 +95,28 @@ else stays reachable through `lvgl_rust::sys`.
   events into a `StaticQueue` through a `capture` function;
   `next_event(lock, &rx).await` takes your async lock, returns the next
   event with the guard, or waits. No executor dependency, no atomics.
-- **Closures (feature `heap`).** `obj.on_boxed(code, move |e| ...)` and
-  `lv.timer_boxed(period, move |ctx| ...)` keep the closure on LVGL's own
-  heap (a 4-byte header), freed with the object or the timer.
+  `SubscribeOptions::new(code).bubble_children()` also records the events
+  of the object's children (they get `EVENT_BUBBLE`, now and when created).
+- **Closures and owned values (feature `heap`).** `obj.on_boxed(code, move
+  |e| ...)` and `lv.timer_boxed(period, move |ctx| ...)` keep the closure on
+  LVGL's own heap (a header of 4 bytes on 32-bit targets for timers, 8 for
+  handlers), dropped with the object or the timer; a handler's block is
+  freed at the next `enter` or `timer_handler`, as LVGL may still call it
+  during the deletion.
+  `image.set_src_owned(ImageBuffer::new(format, w, h, 0, pixels)?)` moves
+  an image (or an `ImageDsc`) there: when it is replaced or the image is
+  deleted, LVGL's image caches drop it and the block is freed at the next
+  `enter` or `timer_handler` (4 bytes of `.bss` for that list).
+  `image.set_src_buffer::<N>(format, w, h, 0, |pixels| ...)` allocates the
+  block first and fills the pixels in it, so a large image never goes
+  through the stack. With
+  `async` too, `obj.subscribe_owned::<E, N>(code, capture)` puts the queue
+  there and returns its `OwnedQueue` receiver (8 bytes, using the object's
+  registry slot); the queue goes with the object, or with
+  `OwnedQueue::close`, and its block is freed at the next drain too.
+  `bubble_children` cannot be undone: it stays for the object's lifetime.
   `Display::create_boxed` and `Indev::create_boxed` (or
-  `create_button_boxed`) put the driver there instead of a static cell,
+  `create_button_boxed`) put a driver there instead of a static cell,
   freed when the display or device is deleted (never while a flush is
   pending).
 - **Your allocator (feature `allocator`).** With

@@ -1,11 +1,13 @@
 //! The hand-written core: access, registry, views, ownership, deletion.
 
 #[cfg(not(any(miri, loom)))]
-mod ffi;
+pub(crate) mod ffi;
 #[cfg(any(miri, loom))]
 #[path = "ffi_stub.rs"]
 pub(crate) mod ffi;
 
+#[cfg(feature = "heap")]
+pub(crate) mod deferred;
 pub(crate) mod drain;
 #[cfg(not(lvgl_rust_views_only))]
 pub(crate) mod handle;

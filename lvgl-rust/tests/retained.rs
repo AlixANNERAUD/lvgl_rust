@@ -644,3 +644,173 @@ mod keyboards {
         }
     }
 }
+
+/// Owned sources (`--features heap`): moved to LVGL's heap and retired when
+/// replaced or deleted (AddressSanitizer runs this with C `malloc`, so a
+/// block freed too early would show as a use after free).
+#[cfg(feature = "heap")]
+#[test]
+fn owned_image_sources_live_until_replaced_or_deleted() {
+    use lvgl_rust::ImageBuffer;
+    let mut guard = guard();
+    let mut lv = session(&mut guard);
+    fn last_image(lv: &Lvgl) -> Option<&Image> {
+        last(lv)?.downcast()
+    }
+    fn render() {
+        let before = FLUSHES.load(Ordering::Relaxed);
+        // SAFETY: session held; redraws the whole active screen.
+        unsafe {
+            sys::lv_obj_invalidate(sys::lv_screen_active());
+            sys::lv_refr_now(core::ptr::null_mut());
+        }
+        assert!(FLUSHES.load(Ordering::Relaxed) > before);
+    }
+    fn events(lv: &Lvgl) -> u32 {
+        // SAFETY: session held, live object.
+        unsafe { sys::lv_obj_get_event_count(last(lv).unwrap().as_ptr()) }
+    }
+    assert_eq!(
+        ImageBuffer::new(PixelFormat::Rgb565, 4, 4, 0, [0; 8]).err(),
+        Some(Error::InvalidArg)
+    );
+    Image::create(lv.screen_active().unwrap()).unwrap();
+    let base = events(&lv);
+    {
+        let mut image = lv.edit(last_image).unwrap();
+        let pixels = ImageBuffer::new(PixelFormat::Rgb565, 4, 3, 0, [0x55; 24]).unwrap();
+        image.set_src_owned(pixels).unwrap();
+        assert_eq!((image.get_src_width(), image.get_src_height()), (4, 3));
+    }
+    assert_eq!(events(&lv), base + 1);
+    render();
+    {
+        let mut image = lv.edit(last_image).unwrap();
+        image
+            .set_src_owned(ImageDsc::new(PixelFormat::Rgb565, 3, 2, 8, &PIXELS))
+            .unwrap();
+        assert_eq!((image.get_src_width(), image.get_src_height()), (3, 2));
+    }
+    // The replaced block was retired with its handler.
+    assert_eq!(events(&lv), base + 1);
+    lv.timer_handler();
+    render();
+    {
+        let mut image = lv.edit(last_image).unwrap();
+        // A plain source keeps the block until the next owned one.
+        image.set_src(ImageSrc::image(&INDEXED));
+    }
+    assert_eq!(events(&lv), base + 1);
+    render();
+    {
+        let mut image = lv.edit(last_image).unwrap();
+        let dot = ImageBuffer::new(PixelFormat::Argb8888, 1, 1, 0, [0xff; 4]).unwrap();
+        image.set_src_owned(dot).unwrap();
+        assert_eq!((image.get_src_width(), image.get_src_height()), (1, 1));
+    }
+    assert_eq!(events(&lv), base + 1);
+    render();
+    lv.edit(last).unwrap().delete().unwrap();
+    lv.timer_handler();
+    render();
+}
+
+/// Blocks in use on LVGL's builtin heap; `None` with the C library's
+/// `malloc` (AddressSanitizer), which LVGL does not monitor.
+#[cfg(feature = "heap")]
+fn used_blocks() -> Option<usize> {
+    let mut monitor = core::mem::MaybeUninit::<sys::lv_mem_monitor_t>::zeroed();
+    // SAFETY: session held by the caller; LVGL fills the whole struct.
+    let monitor = unsafe {
+        sys::lv_mem_monitor(monitor.as_mut_ptr());
+        monitor.assume_init()
+    };
+    (monitor.total_size != 0).then_some(monitor.used_cnt)
+}
+
+/// A retired owned source is freed by the next drain (entering a session
+/// drains without running LVGL's timers), whether it was replaced or its
+/// image deleted, and the list is empty afterwards.
+#[cfg(feature = "heap")]
+#[test]
+fn retired_image_sources_are_freed_at_the_next_drain() {
+    use lvgl_rust::ImageBuffer;
+    let mut guard = guard();
+    let mut lv = session(&mut guard);
+    fn last_image(lv: &Lvgl) -> Option<&Image> {
+        last(lv)?.downcast()
+    }
+    Image::create(lv.screen_active().unwrap()).unwrap();
+    for _ in 0..2 {
+        let pixels = ImageBuffer::new(PixelFormat::Rgb565, 4, 3, 0, [0x55; 24]).unwrap();
+        lv.edit(last_image).unwrap().set_src_owned(pixels).unwrap();
+    }
+    // The first block is queued; re-entering frees exactly it.
+    let queued = used_blocks();
+    drop(lv);
+    let lv = session(&mut guard);
+    let drained = used_blocks();
+    assert_eq!(drained, queued.map(|count| count - 1));
+    drop(lv);
+    let mut lv = session(&mut guard);
+    assert_eq!(used_blocks(), drained);
+    // Deleting the image retires the second block.
+    lv.edit(last).unwrap().delete().unwrap();
+    let queued = used_blocks();
+    drop(lv);
+    let lv = session(&mut guard);
+    assert_eq!(used_blocks(), queued.map(|count| count - 1));
+    drop(lv);
+}
+
+/// `set_src_buffer` fills a large image in its block: checked before any
+/// allocation, drawn, retired like other owned sources.
+#[cfg(feature = "heap")]
+#[test]
+fn image_buffers_are_filled_in_place() {
+    let mut guard = guard();
+    let mut lv = session(&mut guard);
+    fn last_image(lv: &Lvgl) -> Option<&Image> {
+        last(lv)?.downcast()
+    }
+    Image::create(lv.screen_active().unwrap()).unwrap();
+    let used = used_blocks();
+    {
+        let mut image = lv.edit(last_image).unwrap();
+        // Too few bytes for 64 rows: refused before anything is allocated
+        // or `fill` runs.
+        assert_eq!(
+            image.set_src_buffer::<64>(PixelFormat::Rgb565, 64, 64, 0, |_| unreachable!()),
+            Err(Error::InvalidArg)
+        );
+    }
+    assert_eq!(used_blocks(), used);
+    {
+        let mut image = lv.edit(last_image).unwrap();
+        image
+            .set_src_buffer::<{ 64 * 64 * 2 }>(PixelFormat::Rgb565, 64, 64, 0, |pixels| {
+                assert!(pixels.iter().all(|&byte| byte == 0));
+                for (i, byte) in pixels.iter_mut().enumerate() {
+                    *byte = i as u8;
+                }
+            })
+            .unwrap();
+        assert_eq!((image.get_src_width(), image.get_src_height()), (64, 64));
+    }
+    // SAFETY: session held; the source is the block's descriptor, whose
+    // data points into the same block.
+    unsafe {
+        let dsc = sys::lv_image_get_src(last(&lv).unwrap().as_ptr()).cast::<sys::lv_image_dsc_t>();
+        assert_eq!((*dsc).data_size, 64 * 64 * 2);
+        let data = core::slice::from_raw_parts((*dsc).data, 64 * 64 * 2);
+        assert!(data.iter().enumerate().all(|(i, &byte)| byte == i as u8));
+        sys::lv_obj_invalidate(sys::lv_screen_active());
+        sys::lv_refr_now(core::ptr::null_mut());
+    }
+    lv.edit(last).unwrap().delete().unwrap();
+    let queued = used_blocks();
+    drop(lv);
+    let _lv = session(&mut guard);
+    // The next drain freed the block.
+    assert_eq!(used_blocks(), queued.map(|count| count - 1));
+}

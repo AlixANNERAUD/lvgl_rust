@@ -103,6 +103,43 @@ pub(crate) unsafe fn timer_handler() -> u32 {
     1
 }
 
+/// `lv_malloc` modelled with Rust's allocator: the size sits before the
+/// block, which is aligned like LVGL's (to a pointer, here 16 bytes).
+#[cfg(feature = "heap")]
+const BLOCK_PREFIX: usize = 16;
+
+#[cfg(feature = "heap")]
+pub(crate) unsafe fn malloc(size: usize) -> *mut core::ffi::c_void {
+    let Ok(layout) = std::alloc::Layout::from_size_align(size + BLOCK_PREFIX, BLOCK_PREFIX) else {
+        return ptr::null_mut();
+    };
+    // SAFETY: a non-zero size.
+    let start = unsafe { std::alloc::alloc(layout) };
+    if start.is_null() {
+        return ptr::null_mut();
+    }
+    // SAFETY: the prefix is inside the allocation and aligned for `usize`.
+    unsafe {
+        start.cast::<usize>().write(size);
+        start.add(BLOCK_PREFIX).cast()
+    }
+}
+
+#[cfg(feature = "heap")]
+pub(crate) unsafe fn free(block: *mut core::ffi::c_void) {
+    if block.is_null() {
+        return;
+    }
+    // SAFETY: a block of `malloc`: its size is in the prefix.
+    unsafe {
+        let start = block.cast::<u8>().sub(BLOCK_PREFIX);
+        let size = start.cast::<usize>().read();
+        let layout =
+            std::alloc::Layout::from_size_align_unchecked(size + BLOCK_PREFIX, BLOCK_PREFIX);
+        std::alloc::dealloc(start, layout);
+    }
+}
+
 pub(crate) unsafe fn obj_create(parent: *mut lv_obj_t) -> *mut lv_obj_t {
     new_object(obj(parent), obj_class()).cast()
 }
