@@ -105,7 +105,7 @@ fn counters_report_drains_refusals_skipped_callbacks_and_leaks() {
 /// or made moot by a deletion: 8 drained and 4 refused in all.
 #[cfg(not(lvgl_rust_views_only))]
 fn deferred_requests(lv: &mut Lvgl) {
-    use lvgl_rust::{Obj, ScreenAnim, ScreenLoadAnim, WidgetExt, sys, tick_inc};
+    use lvgl_rust::{Error, Obj, ScreenAnim, ScreenLoadAnim, WidgetExt, sys, tick_inc};
     use std::ptr::NonNull;
 
     let counts = || {
@@ -168,21 +168,26 @@ fn deferred_requests(lv: &mut Lvgl) {
     let cleaned = Obj::create(&mut edit).unwrap();
     cleaned.clean_later().unwrap();
     let cleaned = cleaned.as_ptr();
-    // SAFETY: session held; the menu and the three objects are live.
+    let deleted = Obj::create_owned(&mut screen.get_mut(lv).unwrap()).unwrap();
+    let moved = deleted.get(lv).unwrap().as_ptr();
+    // SAFETY: session held; the menu and the four objects are live.
     let internal = unsafe { sys::lv_obj_get_child_count(menu) };
     // SAFETY: as above.
     unsafe {
         sys::lv_obj_create(cleaned);
-        for o in [dropped, later, cleaned] {
+        for o in [dropped, later, cleaned, moved] {
             sys::lv_obj_set_parent(o, menu);
         }
     }
     drop(owned);
     lv.timer_handler();
     assert_eq!(counts(), (5, 3));
+    // `Owned::delete` returns the refusal: nothing to count.
+    assert_eq!(deleted.delete(lv), Err(Error::Internal));
+    assert_eq!(counts(), (5, 3));
     // SAFETY: session held; the refused objects are still the menu's.
     unsafe {
-        assert_eq!(sys::lv_obj_get_child_count(menu), internal + 3);
+        assert_eq!(sys::lv_obj_get_child_count(menu), internal + 4);
         assert_eq!(sys::lv_obj_get_child_count(cleaned), 1);
         sys::lv_obj_delete(menu);
     }

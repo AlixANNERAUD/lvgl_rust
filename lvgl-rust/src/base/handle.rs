@@ -158,8 +158,16 @@ impl<W: Tracked> Owned<W> {
     }
 
     /// Deletes it now. An object that is a screen LVGL is still loading
-    /// ([`Error::Busy`]) stays pending and is retried at each drain. What is
-    /// already dead is just released.
+    /// ([`Error::Busy`]) stays pending and is retried at each drain; if the
+    /// checks later refuse it for good, the drain releases it as a refused
+    /// drop (counted in `DebugCounters::refused`). What is already dead is
+    /// just released.
+    ///
+    /// An object the structural checks refuse to delete for good (moved by
+    /// raw code where a widget keeps pointers to it, for instance) is
+    /// released as a refused drop would release it, and their error
+    /// returned ([`Error::Internal`]): it stays alive, unowned, its
+    /// handles report [`Error::Dead`], and it goes with its parent.
     pub fn delete(self, lv: &mut Lvgl) -> Result<(), Error> {
         let _ = lv;
         let index = index(self.0.raw.get());
