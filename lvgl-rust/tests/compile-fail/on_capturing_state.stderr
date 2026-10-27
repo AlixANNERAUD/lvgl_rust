@@ -1,0 +1,35 @@
+error[E0080]: evaluation panicked: use on_with or on_static for state
+ --> $RUST/core/src/panic.rs
+  |
+  = note: evaluation of `lvgl_rust::event::<impl lvgl_rust::Obj>::on::<{closure@$DIR/tests/compile-fail/on_capturing_state.rs:18:33: 18:41}, ()>::{constant#0}` failed here
+  |
+ ::: src/event.rs
+  |
+  | /             assert!(
+  | |                 mem::size_of::<F>() == 0,
+  | |                 "use on_with or on_static for state"
+  | |             )
+  | |_____________- in this macro invocation
+
+note: erroneous constant encountered
+   --> src/event.rs
+    |
+    | /         const {
+    | |             assert!(
+    | |                 mem::size_of::<F>() == 0,
+    | |                 "use on_with or on_static for state"
+    | |             )
+    | |         };
+    | |_________^
+
+note: the above error was encountered while instantiating `fn lvgl_rust::event::<impl Obj>::on::<{closure@$DIR/tests/compile-fail/on_capturing_state.rs:18:33: 18:41}, ()>`
+  --> tests/compile-fail/on_capturing_state.rs:15:13
+   |
+15 |       let _ = lv
+   |  _____________^
+16 | |         .screen_active()
+17 | |         .unwrap()
+18 | |         .on(EventCode::CLICKED, move |_| {
+19 | |             let _ = count + 1;
+20 | |         });
+   | |__________^

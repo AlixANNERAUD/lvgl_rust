@@ -1,0 +1,32 @@
+error[E0080]: evaluation panicked: timer takes a function item or a closure without captures
+ --> $RUST/core/src/panic.rs
+  |
+  = note: evaluation of `lvgl_rust::timer::<impl lvgl_rust::Lvgl>::timer::<(), {closure@$DIR/tests/compile-fail/timer_capturing_state.rs:14:36: 14:48}>::{constant#0}` failed here
+  |
+ ::: src/timer.rs
+  |
+  | /             assert!(
+  | |                 mem::size_of::<F>() == 0,
+  | |                 "timer takes a function item or a closure without captures"
+  | |             )
+  | |_____________- in this macro invocation
+
+note: erroneous constant encountered
+   --> src/timer.rs
+    |
+    | /         const {
+    | |             assert!(
+    | |                 mem::size_of::<F>() == 0,
+    | |                 "timer takes a function item or a closure without captures"
+    | |             )
+    | |         };
+    | |_________^
+
+note: the above error was encountered while instantiating `fn lvgl_rust::timer::<impl Lvgl>::timer::<(), {closure@$DIR/tests/compile-fail/timer_capturing_state.rs:14:36: 14:48}>`
+  --> tests/compile-fail/timer_capturing_state.rs:14:18
+   |
+14 |       let _timer = lv.timer(100, (), move |_, ()| {
+   |  __________________^
+15 | |         let _ = period + 1;
+16 | |     });
+   | |______^

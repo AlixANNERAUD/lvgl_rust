@@ -1,0 +1,9 @@
+error[E0502]: cannot borrow `lv` as immutable because it is also borrowed as mutable
+  --> tests/compile-fail/view_alongside_object_access.rs:14:17
+   |
+13 |     let mut screen = lv.edit(|lv| lv.screen_active()).unwrap();
+   |                      -- mutable borrow occurs here
+14 |     let child = lv.screen_active().unwrap().child(0);
+   |                 ^^ immutable borrow occurs here
+15 |     screen.clean().unwrap();
+   |     ------ mutable borrow later used here

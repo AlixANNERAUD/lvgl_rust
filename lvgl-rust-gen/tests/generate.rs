@@ -246,6 +246,14 @@ raw = ["lv_tick_*"]
 [composite.textarea]
 parts = ["lv_textarea_get_label"]
 max_depth = 1
+[composite.bar]
+parts = []
+max_depth = 1
+[composite.slider]
+parts = []
+max_depth = 1
+closed = true
+pinned = true
 "#;
 
 const RELATIONS: &str = r#"
@@ -432,8 +440,16 @@ fn table_errors_always_fail() {
         (
             ACCESS.to_owned(),
             OVERRIDES.to_owned(),
-            format!("{CLASSES}\n[composite.roller]\nparts = [\"child:0\"]\nmax_depth = 0\n"),
+            format!(
+                "{CLASSES}\n[composite.roller]\nparts = [\"child:0\"]\nmax_depth = 0\nclosed = true\n"
+            ),
             "max_depth must be at least 1",
+        ),
+        (
+            ACCESS.to_owned(),
+            OVERRIDES.to_owned(),
+            format!("{CLASSES}\n[composite.roller]\nparts = [\"child:0\"]\nmax_depth = 1\n"),
+            "child:N parts need `closed = true`",
         ),
         (
             ACCESS.to_owned(),

@@ -1,0 +1,15 @@
+error[E0382]: borrow of moved value: `screen`
+  --> tests/compile-fail/object_access_after_send.rs:15:5
+   |
+13 |     let mut screen = lv.edit(|lv| lv.screen_active()).unwrap();
+   |         ---------- move occurs because `screen` has type `ObjMut<'_, Obj>`, which does not implement the `Copy` trait
+14 |     let _ = screen.send_event(SendableEventCode::CLICKED);
+   |                    -------------------------------------- `screen` moved due to this method call
+15 |     screen.clean().unwrap();
+   |     ^^^^^^ value borrowed here after move
+   |
+note: `lvgl_rust::event::<impl lvgl_rust::ObjMut<'s, W>>::send_event` takes ownership of the receiver `self`, which moves `screen`
+  --> src/event.rs
+   |
+   |     pub fn send_event(self, code: SendableEventCode) -> Result<Self, Error> {
+   |                       ^^^^

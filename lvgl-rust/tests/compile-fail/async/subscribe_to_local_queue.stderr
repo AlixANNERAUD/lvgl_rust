@@ -1,0 +1,15 @@
+error[E0597]: `queue` does not live long enough
+  --> tests/compile-fail/async/subscribe_to_local_queue.rs:21:40
+   |
+17 |       let queue = StaticQueue::<u32, 4>::new(capture);
+   |           ----- binding `queue` declared here
+18 |       let _ = lv
+   |  _____________-
+19 | |         .screen_active()
+20 | |         .unwrap()
+21 | |         .subscribe(EventCode::CLICKED, &queue);
+   | |________________________________________^^^^^^- argument requires that `queue` is borrowed for `'static`
+   |                                          |
+   |                                          borrowed value does not live long enough
+22 |   }
+   |   - `queue` dropped here while still borrowed

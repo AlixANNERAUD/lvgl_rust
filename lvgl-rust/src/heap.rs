@@ -4,7 +4,7 @@
 
 use crate::base::ffi;
 use core::{
-    mem::{align_of, size_of},
+    mem::align_of,
     ptr::{self, NonNull},
 };
 
@@ -12,9 +12,7 @@ pub(crate) use crate::heap_align::HEAP_ALIGN;
 
 /// The value's address in a block holding `H` then `T`.
 fn value_ptr<H, T>(block: NonNull<u8>) -> *mut T {
-    let start = block.as_ptr().wrapping_add(size_of::<H>());
-    let offset = start.align_offset(align_of::<T>());
-    start.wrapping_add(offset).cast()
+    crate::layout::trailing::<H, T>(block.as_ptr().cast_const().cast())
 }
 
 /// An `H` and a `T` in one block of LVGL's heap; the block pointer is what
@@ -71,13 +69,8 @@ impl<H, T> LvBox<H, T> {
                 "box headers align to the heap"
             )
         };
-        // Blocks align to the heap: a `T` no more aligned sits at a fixed
-        // offset; a more aligned one needs up to `align - 1` more bytes.
-        let size = if align_of::<T>() <= HEAP_ALIGN {
-            size_of::<H>().next_multiple_of(align_of::<T>()) + size_of::<T>()
-        } else {
-            size_of::<H>() + align_of::<T>() - 1 + size_of::<T>()
-        };
+        // Blocks align to the heap.
+        let size = crate::layout::block_size::<H, T>(HEAP_ALIGN);
         // SAFETY: under the token (every caller has shared access).
         NonNull::new(unsafe { ffi::malloc(size.max(1)) }.cast::<u8>())
     }

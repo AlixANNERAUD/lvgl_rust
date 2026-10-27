@@ -1,0 +1,7 @@
+error: lifetime may not live long enough
+ --> tests/compile-fail/view_escaping_handler.rs:7:5
+  |
+6 | fn escape(event: &Event<'_>) -> &'static Obj {
+  |           ----- has type `&lvgl_rust::Event<'1>`
+7 |     event.target().unwrap()
+  |     ^^^^^^^^^^^^^^^^^^^^^^^ returning this value requires that `'1` must outlive `'static`

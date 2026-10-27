@@ -47,6 +47,21 @@ else stays reachable through `lvgl_rust::sys`.
   guard is never borrowed for `'static` (a leaked guard would let a
   thread-local keep shared access). Drawing into a layer stays raw
   (`Layer::as_ptr`).
+- **Widgets LVGL trusts blindly.** `chart.add_series(color, axis)` returns
+  a `ChartSeries` token (one pointer, not `Clone`) that every series call
+  checks against the chart's list: a series of another chart or already
+  removed is `Error::InvalidArg` (one of a deleted chart too, unless a
+  newer series reuses its address), point counts whose arrays would wrap
+  the address space are refused, and X points of scatter charts read as
+  `LV_CHART_POINT_NONE` until written. Table cell getters and setters
+  check rows and columns against the table and its size against
+  `TABLE_CELL_LIMIT` (and at least one row and one column); cell text is
+  copied out of views and borrowed under `ObjMut`. Tile views take
+  children only from `add_tile`, `get_tile_active` forgets a deleted tile
+  (unless a newer tile reuses its address), and LVGL's scroll handler
+  runs only while the content size it divides by is positive (checked in
+  the same descriptor, no extra cost); calendar headers keep their parts
+  and their calendar, and the shown month stays in `1..=12`.
 - **Timers.** `lv.timer(period_ms, data, f)` returns an `Owned<Timer>`
   (dropping it deletes the timer); `Handle<Timer>` pauses, resumes and
   changes the period and repeat count. No allocation besides LVGL's timer.
@@ -64,7 +79,15 @@ else stays reachable through `lvgl_rust::sys`.
   `Read` driver: `DisplayCell`, `IndevCell` and `DrawBuf` (aligned to
   `LV_DRAW_BUF_ALIGN`) are application statics, claimed while in use.
   Flushes can complete from an interrupt (`FlushRequest::defer`), without
-  touching LVGL's own flag.
+  touching LVGL's own flag. `set_resolution`, `set_rotation`,
+  `set_color_format` (`DisplayFormat`) and `set_render_mode` check that
+  the draw buffers hold what LVGL will render (a row in partial mode, the
+  screen in full and direct modes) and return `Error::TooSmall`
+  otherwise, or `Error::InvalidArg` for sizes that would wrap LVGL's
+  32-bit size arithmetic; `set_tile_count` refuses counts above the
+  buffer size in bytes. Button devices (`Indev::create_button(lv, &CELL, reader,
+  &POINTS)`) report a button id (`IndevData::set_button`) and press
+  `POINTS[id]`, a `'static` array; an id past it reads as released.
 - **Focus groups.** `lv.create_group()` returns an `Owned<Group>`;
   `Handle<Group>` adds objects and moves focus, `Indev::set_group` attaches
   a keypad or encoder.
@@ -92,6 +115,10 @@ else stays reachable through `lvgl_rust::sys`.
   registry slot); the queue goes with the object, or with
   `OwnedQueue::close`, and its block is freed at the next drain too.
   `bubble_children` cannot be undone: it stays for the object's lifetime.
+  `Display::create_boxed` and `Indev::create_boxed` (or
+  `create_button_boxed`) put a driver there instead of a static cell,
+  freed when the display or device is deleted (never while a flush is
+  pending).
 - **Your allocator (feature `allocator`).** With
   `LV_USE_STDLIB_MALLOC LV_STDLIB_CUSTOM`, `lvgl_allocator!(HEAP)` makes
   LVGL allocate from a static implementing `LvglAllocator`;
@@ -111,6 +138,14 @@ else stays reachable through `lvgl_rust::sys`.
 - **Small.** The handle registry is a static array of 8-byte slots on 32-bit
   targets (`LVGL_RUST_HANDLE_SLOTS`, default 32), plus a 24-byte header.
   `LVGL_RUST_HANDLE_SLOTS=0` keeps only views (8 bytes of state).
+
+What the compiler refuses is tested: each program of
+[`tests/compile-fail/`](tests/compile-fail) (a view used after
+`timer_handler`, two `ObjMut` at once, a view kept past its session or
+sent to another thread, a capturing closure given to `on`, `timer` or
+`post`, an exclusive call from a handler, a cloned `Owned` or `StaticRx`,
+non-`'static` text for `set_text_static`, ...) must fail to build with the
+error recorded next to it (`mise run test-compile-fail`).
 
 ## Configuration
 
@@ -185,7 +220,8 @@ safe code can live side by side while modules move over:
    from a handler is `delete_later`, which replaces synchronous locks and
    unlocked `lv_obj_delete_async` in drops.
 6. Displays and input devices move to `Display::create` and
-   `Indev::create` with drivers in statics.
+   `Indev::create` with drivers in statics, or to `create_boxed` (feature
+   `heap`) with the driver on LVGL's heap, freed with the display.
 7. Modules migrate one by one with `as_ptr()` and `Obj::from_raw`; raw C
    callbacks that call safe code take `Lvgl::enter_callback()` first. What
    stays raw is listed in `$OUT_DIR/coverage.txt`.

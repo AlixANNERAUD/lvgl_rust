@@ -1,0 +1,9 @@
+error[E0502]: cannot borrow `lv` as mutable because it is also borrowed as immutable
+  --> tests/compile-fail/view_after_exclusive_call.rs:15:19
+   |
+14 |     let child = Obj::create(screen.get(&lv).unwrap()).unwrap();
+   |                                        --- immutable borrow occurs here
+15 |     screen.delete(&mut lv).unwrap();
+   |                   ^^^^^^^ mutable borrow occurs here
+16 |     let _ = child.parent();
+   |             ----- immutable borrow later used here

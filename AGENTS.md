@@ -169,7 +169,7 @@ directory, as its mise tasks do: `mise run clippy-safe`, `test-safe`,
 (the `allocator` feature on a copy of the configuration with
 `LV_STDLIB_CUSTOM`), `test-asan` (LVGL under
 AddressSanitizer, with C library malloc so freed objects are visible),
-`miri`, `loom` and `size-gate`. Do
+`miri`, `loom`, `size-gate` and `test-compile-fail`. Do
 not use `--workspace` for cargo commands that build `lvgl-rust`.
 
 What the suites cover:
@@ -198,6 +198,21 @@ What the suites cover:
   racing the drain (`--cfg loom`).
 - `lvgl-rust/tests/lifecycle.rs`: `init`, ticks, `deinit` (terminal, so in
   its own process).
+- `lvgl-rust/tests/compile_fail.rs`: trybuild cases
+  (`tests/compile-fail/**/*.rs`, with `async/` and `heap/` for those
+  features) that must fail to build, each with its expected `.stderr`: views
+  used across exclusive calls or past their session, two `ObjMut`, `!Send`
+  values crossing threads or given to `on`/`timer`/`post`, capturing
+  closures (post-monomorphization `const` asserts: trybuild builds to
+  codegen, so they are caught), exclusive calls from handlers, event
+  codes sent without the access they need, `Owned`,
+  `Handle` and `StaticRx` misuse, non-`'static` retained data. Ignored by
+  plain `cargo test` (rustc's messages change between versions); `mise run
+  test-compile-fail` runs it on a pinned compiler. When raising that
+  version, or after changing a message the cases hit, refresh the snapshots
+  with `TRYBUILD=overwrite mise run test-compile-fail` and check that every
+  case still fails for its stated reason. A new soundness guarantee
+  enforced by types gets a case here.
 - `lvgl-rust/size-gate/gate.sh`: links firmware for thumbv6m and riscv32imc
   (16 slots and views-only) and checks the crate's symbols: registry size and
   `.bss` placement, no `.data`, no `core::fmt` or panic code, the OBJ_ID
@@ -252,6 +267,8 @@ checks:
   handles and views only);
 - `lvgl-rust` with 16-bit color, and with 32-bit color and the shadcn
   theme (`mise run test-matrix`);
+- the compile-fail cases of `lvgl-rust` (`mise run test-compile-fail`, on
+  the compiler version that task pins);
 - `cargo check` with the minimum Rust version (`mise run msrv`) on the host
   and both cross targets; raise the version in the task and in the root
   `rust-version` together;
@@ -337,16 +354,25 @@ cfgs mirror the `LV_USE_*` values for hand-written code.
   string, and a borrowing `x(&mut self)` on `ObjMut`.
 - `classes.toml` `crate_owned` functions can never be shared or exclusive;
   `manual` ones are wrapped by hand in `lvgl-rust/src/base/` or next to
-  the types they need (`manual.rs`, `grid.rs`, `button_map.rs`, ...).
+  the types they need (`manual.rs`, `grid.rs`, `button_map.rs`;
+  `chart.rs`: series tokens checked against the chart's list; `table.rs`:
+  cell bounds and sizes; `tileview.rs`: tiles and a size check wrapped
+  around LVGL's scroll handler by `create`; `calendar.rs`).
 - `classes.toml` `[composite.<widget>]` tables drive the structural checks:
   `parts` are the objects LVGL holds pointers to (getters, `child:N`,
   `shim:`), `indexed` how many levels below a part LVGL finds objects by
   index, and `parts = []` declares a widget whose children are all the
-  application's. Inside a widget class with no entry, nothing can be
-  deleted, owned, moved, reordered or cleaned, and no child can be created
-  (widgets cast or count their children: a tileview reads every child as
-  a tile). Subclasses inherit their base's entry (`lv_obj_has_class`). Add an entry only after reading the
-  widget's sources (constructor, cached pointers, `lv_obj_get_child` uses).
+  application's. `closed = true` marks a widget that finds or casts its
+  children by position (a roller's label, a tile view's tiles): no child
+  is created in it, moved into it or reordered within it except through
+  its own API (`child:N` parts need it). `pinned = true` marks a widget
+  whose handlers read its parent as the widget that created it (calendar
+  headers): it never changes parent. Inside a widget class with no entry,
+  nothing can be deleted, owned, moved, reordered or cleaned, and no child
+  can be created. Subclasses inherit their base's entry
+  (`lv_obj_has_class`). Add an entry only after reading the widget's
+  sources (constructor, cached pointers, `lv_obj_get_child` uses, handlers
+  that walk up to a parent).
 - Pointer parameters stay raw, and index parameters (`idx`, `*_id`, `row`,
   `sel_opt`, ...) too, until an override gives their kind with a `why`
   citing the lines that copy, write or bounds-check them (a check under
@@ -546,6 +572,15 @@ review the `access.toml` and `events.toml` diffs.
   `req`, `any_req` and `ticks`. `Registry::request_drop` and `drain` pair
   SeqCst fences; keep that pairing if either side changes, and rerun
   `mise run loom`.
+- **Display buffers.** LVGL checks draw buffer sizes only when they are
+  set (and only with `LV_USE_CHECK_ARG`). A display call that changes what
+  is rendered into them (resolution, rotation, color format, render mode)
+  goes through `Display::change_geometry` (`display.rs`): `Geometry::fits`
+  mirrors `lv_refr.c` and `_calculate_draw_buf_size`, and
+  `lvgl_sys_display_reshape_buffers` gives every buffer the new shape,
+  since direct mode with two buffers copies areas between them with their
+  stored shapes. Drivers sit right after their header (`layout::trailing`)
+  in a `repr(C)` cell or an `LvBox` block; keep both layouts in step.
 - **Diagnostic counters.** `counters::count` is the only way to bump
   them, a load and a store like the registry (no read-modify-write), and
   it compiles to nothing without `debug-counters`. Count only what the
