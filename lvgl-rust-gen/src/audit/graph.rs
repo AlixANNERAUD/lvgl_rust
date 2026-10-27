@@ -114,6 +114,22 @@ pub struct AuditConfig {
     /// Holds that a runtime check of the crate makes harmless.
     #[serde(default)]
     pub guarded: BTreeMap<String, Guarded>,
+    /// Deleting calls that delete only an object the function created
+    /// itself, never its receiver: they do not make it consume its
+    /// receiver (the function stays exclusive).
+    #[serde(default)]
+    pub own_deletions: BTreeMap<String, OwnDeletion>,
+}
+
+/// `[own_deletions.<function>]`: the direct `calls` of the function delete
+/// only an object it created itself (a child of its receiver, never the
+/// receiver or an ancestor), with the reason. `consumes` is computed
+/// without these edges; any other path to a deleting sink still counts.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OwnDeletion {
+    pub calls: Vec<String>,
+    pub why: String,
 }
 
 /// A hold made harmless by a runtime check (`[guarded.<name>]`): hazards
@@ -975,6 +991,20 @@ impl Graph {
                 .push(Out::new(to.clone(), *kind));
         }
 
+        // Deletions of the function's own new object: direct calls only.
+        for (name, own) in &config.own_deletions {
+            for call in &own.calls {
+                if !edges
+                    .get(name)
+                    .is_some_and(|o| o.iter().any(|o| o.to == *call && o.kind == Edge::Call))
+                {
+                    return Err(format!(
+                        "audit.toml: [own_deletions.{name}] {name} does not call {call}"
+                    ));
+                }
+            }
+        }
+
         // Calls that cannot happen in a context: the callee specialised
         // for that caller.
         for (name, inf) in &config.infeasible {
@@ -1148,11 +1178,18 @@ impl Graph {
 
     /// Whether an exclusive call can delete objects (its receiver included).
     pub fn deletes(&self, start: &str) -> bool {
-        self.search(
+        self.deletes_except(start, &[])
+    }
+
+    /// Like [`deletes`](Graph::deletes), without the direct calls of
+    /// `start` to `own` (`[own_deletions]`).
+    pub fn deletes_except(&self, start: &str, own: &[String]) -> bool {
+        self.search_skipping(
             start,
             None,
             &[Edge::Call, Edge::Indirect, Edge::Send],
             &self.deleting,
+            own,
         )
         .is_some()
     }
@@ -1169,6 +1206,19 @@ impl Graph {
         code: Option<i64>,
         kinds: &[Edge],
         sinks: &BTreeSet<String>,
+    ) -> Option<Vec<String>> {
+        self.search_skipping(start, code, kinds, sinks, &[])
+    }
+
+    /// [`search`](Graph::search) without the direct calls of `start` to
+    /// `skip`.
+    fn search_skipping(
+        &self,
+        start: &str,
+        code: Option<i64>,
+        kinds: &[Edge],
+        sinks: &BTreeSet<String>,
+        skip: &[String],
     ) -> Option<Vec<String>> {
         type State<'a> = (&'a str, Option<i64>);
         let mut previous: BTreeMap<State, State> = BTreeMap::new();
@@ -1189,6 +1239,9 @@ impl Graph {
             }
             for out in self.edges.get(node).into_iter().flatten() {
                 if !kinds.contains(&out.kind) {
+                    continue;
+                }
+                if node == start && out.kind == Edge::Call && skip.contains(&out.to) {
                     continue;
                 }
                 if let (Some(code), Some(guard)) = (code, &out.guard)
@@ -1542,6 +1595,58 @@ why = "test"
             let config: AuditConfig = toml::from_str(&wrong).unwrap();
             assert!(Graph::build(&m, &config).is_err(), "{wrong}");
         }
+    }
+
+    #[test]
+    fn own_deletions_do_not_consume_but_other_paths_do() {
+        let mut m = Module::default();
+        m.add_ir(
+            "t",
+            r#"
+define internal void @obj_delete_core(ptr noundef %0) {
+  ret void
+}
+define dso_local void @lv_obj_delete(ptr noundef %0) {
+  call void @obj_delete_core(ptr %0)
+  ret void
+}
+define dso_local ptr @lv_box_create(ptr noundef %0) {
+  call void @lv_obj_delete(ptr %0)
+  ret ptr null
+}
+define dso_local ptr @lv_other_create(ptr noundef %0) {
+  call void @lv_obj_delete(ptr %0)
+  call void @obj_delete_core(ptr %0)
+  ret ptr null
+}
+"#,
+            &[],
+        );
+        let entry = r#"
+sinks = ["t::obj_delete_core"]
+deleting_sinks = ["t::obj_delete_core"]
+[own_deletions.lv_box_create]
+calls = ["lv_obj_delete"]
+why = "test"
+[own_deletions.lv_other_create]
+calls = ["lv_obj_delete"]
+why = "test"
+"#;
+        let config: AuditConfig = toml::from_str(entry).unwrap();
+        let graph = Graph::build(&m, &config).unwrap();
+        let own = |name: &str| &config.own_deletions[name].calls[..];
+        // Still exclusive; consuming only through another path.
+        assert!(matches!(
+            graph.verdict("lv_box_create"),
+            Verdict::Exclusive(_)
+        ));
+        assert!(graph.deletes("lv_box_create"));
+        assert!(!graph.deletes_except("lv_box_create", own("lv_box_create")));
+        assert!(graph.deletes_except("lv_other_create", own("lv_other_create")));
+        // An entry naming a call the function does not make is an error.
+        let wrong = entry.replace("calls = [\"lv_obj_delete\"]", "calls = [\"lv_free\"]");
+        let config: AuditConfig = toml::from_str(&wrong).unwrap();
+        assert!(Graph::build(&m, &config).is_err());
     }
 
     #[test]

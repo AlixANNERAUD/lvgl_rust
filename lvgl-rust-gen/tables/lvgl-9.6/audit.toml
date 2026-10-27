@@ -101,6 +101,13 @@ alloc_primitives = ["lv_malloc", "lv_malloc_zeroed", "lv_realloc", "lv_strdup", 
 [unpublished]
 lv_obj_class_create_obj = "frees the new object only when allocating the parent's attributes or lv_obj_add_child failed (lv_obj_class.c:94-100); lv_obj_add_child stores the child only after its realloc succeeded (lv_obj.c:1213-1218)"
 
+# Deleting calls that delete only an object the function just created,
+# never its receiver: the function stays exclusive but does not consume
+# its receiver (`consumes` is computed without these edges).
+[own_deletions.lv_msgbox_create]
+calls = ["lv_obj_delete"]
+why = "lv_obj_delete(obj) runs only when the content could not be allocated (lv_msgbox.c:126-131) and deletes obj, the message box created at :117 as a new child of the parent, never the parent: lv_obj_delete deletes obj and its children (lv_obj_tree.c:54-79, obj_delete_core :664-693), sending DELETE to the box and its content, which have no handler of the application yet, and only CHILD_CHANGED and CHILD_DELETED to the parent (:77-78), whose handlers reach no deleting sink (events.toml: deleting = false for these codes); the function then returns NULL"
+
 # Globals emitted with a literal struct type (bitfields): their struct.
 [literal_globals]
 "lv_*_class" = "_lv_obj_class_t"

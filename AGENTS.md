@@ -358,7 +358,8 @@ cfgs mirror the `LV_USE_*` values for hand-written code.
   borrowing the parent's `ObjMut` (never an `ObjMut` of the child: its
   exclusive calls could delete the parent while the parent's `ObjMut` is
   in scope), and `create_owned` with the same parent; a shared one would
-  take a parent view. No API derives an `ObjMut` from another one by
+  take a parent view, and one that `consumes` (may delete its parent)
+  stays raw. No API derives an `ObjMut` from another one by
   reborrowing (`into_base` takes `self`): a consuming call on the
   reborrow could delete the original's object. The hand-written
   `Obj::create` and `Lvgl::create_screen` follow `lv_obj_create`'s entry.
@@ -438,6 +439,11 @@ soundness:
 - `[infeasible.<name>]` removes calls that cannot happen in one calling
   context (`context = "caller -> callee"`, `calls`), with the LVGL lines
   that prove it: the callee is specialised for that caller;
+- `[own_deletions.<function>]` lists direct deleting calls that delete
+  only an object the function just created (`lv_msgbox_create` deleting
+  its new box when the content allocation fails), with the lines that
+  prove it: `consumes` is computed without those edges, the function
+  stays exclusive, and any other deleting path still makes it consume;
 - `exceptions` holds hand decisions (pure functions), with a reason.
 
 ### Event codes (`events.toml`)

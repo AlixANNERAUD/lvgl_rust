@@ -278,6 +278,11 @@ impl<'a> Classifier<'a> {
         };
         let shape = match (entry.access, &class) {
             (Access::Shared, _) if create => Shape::Create { exclusive: false },
+            // The parent's `ObjMut` lives on after the call: a creation
+            // that may delete its receiver would leave it dangling.
+            (Access::Exclusive, _) if create && entry.consumes => {
+                return Plan::Raw("creation may delete its parent (consumes)".into());
+            }
             (Access::Exclusive, _) if create => Shape::Create { exclusive: true },
             (Access::Pure | Access::Isr, _) if create => {
                 return Plan::Raw("pure function creating an object".into());
