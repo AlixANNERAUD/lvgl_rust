@@ -164,7 +164,8 @@ cargo commands run in this checkout; an explicit value wins).
 against `lvgl-rust-sys/conf` (a `compile_error!` that says what to add). Test
 it in a separate cargo invocation with its own configuration and target
 directory, as its mise tasks do: `mise run clippy-safe`, `test-safe`,
-`test-views-only` (no handles, `-sys` configuration), `test-allocator`
+`test-views-only` (no handles, `-sys` configuration, also with `defmt` and
+`debug-counters`), `test-allocator`
 (the `allocator` feature on a copy of the configuration with
 `LV_STDLIB_CUSTOM`), `test-asan` (LVGL under
 AddressSanitizer, with C library malloc so freed objects are visible),

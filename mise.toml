@@ -188,7 +188,12 @@ env.RUSTFLAGS = "-D warnings"
 env.LVGL_RUST_HANDLE_SLOTS = "0"
 env.DEP_LV_CONFIG_PATH = "{{config_root}}/lvgl-rust-sys/conf"
 env.CARGO_TARGET_DIR = "target/views-only"
-run = ["cargo clippy -p lvgl-rust --all-targets", "cargo test -p lvgl-rust"]
+run = [
+  "cargo clippy -p lvgl-rust --all-targets",
+  "cargo clippy -p lvgl-rust --all-targets --features defmt,debug-counters",
+  "cargo test -p lvgl-rust",
+  "cargo test -p lvgl-rust --features defmt,debug-counters --test counters",
+]
 
 [tasks.test-asan]
 description = "Test lvgl-rust with LVGL under AddressSanitizer (C library malloc, so freed objects are visible)"
