@@ -107,7 +107,7 @@ pub fn emit(classifier: &Classifier, plans: &BTreeMap<String, Plan>) -> String {
         };
         let tokens = emit_method(classifier, m);
         match (&m.shape, &m.class) {
-            (Shape::Create | Shape::View, Some(class)) => {
+            (Shape::Create { .. } | Shape::View, Some(class)) => {
                 by_class.entry(class.clone()).or_default().push(tokens)
             }
             (Shape::ObjMut { .. }, Some(class)) => {
@@ -423,29 +423,8 @@ fn emit_method(classifier: &Classifier, m: &Method) -> TokenStream {
     let name = Ident::new(&m.name, Span::call_site());
     let doc = doc_attrs(&doc_text(&m.doc, &m.c_name));
 
-    if m.shape == Shape::Create {
-        let class = m.class.as_deref().unwrap_or("obj");
-        let ty = class_type(classifier, class);
-        return quote! {
-            #doc
-            pub fn create(parent: &crate::Obj) -> Result<&Self, crate::Error> {
-                crate::base::gen_support::check_create(parent.as_ptr())?;
-                // SAFETY: shared access through the parent view; creation
-                // frees nothing.
-                let p = unsafe { crate::sys::#c_fn(parent.as_ptr()) };
-                if p.is_null() {
-                    return Err(crate::Error::OutOfMemory);
-                }
-                // SAFETY: just created, of this class.
-                Ok(unsafe { crate::base::gen_support::view::<#ty>(p) })
-            }
-
-            /// Creates the widget and takes ownership of it.
-            #[cfg(not(lvgl_rust_views_only))]
-            pub fn create_owned(parent: &crate::Obj) -> Result<crate::Owned<#ty>, crate::Error> {
-                crate::WidgetExt::own(Self::create(parent)?)
-            }
-        };
+    if let Shape::Create { exclusive } = m.shape {
+        return emit_create(classifier, m, exclusive, &c_fn, &doc);
     }
 
     let mut args = Vec::new();
@@ -475,7 +454,7 @@ fn emit_method(classifier: &Classifier, m: &Method) -> TokenStream {
         Shape::ObjMut { consumes: false } | Shape::LvglExclusive | Shape::Style => {
             quote!(&mut self,)
         }
-        Shape::Free | Shape::Create => quote!(),
+        Shape::Free | Shape::Create { .. } => quote!(),
     };
     if m.ret == RetPlan::BorrowedStr && m.shape == Shape::View {
         args.push(quote!(buf: &'b mut [u8]));
@@ -616,6 +595,70 @@ fn emit_method(classifier: &Classifier, m: &Method) -> TokenStream {
         #[allow(clippy::unnecessary_cast, clippy::too_many_arguments)]
         pub fn #name #generics(#receiver #(#args),*) #ret_ty {
             #body
+        }
+    }
+}
+
+/// `W::create` and `W::create_owned`. Creating an object runs its
+/// constructors, adds it to the default group and notifies its parent: what
+/// that reaches decides the access, as for any other call. Exclusive
+/// creation goes through the parent's `ObjMut` and lends the new object's
+/// `ObjMut`, borrowing the parent's.
+fn emit_create(
+    classifier: &Classifier,
+    m: &Method,
+    exclusive: bool,
+    c_fn: &Ident,
+    doc: &TokenStream,
+) -> TokenStream {
+    let class = m.class.as_deref().unwrap_or("obj");
+    let ty = class_type(classifier, class);
+    if exclusive {
+        return quote! {
+            #doc
+            ///
+            /// Needs exclusive access (the parent's `ObjMut`): creation can
+            /// reach code that moves or deletes other objects. Callbacks
+            /// create objects through [`Lvgl::post`](crate::Lvgl::post).
+            pub fn create<'p, P: crate::Widget>(
+                parent: &'p mut crate::ObjMut<'_, P>,
+            ) -> Result<crate::ObjMut<'p, Self>, crate::Error> {
+                crate::base::gen_support::check_create(parent.as_raw())?;
+                // SAFETY: exclusive access through the parent's `ObjMut`, as
+                // the table requires; the call does not consume the parent.
+                let p = unsafe { crate::sys::#c_fn(parent.as_raw()) };
+                // SAFETY: just created, of this class; the result reborrows
+                // the parent's exclusive access.
+                unsafe { crate::base::gen_support::created::<#ty>(p) }
+            }
+
+            /// Creates the widget and takes ownership of it.
+            #[cfg(not(lvgl_rust_views_only))]
+            pub fn create_owned<P: crate::Widget>(
+                parent: &mut crate::ObjMut<'_, P>,
+            ) -> Result<crate::Owned<#ty>, crate::Error> {
+                crate::WidgetExt::own(Self::create(parent)?.view())
+            }
+        };
+    }
+    quote! {
+        #doc
+        pub fn create(parent: &crate::Obj) -> Result<&Self, crate::Error> {
+            crate::base::gen_support::check_create(parent.as_ptr())?;
+            // SAFETY: shared access through the parent view, as the table
+            // allows.
+            let p = unsafe { crate::sys::#c_fn(parent.as_ptr()) };
+            if p.is_null() {
+                return Err(crate::Error::OutOfMemory);
+            }
+            // SAFETY: just created, of this class.
+            Ok(unsafe { crate::base::gen_support::view::<#ty>(p) })
+        }
+
+        /// Creates the widget and takes ownership of it.
+        #[cfg(not(lvgl_rust_views_only))]
+        pub fn create_owned(parent: &crate::Obj) -> Result<crate::Owned<#ty>, crate::Error> {
+            crate::WidgetExt::own(Self::create(parent)?)
         }
     }
 }

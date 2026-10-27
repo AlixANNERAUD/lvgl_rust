@@ -114,24 +114,45 @@ impl<W: Widget> ObjMut<'_, W> {
     }
 }
 
+impl<'s, W: Widget> ObjMut<'s, W> {
+    /// Gives up exclusive access for a view of the object, for as long as
+    /// that access was borrowed: what [`view`](ObjMut::view) gives, without
+    /// keeping the `ObjMut`. Handy after creating an object:
+    /// `Label::create(&mut parent)?.into_view()`.
+    pub fn into_view(self) -> &'s W {
+        // SAFETY: the exclusive borrow of `'s` becomes a shared one: the
+        // object stays live and no exclusive call can run while the view
+        // exists.
+        unsafe { view(self.as_raw()) }
+    }
+}
+
 impl Lvgl {
     /// Creates a screen (an object without a parent). A screen has no parent
-    /// to own it, so it is returned owned.
+    /// to own it, so it is returned owned. Like every creation, it needs
+    /// exclusive access (`lv_obj_create` is exclusive in the access table).
     #[cfg(not(lvgl_rust_views_only))]
-    pub fn create_screen(&self) -> Result<Owned<Obj>, Error> {
+    pub fn create_screen(&mut self) -> Result<Owned<Obj>, Error> {
         let screen = create_screen()?;
-        screen.own().inspect_err(|_| {
+        screen.view().own().inspect_err(|_| {
             // Nothing refers to the new screen yet: deleting it cannot leave
-            // a dangling pointer, even from a callback.
+            // a dangling pointer.
             // SAFETY: live object, unreachable from any frame.
-            unsafe { ffi::obj_delete(screen.as_ptr()) }
+            unsafe { ffi::obj_delete(screen.as_raw()) }
         })
     }
 
-    /// Creates a screen (an object without a parent).
+    /// Creates a screen (an object without a parent). Like every creation,
+    /// it needs exclusive access.
     #[cfg(lvgl_rust_views_only)]
-    pub fn create_screen(&self) -> Result<&Obj, Error> {
+    pub fn create_screen(&mut self) -> Result<ObjMut<'_, Obj>, Error> {
         create_screen()
+    }
+
+    /// Exclusive access to the active screen of the default display, to
+    /// create objects on it.
+    pub fn screen_active_mut(&mut self) -> Option<ObjMut<'_, Obj>> {
+        self.edit(|lv| lv.screen_active())
     }
 
     /// The active screen of the default display.
@@ -171,13 +192,23 @@ impl Lvgl {
     }
 }
 
-fn create_screen<'a>() -> Result<&'a Obj, Error> {
-    // SAFETY: shared access (the caller holds `&Lvgl`); creation frees
-    // nothing.
+/// A screen, with exclusive access: the caller holds `&mut Lvgl`.
+fn create_screen<'a>() -> Result<ObjMut<'a, Obj>, Error> {
+    // SAFETY: exclusive access (the caller holds `&mut Lvgl`).
     let p = unsafe { ffi::obj_create(core::ptr::null_mut()) };
-    if p.is_null() {
-        return Err(Error::OutOfMemory);
-    }
     // SAFETY: just created.
-    Ok(unsafe { view(p) })
+    unsafe { created(p) }
+}
+
+/// The `ObjMut` of an object an exclusive call just created (also used by
+/// the generated `create` functions): [`Error::OutOfMemory`] for NULL.
+///
+/// # Safety
+///
+/// `p` is NULL or a live object of class `W` just created, and the caller
+/// holds exclusive access for `'a`.
+pub(crate) unsafe fn created<'a, W: Widget>(p: *mut lv_obj_t) -> Result<ObjMut<'a, W>, Error> {
+    let p = NonNull::new(p).ok_or(Error::OutOfMemory)?;
+    // SAFETY: caller contract; a new object is not being deleted.
+    Ok(unsafe { ObjMut::new(p) })
 }

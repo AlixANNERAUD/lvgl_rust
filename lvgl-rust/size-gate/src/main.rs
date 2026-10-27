@@ -36,10 +36,11 @@ mod firmware {
         use lvgl_rust::WidgetExt;
         let mut lv = init(guard)?;
         let screen = lv.create_screen()?;
-        let panel = Obj::create(screen.get(&lv)?)?;
-        let child = Obj::create(panel)?.handle()?;
-        panel.clean_later()?;
-        let owned = Obj::create_owned(screen.get(&lv)?)?;
+        let mut parent = screen.get_mut(&mut lv)?;
+        let mut panel = Obj::create(&mut parent)?;
+        let child = Obj::create(&mut panel)?.into_view().handle()?;
+        panel.into_view().clean_later()?;
+        let owned = Obj::create_owned(&mut parent)?;
         lv.load_screen(screen.handle(), ScreenAnim::NONE)?;
         child.get_mut(&mut lv)?.delete()?;
         drop(owned);
@@ -51,9 +52,9 @@ mod firmware {
     #[cfg(lvgl_rust_views_only)]
     fn run(guard: &mut Guard) -> Result<(), lvgl_rust::Error> {
         let mut lv = init(guard)?;
-        let screen = lv.create_screen()?;
-        let panel = Obj::create(screen)?;
-        Obj::create(panel)?;
+        let mut screen = lv.create_screen()?;
+        let mut panel = Obj::create(&mut screen)?;
+        Obj::create(&mut panel)?;
         lv.edit(|lv| lv.screen_active()?.child(0))
             .ok_or(lvgl_rust::Error::Dead)?
             .clean()?;

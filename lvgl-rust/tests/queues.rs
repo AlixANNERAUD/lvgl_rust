@@ -50,14 +50,15 @@ fn send(object: *mut sys::lv_obj_t, code: EventCode) {
 #[test]
 fn queues_record_events_for_async_code() {
     let mut guard = Guard(LOCK.lock().unwrap());
-    let lv = lvgl_rust::init(&mut guard).unwrap();
+    let mut lv = lvgl_rust::init(&mut guard).unwrap();
     // SAFETY: session held.
     unsafe { sys::lv_display_create(240, 160) };
-    let object = Obj::create(lv.screen_active().unwrap()).unwrap();
+    let mut screen = lv.screen_active_mut().unwrap();
+    let object = Obj::create(&mut screen).unwrap().into_view();
     object.subscribe(EventCode::CLICKED, &CLICKS).unwrap();
+    let object = object.as_ptr();
     let rx = CLICKS.receiver(&lv).unwrap();
     assert!(CLICKS.receiver(&lv).is_none(), "one receiver");
-    let object = object.as_ptr();
     drop(lv);
     drop(guard);
 

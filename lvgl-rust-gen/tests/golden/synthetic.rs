@@ -242,20 +242,23 @@ pub mod props {
 }
 impl crate::widgets::Bar {
     /// `lv_bar_create`.
-    pub fn create(parent: &crate::Obj) -> Result<&Self, crate::Error> {
-        crate::base::gen_support::check_create(parent.as_ptr())?;
-        let p = unsafe { crate::sys::lv_bar_create(parent.as_ptr()) };
-        if p.is_null() {
-            return Err(crate::Error::OutOfMemory);
-        }
-        Ok(unsafe { crate::base::gen_support::view::<crate::widgets::Bar>(p) })
+    ///
+    /// Needs exclusive access (the parent's `ObjMut`): creation can
+    /// reach code that moves or deletes other objects. Callbacks
+    /// create objects through [`Lvgl::post`](crate::Lvgl::post).
+    pub fn create<'p, P: crate::Widget>(
+        parent: &'p mut crate::ObjMut<'_, P>,
+    ) -> Result<crate::ObjMut<'p, Self>, crate::Error> {
+        crate::base::gen_support::check_create(parent.as_raw())?;
+        let p = unsafe { crate::sys::lv_bar_create(parent.as_raw()) };
+        unsafe { crate::base::gen_support::created::<crate::widgets::Bar>(p) }
     }
     /// Creates the widget and takes ownership of it.
     #[cfg(not(lvgl_rust_views_only))]
-    pub fn create_owned(
-        parent: &crate::Obj,
+    pub fn create_owned<P: crate::Widget>(
+        parent: &mut crate::ObjMut<'_, P>,
     ) -> Result<crate::Owned<crate::widgets::Bar>, crate::Error> {
-        crate::WidgetExt::own(Self::create(parent)?)
+        crate::WidgetExt::own(Self::create(parent)?.view())
     }
     /// `lv_bar_set_value`.
     #[inline]

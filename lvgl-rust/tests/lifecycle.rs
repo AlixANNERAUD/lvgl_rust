@@ -12,7 +12,7 @@ fn init_enter_deinit() {
     let mut guard = Guard;
     assert_eq!(Lvgl::enter(&mut guard).err(), Some(Error::NotInitialized));
 
-    let lv = init(&mut guard).unwrap();
+    let mut lv = init(&mut guard).unwrap();
     // The crate's tick source feeds LVGL's clock.
     // SAFETY: session held.
     let start = unsafe { sys::lv_tick_get() };
@@ -21,8 +21,8 @@ fn init_enter_deinit() {
 
     // SAFETY: session held.
     unsafe { sys::lv_display_create(32, 32) };
-    let screen = lv.screen_active().unwrap();
-    let object = Obj::create(screen).unwrap();
+    let mut screen = lv.screen_active_mut().unwrap();
+    let object = Obj::create(&mut screen).unwrap().into_view();
     #[cfg(not(lvgl_rust_views_only))]
     let handle = {
         use lvgl_rust::WidgetExt;

@@ -3,7 +3,7 @@
 
 use lvgl_rust::{
     Display, DisplayCell, DrawBuf, DrawBuffers, Flush, FlushRequest, Font, Lvgl, LvglAccess, Obj,
-    RenderMode, Selector, WidgetExt, color,
+    ObjMut, RenderMode, Selector, color,
     enums::{Align, EventCode, State},
     tick_inc,
     widgets::{Arc, Button, Label, Slider, Switch},
@@ -57,123 +57,63 @@ fn main() {
     )
     .unwrap();
 
-    let screen = lv.screen_active().unwrap().handle().unwrap();
-    screen
-        .get_mut(&mut lv)
-        .unwrap()
-        .set_style_bg_color(color::hex(0x101418), Selector::DEFAULT);
+    let mut screen = lv.screen_active_mut().unwrap();
+    screen.set_style_bg_color(color::hex(0x101418), Selector::DEFAULT);
 
     // Title row.
-    let title = Label::create(screen.get(&lv).unwrap()).unwrap();
-    title.set_text_str("Living room").unwrap();
-    let title = title.handle().unwrap();
-    {
-        let mut title = title.get_mut(&mut lv).unwrap();
-        let mut base = title.as_base::<Obj>();
-        base.set_style_text_font(Font::montserrat_20(), Selector::DEFAULT);
-        base.align(Align::TOP_LEFT, 20, 18);
-    }
-    let clock = Label::create(screen.get(&lv).unwrap()).unwrap();
-    clock.set_text_str("21:42").unwrap();
-    let clock = clock.handle().unwrap();
-    {
-        let mut clock = clock.get_mut(&mut lv).unwrap();
-        let mut base = clock.as_base::<Obj>();
-        base.set_style_text_font(Font::montserrat_16(), Selector::DEFAULT);
-        base.set_style_text_color(color::hex(0x8b949e), Selector::DEFAULT);
-        base.align(Align::TOP_RIGHT, -20, 20);
-    }
+    let mut title = Label::create(&mut screen).unwrap();
+    title.view().set_text_str("Living room").unwrap();
+    title.set_style_text_font(Font::montserrat_20(), Selector::DEFAULT);
+    title.align(Align::TOP_LEFT, 20, 18);
+    let mut clock = Label::create(&mut screen).unwrap();
+    clock.view().set_text_str("21:42").unwrap();
+    clock.set_style_text_font(Font::montserrat_16(), Selector::DEFAULT);
+    clock.set_style_text_color(color::hex(0x8b949e), Selector::DEFAULT);
+    clock.align(Align::TOP_RIGHT, -20, 20);
 
     // Thermostat arc.
-    let arc = Arc::create(screen.get(&lv).unwrap()).unwrap();
-    arc.set_range(10, 30);
-    arc.set_value(21);
-    let arc = arc.handle().unwrap();
-    {
-        let mut arc = arc.get_mut(&mut lv).unwrap();
-        let mut base = arc.as_base::<Obj>();
-        base.set_size(190, 190);
-        base.align(Align::LEFT_MID, 22, 22);
-    }
-    let temperature = Label::create(arc.get(&lv).unwrap()).unwrap();
-    temperature.set_text_str("21.5°").unwrap();
-    let temperature = temperature.handle().unwrap();
-    {
-        let mut t = temperature.get_mut(&mut lv).unwrap();
-        let mut base = t.as_base::<Obj>();
-        base.set_style_text_font(Font::montserrat_40(), Selector::DEFAULT);
-        base.align(Align::CENTER, 0, -6);
-    }
-    let caption = Label::create(arc.get(&lv).unwrap()).unwrap();
-    caption.set_text_str("Heating").unwrap();
-    let caption = caption.handle().unwrap();
-    {
-        let mut c = caption.get_mut(&mut lv).unwrap();
-        let mut base = c.as_base::<Obj>();
-        base.set_style_text_color(color::hex(0x8b949e), Selector::DEFAULT);
-        base.align(Align::CENTER, 0, 30);
-    }
+    let mut arc = Arc::create(&mut screen).unwrap();
+    arc.view().set_range(10, 30);
+    arc.view().set_value(21);
+    arc.set_size(190, 190);
+    arc.align(Align::LEFT_MID, 22, 22);
+    let mut temperature = Label::create(&mut arc).unwrap();
+    temperature.view().set_text_str("21.5°").unwrap();
+    temperature.set_style_text_font(Font::montserrat_40(), Selector::DEFAULT);
+    temperature.align(Align::CENTER, 0, -6);
+    let mut caption = Label::create(&mut arc).unwrap();
+    caption.view().set_text_str("Heating").unwrap();
+    caption.set_style_text_color(color::hex(0x8b949e), Selector::DEFAULT);
+    caption.align(Align::CENTER, 0, 30);
 
     // Controls column.
-    let lights = Label::create(screen.get(&lv).unwrap()).unwrap();
-    lights.set_text_str("Lights").unwrap();
-    let lights = lights.handle().unwrap();
-    {
-        let mut l = lights.get_mut(&mut lv).unwrap();
-        let mut base = l.as_base::<Obj>();
-        base.set_style_text_font(Font::montserrat_16(), Selector::DEFAULT);
-        base.align(Align::TOP_LEFT, 250, 78);
-    }
-    let switch = Switch::create(screen.get(&lv).unwrap())
-        .unwrap()
-        .handle()
-        .unwrap();
-    {
-        let mut s = switch.get_mut(&mut lv).unwrap();
-        let mut base = s.as_base::<Obj>();
-        base.add_state(State::CHECKED);
-        base.align(Align::TOP_RIGHT, -22, 72);
-    }
-    let brightness = Label::create(screen.get(&lv).unwrap()).unwrap();
-    brightness.set_text_str("Brightness  70%").unwrap();
-    let brightness = brightness.handle().unwrap();
-    {
-        let mut l = brightness.get_mut(&mut lv).unwrap();
-        let mut base = l.as_base::<Obj>();
-        base.set_style_text_font(Font::montserrat_16(), Selector::DEFAULT);
-        base.align(Align::TOP_LEFT, 250, 130);
-    }
-    let slider = Slider::create(screen.get(&lv).unwrap()).unwrap();
+    let mut lights = Label::create(&mut screen).unwrap();
+    lights.view().set_text_str("Lights").unwrap();
+    lights.set_style_text_font(Font::montserrat_16(), Selector::DEFAULT);
+    lights.align(Align::TOP_LEFT, 250, 78);
+    let mut switch = Switch::create(&mut screen).unwrap();
+    switch.add_state(State::CHECKED);
+    switch.align(Align::TOP_RIGHT, -22, 72);
+    let mut brightness = Label::create(&mut screen).unwrap();
+    brightness.view().set_text_str("Brightness  70%").unwrap();
+    brightness.set_style_text_font(Font::montserrat_16(), Selector::DEFAULT);
+    brightness.align(Align::TOP_LEFT, 250, 130);
+    let mut slider = Slider::create(&mut screen).unwrap();
     slider
+        .view()
         .on(EventCode::VALUE_CHANGED, |e| {
             let _ = e.lv().post(set_brightness, 0);
         })
         .unwrap();
-    let slider = slider.handle().unwrap();
-    {
-        let mut s = slider.get_mut(&mut lv).unwrap();
-        s.view().set_value(70, false);
-        let mut base = s.as_base::<Obj>();
-        base.set_width(206);
-        base.align(Align::TOP_LEFT, 252, 166);
-    }
-    let scenes = Button::create(screen.get(&lv).unwrap())
-        .unwrap()
-        .handle()
-        .unwrap();
-    {
-        let mut b = scenes.get_mut(&mut lv).unwrap();
-        let mut base = b.as_base::<Obj>();
-        base.set_size(206, 44);
-        base.align(Align::TOP_LEFT, 250, 214);
-    }
-    let scenes_label = Label::create(scenes.get(&lv).unwrap()).unwrap();
-    scenes_label.set_text_str("Evening scene").unwrap();
-    let scenes_label = scenes_label.handle().unwrap();
-    {
-        let mut l = scenes_label.get_mut(&mut lv).unwrap();
-        l.as_base::<Obj>().align(Align::CENTER, 0, 0);
-    }
+    slider.view().set_value(70, false);
+    slider.set_width(206);
+    slider.align(Align::TOP_LEFT, 252, 166);
+    let mut scenes = Button::create(&mut screen).unwrap();
+    scenes.set_size(206, 44);
+    scenes.align(Align::TOP_LEFT, 250, 214);
+    let mut scenes_label = Label::create(&mut scenes).unwrap();
+    scenes_label.view().set_text_str("Evening scene").unwrap();
+    scenes_label.align(Align::CENTER, 0, 0);
 
     for _ in 0..5 {
         tick_inc(100);
@@ -202,13 +142,13 @@ fn main() {
 fn toggle_lights(_lv: &mut Lvgl, _: ()) {}
 
 #[allow(dead_code)]
-fn banner_snippet(screen: &Obj) -> Result<(), lvgl_rust::Error> {
+fn banner_snippet(screen: &mut ObjMut<'_, Obj>) -> Result<(), lvgl_rust::Error> {
     let arc = Arc::create(screen)?;
-    arc.set_range(10, 30);
-    arc.set_value(21);
+    arc.view().set_range(10, 30);
+    arc.view().set_value(21);
 
     let lights = Switch::create(screen)?;
-    lights.on(EventCode::VALUE_CHANGED, |e| {
+    lights.view().on(EventCode::VALUE_CHANGED, |e| {
         // Handlers get shared access:
         // exclusive work is posted.
         let _ = e.lv().post(toggle_lights, ());

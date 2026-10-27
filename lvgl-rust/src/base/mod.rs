@@ -34,6 +34,7 @@ pub(crate) fn callback_depth() -> u8 {
 
 /// What the generated wrappers (`gen.rs`) use from the core.
 pub(crate) mod gen_support {
+    pub(crate) use super::objmut::created;
     pub(crate) use super::structural::check_create;
 
     /// The object of a handle, under exclusive access.
@@ -45,7 +46,10 @@ pub(crate) mod gen_support {
             .resolve(handle.raw(), super::registry::Kind::Obj, core::ptr::null())
             .map(|p| p.as_ptr().cast())
     }
-    pub(crate) use super::view::{getter_view, ptr_of, view};
+    pub(crate) use super::view::{getter_view, ptr_of};
+    // Shared creations and certified getters; none in some tables.
+    #[allow(unused_imports)]
+    pub(crate) use super::view::view;
     pub(crate) use crate::style::font;
     pub(crate) use crate::text::{borrow_str, copy_str};
 }

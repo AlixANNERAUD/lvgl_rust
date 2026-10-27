@@ -2,7 +2,7 @@
 #![cfg(not(lvgl_rust_views_only))]
 
 use lvgl_rust::{
-    Component, Error, Handle, Lvgl, LvglAccess, Obj, Session, WidgetExt,
+    Component, Error, Handle, Lvgl, LvglAccess, ObjMut, Session, Widget, WidgetExt,
     enums::EventCode,
     widgets::{Button, Label},
 };
@@ -38,11 +38,12 @@ struct Counter {
 }
 
 impl Counter {
-    fn build(parent: &Obj) -> Result<Self, Error> {
-        let button = Button::create(parent)?;
-        let label = Label::create(button)?;
+    fn build(parent: &mut ObjMut<'_, impl Widget>) -> Result<Self, Error> {
+        let mut button = Button::create(parent)?;
+        let label = Label::create(&mut button)?.into_view();
         label.set_text_i32(0);
         let label = label.handle()?;
+        let button = button.into_view();
         button.on_with(EventCode::CLICKED, label, |e, label| {
             if let Ok(label) = label.get(e.lv()) {
                 let mut buf = [0u8; 12];
@@ -73,7 +74,7 @@ impl Component for Counter {
 fn a_component_counts_clicks_and_goes_with_its_root() {
     let mut guard = guard();
     let mut lv = session(&mut guard);
-    let counter = Counter::build(lv.screen_active().unwrap()).unwrap();
+    let counter = Counter::build(&mut lv.screen_active_mut().unwrap()).unwrap();
     for _ in 0..3 {
         let button = counter.root().get(&lv).unwrap();
         // SAFETY: session held; CLICKED takes no param.

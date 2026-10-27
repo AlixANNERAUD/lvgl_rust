@@ -10,8 +10,11 @@ else stays reachable through `lvgl_rust::sys`.
 
 - **No locking, no allocator.** Prove exclusive access with your own lock by
   implementing `LvglAccess` for its guard, then work through a `Session`.
-- **No dangling objects.** Views (`&Obj`) borrow the session; deleting needs
-  exclusive access. `Handle`s (4 bytes) report deleted objects as
+- **No dangling objects.** Views (`&Obj`) borrow the session; creating,
+  deleting and moving objects need exclusive access. Objects are created
+  through their parent's `ObjMut` (`Label::create(&mut parent)?`), which
+  lends the new object's `ObjMut` (`.view()` or `.into_view()` for its
+  shared methods); `create_owned` returns an `Owned`. `Handle`s (4 bytes) report deleted objects as
   `Error::Dead`, whatever deleted them. `Owned` deletes its object when
   dropped, from any thread. A generated function the access audit finds
   shared is a view method only (from an `ObjMut`, call it through
@@ -29,7 +32,7 @@ else stays reachable through `lvgl_rust::sys`.
   without captures), `on_with(code, data, ...)` (a value of up to 4 bytes),
   `on_static` (a `static` context), `on_removable`. Handlers get shared
   access; `delete_later` and `lv.post(f, data)` defer what needs exclusive
-  access to the next drain. Codes sent in the middle of layout or
+  access (creating objects included) to the next drain. Codes sent in the middle of layout or
   rendering are not offered.
 - **Timers.** `lv.timer(period_ms, data, f)` returns an `Owned<Timer>`
   (dropping it deletes the timer); `Handle<Timer>` pauses, resumes and
@@ -106,9 +109,10 @@ unsafe impl LvglAccess for Guard {}
 let mut guard = Guard(/* lock */);
 let mut lv = init(&mut guard)?;
 let screen = lv.create_screen()?;              // Owned<Obj>
-let panel = Obj::create(screen.get(&lv)?)?;    // &Obj, borrows `lv`
-let panel = panel.handle()?;                   // Handle<Obj>, storable
-panel.get_mut(&mut lv)?.add_style(&PANEL, Selector::DEFAULT);
+let mut parent = screen.get_mut(&mut lv)?;     // ObjMut<Obj>, borrows `lv`
+let mut panel = Obj::create(&mut parent)?;     // ObjMut<Obj>, borrows `parent`
+panel.add_style(&PANEL, Selector::DEFAULT);
+let panel = panel.view().handle()?;            // Handle<Obj>, storable
 lv.load_screen(screen.handle(), ScreenAnim::NONE)?;
 loop {
     let wait = lv.timer_handler();

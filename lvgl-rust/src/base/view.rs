@@ -6,7 +6,7 @@ use super::{
     ffi::{self, lv_obj_class_t, lv_obj_t},
     registry::reg,
 };
-use crate::{Error, Lvgl};
+use crate::{Error, Lvgl, ObjMut};
 use core::{cell::UnsafeCell, marker::PhantomData, marker::PhantomPinned, ptr::NonNull};
 
 #[cfg(not(lvgl_rust_views_only))]
@@ -127,28 +127,28 @@ pub(crate) fn getter_view<'a>(p: *mut lv_obj_t) -> Option<&'a Obj> {
 }
 
 impl Obj {
-    /// Creates a base object (`lv_obj_create`).
-    /// Creates a base object. Refuses parents whose children a widget
-    /// indexes or casts ([`Error::Internal`]), like [`ObjMut::set_parent`].
+    /// Creates a base object (`lv_obj_create`) under `parent`, with
+    /// exclusive access: creation can reach code that moves or deletes
+    /// other objects (the access table marks `lv_obj_create` exclusive).
+    /// Refuses parents whose children a widget indexes or casts
+    /// ([`Error::Internal`]), like [`ObjMut::set_parent`]. Callbacks, which
+    /// have shared access only, create objects through
+    /// [`Lvgl::post`](crate::Lvgl::post).
     ///
     /// [`ObjMut::set_parent`]: crate::ObjMut
-    pub fn create(parent: &Obj) -> Result<&Obj, Error> {
-        super::structural::check_create(parent.as_ptr())?;
-        // SAFETY: shared access through the parent view; creation frees
-        // nothing.
-        let p = unsafe { ffi::obj_create(parent.as_ptr()) };
-        if p.is_null() {
-            return Err(Error::OutOfMemory);
-        }
-        // SAFETY: just created.
-        Ok(unsafe { view(p) })
+    pub fn create<'p, P: Widget>(parent: &'p mut ObjMut<'_, P>) -> Result<ObjMut<'p, Obj>, Error> {
+        super::structural::check_create(parent.as_raw())?;
+        // SAFETY: exclusive access through the parent's `ObjMut`.
+        let p = unsafe { ffi::obj_create(parent.as_raw()) };
+        // SAFETY: just created; the result reborrows the parent's access.
+        unsafe { super::objmut::created(p) }
     }
 
     /// Creates a base object and takes ownership of it.
     #[cfg(not(lvgl_rust_views_only))]
-    pub fn create_owned(parent: &Obj) -> Result<Owned<Obj>, Error> {
+    pub fn create_owned<P: Widget>(parent: &mut ObjMut<'_, P>) -> Result<Owned<Obj>, Error> {
         use crate::WidgetExt;
-        Self::create(parent)?.own()
+        Self::create(parent)?.view().own()
     }
 
     /// The raw pointer, valid until the next exclusive call.

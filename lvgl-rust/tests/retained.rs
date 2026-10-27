@@ -77,7 +77,7 @@ fn images_draw_constant_descriptors_and_checked_sources() {
         last(lv)?.downcast()
     }
     for (dsc, size) in [(&PICTURE, (3, 2)), (&INDEXED, (2, 2))] {
-        Image::create(lv.screen_active().unwrap()).unwrap();
+        Image::create(&mut lv.screen_active_mut().unwrap()).unwrap();
         {
             let mut image = lv.edit(last_image).unwrap();
             image.set_src(ImageSrc::image(dsc));
@@ -95,7 +95,7 @@ fn images_draw_constant_descriptors_and_checked_sources() {
     assert!(ImageSrc::path(c"A:icon.bin").is_some());
     assert_eq!(ImageSrc::symbol(c"plain"), None);
     let ok = ImageSrc::symbol(c"\u{F00C}").unwrap();
-    ImageButton::create(lv.screen_active().unwrap()).unwrap();
+    ImageButton::create(&mut lv.screen_active_mut().unwrap()).unwrap();
     {
         fn last_button(lv: &Lvgl) -> Option<&ImageButton> {
             last(lv)?.downcast()
@@ -129,7 +129,8 @@ fn button_maps_are_terminated_and_control_maps_cover_them() {
     let mut guard = guard();
     let mut lv = session(&mut guard);
     assert_eq!(KEYPAD.button_count(), 3);
-    let matrix = ButtonMatrix::create(lv.screen_active().unwrap()).unwrap();
+    let mut screen = lv.screen_active_mut().unwrap();
+    let matrix = ButtonMatrix::create(&mut screen).unwrap().into_view();
     matrix.set_map(&KEYPAD);
     let mut buf = [0u8; 4];
     assert_eq!(matrix.get_button_text_into(2, &mut buf), Ok(Some(c"3")));
@@ -189,7 +190,7 @@ fn styles_point_to_static_data() {
         style.set_color_filter_dsc(Some(ColorFilter::shade()));
         style.set_bg_image_src(Some(PICTURE_SRC));
     }
-    Obj::create(lv.screen_active().unwrap()).unwrap();
+    Obj::create(&mut lv.screen_active_mut().unwrap()).unwrap();
     {
         let mut object = lv.edit(last).unwrap();
         object.add_style(&FANCY, Selector::DEFAULT);
@@ -211,8 +212,9 @@ fn an_open_dropdown_list_follows_its_options() {
     use lvgl_rust::widgets::{Dropdown, Label};
     let mut guard = guard();
     let mut lv = session(&mut guard);
-    let index = Dropdown::create(lv.screen_active().unwrap())
+    let index = Dropdown::create(&mut lv.screen_active_mut().unwrap())
         .unwrap()
+        .view()
         .get_index();
     fn dropdown(lv: &Lvgl, index: i32) -> Option<&Dropdown> {
         lv.screen_active()?.child(index)?.downcast()
@@ -253,13 +255,16 @@ fn textarea_labels_and_degenerate_scales_are_refused() {
     use lvgl_rust::widgets::{Label, Scale, TextArea};
     let mut guard = guard();
     let mut lv = session(&mut guard);
-    let textarea = TextArea::create(lv.screen_active().unwrap()).unwrap();
+    let mut screen = lv.screen_active_mut().unwrap();
+    let textarea = TextArea::create(&mut screen).unwrap().into_view();
     let label = textarea.get_label().unwrap().downcast::<Label>().unwrap();
     // The textarea edits this text in place: static text would be written.
     assert_eq!(label.set_text_static(Some(c"x")), Err(Error::Internal));
-    let other = Label::create(lv.screen_active().unwrap()).unwrap();
+    let mut screen = lv.screen_active_mut().unwrap();
+    let other = Label::create(&mut screen).unwrap().into_view();
     other.set_text_static(Some(c"fine")).unwrap();
-    let scale = Scale::create(lv.screen_active().unwrap()).unwrap();
+    let mut screen = lv.screen_active_mut().unwrap();
+    let scale = Scale::create(&mut screen).unwrap().into_view();
     assert_eq!(scale.set_range(5, 5), Err(Error::InvalidArg));
     scale.set_range(0, 10).unwrap();
     assert_eq!(scale.set_min_value(10), Err(Error::InvalidArg));

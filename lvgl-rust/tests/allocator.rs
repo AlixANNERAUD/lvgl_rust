@@ -65,7 +65,8 @@ fn lvgl_allocates_through_the_rust_allocator() {
     unsafe { sys::lv_display_create(240, 160) };
     let before = HEAP.allocs.load(Relaxed);
     assert!(before > 0, "lv_init allocated through the Rust allocator");
-    let label = Label::create(lv.screen_active().unwrap()).unwrap();
+    let mut screen = lv.screen_active_mut().unwrap();
+    let label = Label::create(&mut screen).unwrap().into_view();
     label
         .set_text_str("a text long enough to grow the label's buffer in chunks")
         .unwrap();
@@ -77,5 +78,5 @@ fn lvgl_allocates_through_the_rust_allocator() {
         .delete()
         .unwrap();
     assert!(HEAP.frees.load(Relaxed) > frees);
-    Obj::create(lv.screen_active().unwrap()).unwrap();
+    Obj::create(&mut lv.screen_active_mut().unwrap()).unwrap();
 }

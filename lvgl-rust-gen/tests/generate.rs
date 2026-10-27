@@ -154,7 +154,7 @@ access = "shared"
 [fn.lv_obj_old]
 access = "shared"
 [fn.lv_bar_create]
-access = "shared"
+access = "exclusive"
 [fn.lv_bar_set_value]
 access = "shared"
 [fn.lv_bar_set_segment]

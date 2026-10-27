@@ -78,7 +78,8 @@ fn handlers_of_every_kind_run_for_their_code() {
     static WITH: AtomicU32 = AtomicU32::new(0);
     let mut guard = guard();
     let mut lv = session(&mut guard);
-    let object = Obj::create(lv.screen_active().unwrap()).unwrap();
+    let mut screen = lv.screen_active_mut().unwrap();
+    let object = Obj::create(&mut screen).unwrap().into_view();
     CALLS.store(0, Relaxed);
     object.on_fn(EventCode::CLICKED, count).unwrap();
     object
@@ -110,7 +111,8 @@ fn refresh_time_codes_are_never_delivered() {
     static SEEN_DRAW: AtomicU32 = AtomicU32::new(0);
     let mut guard = guard();
     let mut lv = session(&mut guard);
-    let object = Obj::create(lv.screen_active().unwrap()).unwrap();
+    let mut screen = lv.screen_active_mut().unwrap();
+    let object = Obj::create(&mut screen).unwrap().into_view();
     assert_eq!(
         object.on_fn(EventCode::DRAW_MAIN, count),
         Err(Error::InvalidArg)
@@ -141,7 +143,8 @@ fn removable_handlers_are_removed_and_deletions_deferred() {
     use lvgl_rust::WidgetExt;
     let mut guard = guard();
     let mut lv = session(&mut guard);
-    let object = Obj::create(lv.screen_active().unwrap()).unwrap();
+    let mut screen = lv.screen_active_mut().unwrap();
+    let object = Obj::create(&mut screen).unwrap().into_view();
     let sub = object
         .on_removable(EventCode::CLICKED, 1u8, |_, d| {
             HITS.fetch_add(u32::from(d), Relaxed);
@@ -173,7 +176,8 @@ fn recursion_stops_at_the_depth_limit() {
     static DEPTH: AtomicU32 = AtomicU32::new(0);
     let mut guard = guard();
     let mut lv = session(&mut guard);
-    let object = Obj::create(lv.screen_active().unwrap()).unwrap();
+    let mut screen = lv.screen_active_mut().unwrap();
+    let object = Obj::create(&mut screen).unwrap().into_view();
     object
         .on(EventCode::REFRESH, |e| {
             DEPTH.fetch_add(1, Relaxed);
@@ -192,7 +196,9 @@ fn accessors_check_the_code() {
     static CHILD: AtomicU32 = AtomicU32::new(0);
     let mut guard = guard();
     let mut lv = session(&mut guard);
-    let object = Obj::create(lv.screen_active().unwrap()).unwrap();
+    let mut screen = lv.screen_active_mut().unwrap();
+    let mut edit = Obj::create(&mut screen).unwrap();
+    let object = edit.view();
     object
         .on(EventCode::KEY, |e| {
             KEY.store(e.key().unwrap_or(0), Relaxed);
@@ -220,9 +226,9 @@ fn accessors_check_the_code() {
         )
     };
     assert_eq!(KEY.load(Relaxed), 0x41);
-    Obj::create(object).unwrap();
+    Obj::create(&mut edit).unwrap();
     assert_eq!(CHILD.load(Relaxed), 1);
-    send(object, EventCode::CLICKED); // NULL param: no point
+    send(edit.view(), EventCode::CLICKED); // NULL param: no point
     lv.edit(last).unwrap().delete().unwrap();
 }
 
@@ -231,7 +237,8 @@ fn handlers_cannot_grow_a_list_being_sent_to() {
     static RESULTS: Mutex<Vec<Result<(), Error>>> = Mutex::new(Vec::new());
     let mut guard = guard();
     let mut lv = session(&mut guard);
-    let object = Obj::create(lv.screen_active().unwrap()).unwrap();
+    let mut screen = lv.screen_active_mut().unwrap();
+    let object = Obj::create(&mut screen).unwrap().into_view();
     object
         .on(EventCode::CLICKED, |e| {
             let target = e.target().unwrap();
@@ -257,9 +264,11 @@ fn objects_under_deletion_are_out_of_reach() {
     static REACHED: AtomicU32 = AtomicU32::new(0);
     let mut guard = guard();
     let mut lv = session(&mut guard);
-    let parent = Obj::create(lv.screen_active().unwrap()).unwrap();
-    let child = Obj::create(parent).unwrap();
+    let mut screen = lv.screen_active_mut().unwrap();
+    let mut parent = Obj::create(&mut screen).unwrap();
+    let child = Obj::create(&mut parent).unwrap().into_view();
     *CHILD.lock().unwrap() = Some(child.handle().unwrap());
+    let parent = parent.into_view();
     // The parent is marked first; its children are deleted after.
     parent
         .on(EventCode::DELETE, |e| {
@@ -286,7 +295,8 @@ fn posted_work_runs_at_the_drain_with_exclusive_access() {
     }
     let mut guard = guard();
     let mut lv = session(&mut guard);
-    let object = Obj::create(lv.screen_active().unwrap()).unwrap();
+    let mut screen = lv.screen_active_mut().unwrap();
+    let object = Obj::create(&mut screen).unwrap().into_view();
     object
         .on(EventCode::CLICKED, |e| {
             let lv = e.lv();
@@ -346,7 +356,8 @@ fn safe_codes_are_sent_with_shared_access() {
     use lvgl_rust::enums::{SafeEventCode, SendableEventCode};
     let mut guard = guard();
     let mut lv = session(&mut guard);
-    let object = Obj::create(lv.screen_active().unwrap()).unwrap();
+    let mut screen = lv.screen_active_mut().unwrap();
+    let object = Obj::create(&mut screen).unwrap().into_view();
     CALLS.store(0, Relaxed);
     object.on_fn(EventCode::REFRESH, count).unwrap();
     assert_eq!(object.send_event(SafeEventCode::REFRESH), Ok(()));
@@ -367,9 +378,9 @@ fn deleting_codes_need_exclusive_access_and_report_the_deletion() {
     use lvgl_rust::{enums::SendableEventCode, widgets::MsgBox};
     let mut guard = guard();
     let mut lv = session(&mut guard);
-    let screen = lv.screen_active().unwrap();
-    let children = screen.get_child_count();
-    let mbox = MsgBox::create(screen).unwrap();
+    let children = lv.screen_active().unwrap().get_child_count();
+    let mut screen = lv.screen_active_mut().unwrap();
+    let mbox = MsgBox::create(&mut screen).unwrap().into_view();
     // SAFETY: session held, live message box.
     unsafe { sys::lv_msgbox_add_close_button(mbox.as_ptr()) };
     // CLICKED on the close button deletes the message box, the button
