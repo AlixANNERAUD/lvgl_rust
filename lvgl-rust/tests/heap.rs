@@ -111,15 +111,16 @@ unsafe extern "C" fn send_to_parent(e: *mut sys::lv_event_t) {
 fn boxed_handlers_ignore_events_trickled_after_delete() {
     let mut guard = guard();
     let mut lv = session(&mut guard);
-    let parent = Obj::create(lv.screen_active().unwrap()).unwrap();
+    Obj::create(&mut lv.screen_active_mut().unwrap()).unwrap();
+    let mut parent = lv.edit(|lv| lv.screen_active()?.child(-1)).unwrap();
     // SAFETY: session held, live object.
     unsafe {
         sys::lv_obj_add_flag(
-            parent.as_ptr(),
+            parent.view().as_ptr(),
             sys::lv_obj_flag_t_LV_OBJ_FLAG_EVENT_TRICKLE,
         )
     };
-    let child = Obj::create(parent).unwrap();
+    let child = Obj::create(&mut parent).unwrap();
     let counter = Arc::new(AtomicU32::new(0));
     let mine = counter.clone();
     child
@@ -136,6 +137,7 @@ fn boxed_handlers_ignore_events_trickled_after_delete() {
             core::ptr::null_mut(),
         )
     };
+    let parent = lv.screen_active().unwrap().child(-1).unwrap();
     send(parent, EventCode::READY);
     assert_eq!(counter.load(Relaxed), 1);
     lv.edit(|lv| lv.screen_active()?.child(-1)?.child(0))

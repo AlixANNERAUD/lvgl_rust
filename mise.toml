@@ -92,7 +92,16 @@ env.CARGO_TARGET_DIR = "target/package"
 # sit at the same paths in cargo's temporary registry on every run: mbx's
 # build-script cache could replay generated code from other tables.
 env.MBX_BUILD_SCRIPT_EXECUTION = "false"
-run = "cargo package -p lvgl-rust-sys -p lvgl-rust-gen -p lvgl-rust"
+# That temporary registry has the same path and versions on every run, and
+# cargo treats registry packages as immutable: it keeps the sources it
+# extracted into $CARGO_HOME/registry/src (which the CI cache carries from
+# job to job) and the units built from them in the target directory, so a
+# later run would verify lvgl-rust against the generator and bindings of an
+# older revision. Start from neither.
+run = [
+  "rm -rf {{config_root}}/target/package \"${CARGO_HOME:-$HOME/.cargo}\"/registry/src/-*/lvgl-rust-*",
+  "cargo package -p lvgl-rust-sys -p lvgl-rust-gen -p lvgl-rust",
+]
 
 [tasks.coverage]
 description = "Coverage of the Rust code of the three crates, written to coverage.lcov"
