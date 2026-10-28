@@ -118,6 +118,7 @@ Refused by the structural checks ([API overview](api-overview.md#exclusive-acces
 | --- | --- |
 | `ObjMut::delete`, `Obj::delete_later` | The object is a display layer, a part of a widget or contains one, an object a widget finds by index, or inside a widget class the part tables do not list. |
 | `ObjMut::clean`, `Obj::clean_later` | The object has parts, contains a part of a widget above it, has children a widget counts, or is inside an unknown widget. |
+| `Owned::delete` | As for `delete`, for an object raw code moved there (safe code cannot): the object is released, alive and unowned, as a refused drop is. |
 | `WidgetExt::own`, `create_owned` | As for `delete`. |
 | `ObjMut::set_parent`, `set_parent_to`, `move_to_index` | The object is a layer, protected as for `delete`, or pinned (a calendar header); or the new parent does not accept children (a closed or indexed widget, a part whose children are counted). |
 | `Obj::create`, `<Widget>::create`, `TileView::create` | The parent does not accept children (for example a tile view: use `add_tile`). |
@@ -127,8 +128,8 @@ Refused by the structural checks ([API overview](api-overview.md#exclusive-acces
 
 A permanent refusal of a deferred request (`delete_later`, `clean_later`,
 a dropped `Owned`) found by the drain drops the request and leaves the
-object alive; `Owned::delete` behaves the same way and returns `Ok(())`.
-With `debug-counters`, these are counted as `refused`.
+object alive. With `debug-counters`, these are counted as `refused`; a
+refusal `Owned::delete` returns is not, since the caller sees it.
 
 ## Reentrant and NotInitialized
 

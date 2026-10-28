@@ -70,13 +70,14 @@ mod enabled {
         /// runs the same step at once and counts here too. Requests for
         /// objects that were already dead are not counted.
         pub drained: u16,
-        /// Deferred requests (and `Owned::delete` calls) dropped because
-        /// the structural checks refused them for good (a display layer, a
-        /// widget's part, a child whose parent indexes its children),
-        /// leaving the object alive, and `load_screen_later` loads refused
-        /// when the drain applied them (a display layer, an object with a
-        /// parent, the previous screen of a load still animating). `Busy`
-        /// refusals of deletions are retried and not counted.
+        /// Deferred requests dropped because the structural checks refused
+        /// them for good (a display layer, a widget's part, a child whose
+        /// parent indexes its children), leaving the object alive, and
+        /// `load_screen_later` loads refused when the drain applied them (a
+        /// display layer, an object with a parent, the previous screen of a
+        /// load still animating). `Busy` refusals of deletions are retried
+        /// and not counted, nor are refusals
+        /// [`Owned::delete`](crate::Owned::delete) returns.
         pub refused: u16,
         /// Callbacks (event handlers, timers, animations, observers) whose
         /// Rust code was skipped because `LVGL_RUST_MAX_CALLBACK_DEPTH`

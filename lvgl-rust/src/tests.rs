@@ -69,6 +69,13 @@ mod platform {
         // SAFETY: test lock held.
         unsafe { sys::lv_layer_top() }
     }
+
+    /// A widget whose class the part tables do not describe (a menu).
+    #[cfg(not(lvgl_rust_views_only))]
+    pub(super) fn unknown_widget(parent: *mut sys::lv_obj_t) -> *mut sys::lv_obj_t {
+        // SAFETY: test lock held, live parent.
+        unsafe { sys::lv_menu_create(parent) }
+    }
 }
 
 #[cfg(any(miri, loom))]
@@ -80,6 +87,13 @@ mod platform {
     pub(super) fn top_layer() -> *mut ffi::lv_obj_t {
         // SAFETY: test lock held.
         unsafe { ffi::display_layers(core::ptr::null_mut())[1] }
+    }
+
+    /// A widget whose class the part tables do not describe.
+    #[cfg(not(lvgl_rust_views_only))]
+    pub(super) fn unknown_widget(parent: *mut ffi::lv_obj_t) -> *mut ffi::lv_obj_t {
+        // SAFETY: test lock held, live parent.
+        unsafe { ffi::obj_create_other(parent) }
     }
 }
 
@@ -334,6 +348,21 @@ mod handles {
     }
 
     #[test]
+    fn deleting_a_dead_owned_object_releases_it() {
+        let mut guard = guard();
+        let mut lv = session(&mut guard);
+        let before = used_slots();
+        let parent = Obj::create_owned(&mut lv.screen_active_mut().unwrap()).unwrap();
+        let child = Obj::create_owned(&mut parent.get_mut(&mut lv).unwrap()).unwrap();
+        parent.delete(&mut lv).unwrap();
+        assert_eq!(child.get(&lv).err(), Some(Error::Dead));
+        // Already dead: released at once, without an error.
+        assert_eq!(child.delete(&mut lv), Ok(()));
+        assert_eq!(used_slots(), before);
+        drop(lv);
+    }
+
+    #[test]
     fn dropped_owned_objects_are_deleted_at_the_next_drain() {
         let mut guard = guard();
         let mut lv = session(&mut guard);
@@ -372,6 +401,32 @@ mod handles {
         assert_eq!(handle.get(&lv).err(), Some(Error::Dead));
         assert_eq!(used_slots(), before);
         drop(lv);
+    }
+
+    #[test]
+    fn owned_delete_reports_a_permanent_refusal() {
+        use crate::base::ffi;
+        let mut guard = guard();
+        let mut lv = session(&mut guard);
+        let before = used_slots();
+        let widget = platform::unknown_widget(lv.screen_active().unwrap().as_ptr());
+        let owned = Obj::create_owned(&mut lv.screen_active_mut().unwrap()).unwrap();
+        let handle = owned.handle();
+        let object = owned.get(&lv).unwrap().as_ptr();
+        // Raw code moves it into a widget the part tables do not describe:
+        // its deletion is now refused for good.
+        // SAFETY: test lock held, both objects live.
+        unsafe { ffi::obj_set_parent(object, widget) };
+        assert_eq!(owned.delete(&mut lv), Err(Error::Internal));
+        // Released like a refused drop: alive, out of the registry.
+        assert_eq!(handle.get(&lv).err(), Some(Error::Dead));
+        assert_eq!(used_slots(), before);
+        // SAFETY: test lock held; the widget is live, and deleted with the
+        // object it kept.
+        unsafe {
+            assert_eq!(ffi::obj_child(widget, -1), object);
+            ffi::obj_delete(widget);
+        }
     }
 
     #[test]

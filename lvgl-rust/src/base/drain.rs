@@ -34,8 +34,11 @@ mod slots {
             // to the scan below; a later one leaves `any_req` set.
             fence(Ordering::SeqCst);
             for index in 0..reg.high_water_mark() {
-                // `Busy` sets `any_req` again: the next drain retries.
-                let _ = act(index);
+                // `Busy` sets `any_req` again: the next drain retries. A
+                // permanent refusal reaches no caller: counted.
+                if matches!(act(index), Err(error) if error != Error::Busy) {
+                    count(Counter::Refused);
+                }
             }
         }
         apply_pending_load();
@@ -47,7 +50,9 @@ mod slots {
 
     /// Carries out the requests of one slot. Returns `Err(Busy)` when the
     /// structural checks asked for a retry (the request stays pending and
-    /// `any_req` is set again).
+    /// `any_req` is set again), and their error when they refused for good
+    /// (the request is dropped, the object stays alive and an `Owned`'s
+    /// slot is released). Requests for dead objects succeed.
     pub(crate) fn act(index: usize) -> Result<(), Error> {
         let reg = reg();
         let slot = reg.slot(index);
@@ -64,26 +69,18 @@ mod slots {
         let o = slot.ptr().cast::<ffi::lv_obj_t>();
 
         // A permanent refusal drops the request; `Busy` keeps it.
-        let allowed = if !live {
-            false
+        let check = if !live {
+            Ok(())
+        } else if delete {
+            structural::check_delete(o)
         } else {
-            let check = if delete {
-                structural::check_delete(o)
-            } else {
-                structural::check_clean(o)
-            };
-            match check {
-                Ok(()) => true,
-                Err(Error::Busy) => {
-                    reg.hdr.any_req.store(true, Ordering::Relaxed);
-                    return Err(Error::Busy);
-                }
-                Err(_) => {
-                    count(Counter::Refused);
-                    false
-                }
-            }
+            structural::check_clean(o)
         };
+        if check == Err(Error::Busy) {
+            reg.hdr.any_req.store(true, Ordering::Relaxed);
+            return check;
+        }
+        let allowed = live && check.is_ok();
         if allowed {
             count(Counter::Drained);
         }
@@ -120,7 +117,7 @@ mod slots {
             slot.clear(P_CLEAN);
             release_temp(index);
         }
-        Ok(())
+        check
     }
 
     /// Deletes a timer or a group whose `Owned` was dropped or that asked
