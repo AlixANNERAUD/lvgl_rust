@@ -361,72 +361,78 @@ fn owned_queues_ignore_events_trickled_after_delete() {
     lv.edit(last).unwrap().delete().unwrap();
 }
 
-/// Blocks in use on LVGL's builtin heap (`None` with another allocator).
-fn used_blocks() -> Option<usize> {
-    // SAFETY: session held; the monitor only reads the heap.
-    let monitor = unsafe {
-        let mut monitor = core::mem::zeroed::<sys::lv_mem_monitor_t>();
-        sys::lv_mem_monitor(&mut monitor);
-        monitor
-    };
-    (monitor.total_size != 0).then_some(monitor.used_cnt)
-}
+// With `growable-registry`, LVGL's heap runs out long before the registry.
+#[cfg(not(feature = "growable-registry"))]
+mod full_registry {
+    use super::*;
 
-unsafe extern "C" fn nothing(_: *mut sys::lv_event_t) {}
-
-#[test]
-fn a_full_registry_refuses_subscriptions_without_a_trace() {
-    use lvgl_rust::WidgetExt;
-    let mut guard = guard();
-    let mut lv = session(&mut guard);
-    // Every free slot goes to a child of `holders`.
-    Obj::create(&mut lv.screen_active_mut().unwrap()).unwrap();
-    let mut holders = lv.edit(last).unwrap();
-    let mut handles = Vec::new();
-    loop {
-        let holder = Obj::create(&mut holders).unwrap();
-        match holder.handle() {
-            Ok(handle) => handles.push(handle),
-            Err(error) => {
-                assert_eq!(error, lvgl_rust::Error::RegistryFull);
-                break;
-            }
-        }
-        assert!(handles.len() < 4096, "the registry never filled");
+    /// Blocks in use on LVGL's builtin heap (`None` with another allocator).
+    fn used_blocks() -> Option<usize> {
+        // SAFETY: session held; the monitor only reads the heap.
+        let monitor = unsafe {
+            let mut monitor = core::mem::zeroed::<sys::lv_mem_monitor_t>();
+            sys::lv_mem_monitor(&mut monitor);
+            monitor
+        };
+        (monitor.total_size != 0).then_some(monitor.used_cnt)
     }
-    Obj::create(&mut lv.screen_active_mut().unwrap()).unwrap();
-    Obj::create(&mut lv.edit(last).unwrap()).unwrap();
-    let target = last(&lv).unwrap();
-    let child = target.child(0).unwrap();
-    // One handler for good: the object's event list exists before and
-    // after, so the heap is comparable.
-    // SAFETY: session held, live object; the callback needs no data.
-    unsafe {
-        sys::lv_obj_add_event_cb(
-            target.as_ptr(),
-            Some(nothing),
-            sys::lv_event_code_t_LV_EVENT_CLICKED,
-            core::ptr::null_mut(),
-        )
-    };
-    let before = event_count(target);
-    let used = used_blocks();
-    let options = SubscribeOptions::new(EventCode::CLICKED).bubble_children();
-    // Every handler was added, then the slot was refused: all removed.
-    assert!(
-        target
-            .subscribe_owned::<u32, 4>(options, capture)
-            .is_err_and(|error| error == lvgl_rust::Error::RegistryFull)
-    );
-    assert_eq!(event_count(target), before);
-    assert_eq!(used_blocks(), used);
-    assert!(!bubbles(child));
-    Obj::create(&mut lv.edit(last).unwrap()).unwrap();
-    let late = last(&lv).unwrap().child(-1).unwrap();
-    assert!(!bubbles(late));
-    drop(handles);
-    lv.edit(last).unwrap().delete().unwrap();
-    lv.edit(last).unwrap().delete().unwrap();
+
+    unsafe extern "C" fn nothing(_: *mut sys::lv_event_t) {}
+
+    #[test]
+    fn a_full_registry_refuses_subscriptions_without_a_trace() {
+        use lvgl_rust::WidgetExt;
+        let mut guard = guard();
+        let mut lv = session(&mut guard);
+        // Every free slot goes to a child of `holders`.
+        Obj::create(&mut lv.screen_active_mut().unwrap()).unwrap();
+        let mut holders = lv.edit(last).unwrap();
+        let mut handles = Vec::new();
+        loop {
+            let holder = Obj::create(&mut holders).unwrap();
+            match holder.handle() {
+                Ok(handle) => handles.push(handle),
+                Err(error) => {
+                    assert_eq!(error, lvgl_rust::Error::RegistryFull);
+                    break;
+                }
+            }
+            assert!(handles.len() < 4096, "the registry never filled");
+        }
+        Obj::create(&mut lv.screen_active_mut().unwrap()).unwrap();
+        Obj::create(&mut lv.edit(last).unwrap()).unwrap();
+        let target = last(&lv).unwrap();
+        let child = target.child(0).unwrap();
+        // One handler for good: the object's event list exists before and
+        // after, so the heap is comparable.
+        // SAFETY: session held, live object; the callback needs no data.
+        unsafe {
+            sys::lv_obj_add_event_cb(
+                target.as_ptr(),
+                Some(nothing),
+                sys::lv_event_code_t_LV_EVENT_CLICKED,
+                core::ptr::null_mut(),
+            )
+        };
+        let before = event_count(target);
+        let used = used_blocks();
+        let options = SubscribeOptions::new(EventCode::CLICKED).bubble_children();
+        // Every handler was added, then the slot was refused: all removed.
+        assert!(
+            target
+                .subscribe_owned::<u32, 4>(options, capture)
+                .is_err_and(|error| error == lvgl_rust::Error::RegistryFull)
+        );
+        assert_eq!(event_count(target), before);
+        assert_eq!(used_blocks(), used);
+        assert!(!bubbles(child));
+        Obj::create(&mut lv.edit(last).unwrap()).unwrap();
+        let late = last(&lv).unwrap().child(-1).unwrap();
+        assert!(!bubbles(late));
+        drop(handles);
+        lv.edit(last).unwrap().delete().unwrap();
+        lv.edit(last).unwrap().delete().unwrap();
+    }
 }
 
 #[test]

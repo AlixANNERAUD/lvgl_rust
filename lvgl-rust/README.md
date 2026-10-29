@@ -20,7 +20,7 @@ one path away, in `lvgl_rust::sys`.
 | At a glance | |
 | --- | --- |
 | Safety | Views borrow the session, deletion needs exclusive access, handles report deleted objects (`Error::Dead`) |
-| Heap | None required; closures and owned images on LVGL's heap with feature `heap` |
+| Heap | None required; closures and owned images on LVGL's heap with feature `heap`, a registry that grows from the global allocator with `growable-registry` |
 | Locking | None: implement `LvglAccess` on the guard of your own lock |
 | Speed | Setter through a view: **1.7 ns**, as the raw call. Event to a closure: **+1.6 to +2.7 ns** over a raw callback |
 | Size | **4498 B** of code, **188 B** of `.bss` on `thumbv6m-none-eabi` with 16 handle slots; **2246 B** and **44 B** with views only |
@@ -181,6 +181,7 @@ the [build configuration reference](https://github.com/AlixANNERAUD/lvgl_rust/bl
 | `fmt` | | `Label::set_text_fmt` and `Display for Error` (links `core::fmt`) |
 | `defmt` | | `defmt::Format` for `Error`, handles, the event codes and the other public enums and plain types |
 | `debug-counters` | | `DebugCounters::read()`: four 16-bit counters (8 bytes of `.bss`) of what the crate did or refused without returning an error |
+| `growable-registry` | | Handle slots beyond `LVGL_RUST_HANDLE_SLOTS`, in chunks from the global allocator (`alloc`) that double the capacity, up to 65,535 slots; chunks are never freed. 52 B more `.bss` on 32-bit targets with the default 32 slots |
 | `shadcn-theme` | | The shadcn theme of `lvgl-rust-sys` |
 | `color_depth_1` ... `color_depth_32` | | LVGL's color depth (1, 8, 16, 24 or 32 bits), as in `lvgl-rust-sys` |
 

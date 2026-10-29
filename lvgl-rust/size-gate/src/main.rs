@@ -14,6 +14,50 @@ mod firmware {
     // SAFETY: single-threaded firmware, one guard.
     unsafe impl LvglAccess for Guard {}
 
+    /// A bump allocator over a static block, for `growable-registry`
+    /// (chunks are never freed). Single-threaded firmware: plain cells.
+    #[cfg(feature = "growable-registry")]
+    mod allocator {
+        use core::alloc::{GlobalAlloc, Layout};
+        use core::cell::{Cell, UnsafeCell};
+
+        struct Bump {
+            block: UnsafeCell<[u8; 4096]>,
+            used: Cell<usize>,
+        }
+
+        // SAFETY: single-threaded firmware.
+        unsafe impl Sync for Bump {}
+
+        unsafe impl GlobalAlloc for Bump {
+            unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+                // Wrapping arithmetic: no panic path in the firmware.
+                let base = self.block.get().cast::<u8>();
+                let mask = layout.align().wrapping_sub(1);
+                let start = ((base as usize)
+                    .wrapping_add(self.used.get())
+                    .wrapping_add(mask)
+                    & !mask)
+                    .wrapping_sub(base as usize);
+                let end = start.wrapping_add(layout.size());
+                if end > 4096 || end < start {
+                    return core::ptr::null_mut();
+                }
+                self.used.set(end);
+                // SAFETY: within the block.
+                unsafe { base.add(start) }
+            }
+
+            unsafe fn dealloc(&self, _: *mut u8, _: Layout) {}
+        }
+
+        #[global_allocator]
+        static ALLOCATOR: Bump = Bump {
+            block: UnsafeCell::new([0; 4096]),
+            used: Cell::new(0),
+        };
+    }
+
     #[panic_handler]
     fn panic(_: &core::panic::PanicInfo) -> ! {
         loop {}

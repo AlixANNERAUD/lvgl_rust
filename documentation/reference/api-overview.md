@@ -127,7 +127,7 @@ Structural rules, checked before LVGL is called (`base/structural.rs`):
 | `Owned::delete(self, &mut Lvgl) -> Result<(), Error>` | Deletes at once. A screen LVGL is still loading gives `Busy` and stays pending, retried at each drain. A permanent structural refusal (`Internal`, only reachable after raw code moved the object) is returned: the object stays alive, released from its owner, and its handles report `Dead`. If a pending `Busy` deletion is later refused for good, the drain releases it the same way (counted as `refused` with `debug-counters`). What is already dead is released and gives `Ok(())`. | exclusive | — |
 | `Owned::upcast::<B>(self) -> Owned<B>` | The same owner as a base class. | none | — |
 | `HandleCell<W>` | An optional handle in a `static`: `new()` (const), `get() -> Option<Handle<W>>`, `set(Option<Handle<W>>)`. Atomic loads and stores only. | none | 4 B |
-| `trait WidgetExt` | Implemented for every widget. `handle(&self) -> Result<Handle<Self>, Error>` takes a registry slot the first time (`RegistryFull`); `own(&self) -> Result<Owned<Self>, Error>` (`AlreadyOwned`, `Internal`, `RegistryFull`). | shared | one registry slot |
+| `trait WidgetExt` | Implemented for every widget. `handle(&self) -> Result<Handle<Self>, Error>` takes a registry slot the first time (`RegistryFull`; `OutOfMemory` when a `growable-registry` cannot grow); `own(&self) -> Result<Owned<Self>, Error>` (`AlreadyOwned`, `Internal`, `RegistryFull`, `OutOfMemory`). | shared | one registry slot |
 | `trait Tracked` | What an `Owned` can own: every widget, `Timer`, `Group`. Sealed. | — | — |
 | `trait Component` | A widget made of other widgets, as a plain struct: `type Root: Widget`, `fn root(&self) -> Handle<Self::Root>`, provided `fn delete(self, &mut Lvgl) -> Result<(), Error>` (deletes the root and so the parts; `Dead` if the root is gone, otherwise the errors of `ObjMut::delete`). Nothing is allocated beyond the objects and the registry slots of the handles. | exclusive (`delete`) | — |
 
@@ -149,7 +149,7 @@ borrowing the parent's `ObjMut`; exclusive calls on it go through a handle
 | --- | --- | --- |
 | `Obj::create(parent: &mut ObjMut<P>) -> Result<&Obj, Error>` | `lv_obj_create` under `parent`. | `Internal` (a parent whose children a widget indexes or casts), `OutOfMemory` |
 | `<Widget>::create(parent: &mut ObjMut<P>) -> Result<&Widget, Error>` | Generated for every widget class, same shape (`Label::create(&mut parent)?`). | as above |
-| `Obj::create_owned`, `<Widget>::create_owned(parent) -> Result<Owned<W>, Error>` (handles) | Creates and takes ownership. | as above, plus `RegistryFull`, `AlreadyOwned` |
+| `Obj::create_owned`, `<Widget>::create_owned(parent) -> Result<Owned<W>, Error>` (handles) | Creates and takes ownership. | as above, plus `RegistryFull`, `AlreadyOwned` (`OutOfMemory` also when a `growable-registry` cannot grow) |
 | `TileView::create(parent)` | Hand-written: replaces LVGL's scroll-end handler with a checked one (see [Widget-specific checks](#widget-specific-checks)). | `Internal`, `OutOfMemory` |
 | `Lvgl::create_screen(&mut self)` | A screen (no parent): `Owned<Obj>` with handles, `ObjMut<Obj>` in views-only mode. | `OutOfMemory`, `RegistryFull` |
 | `Lvgl::screen_active_mut(&mut self) -> Option<ObjMut<Obj>>` | Exclusive access to the active screen, to create objects on it. | — |
@@ -306,7 +306,7 @@ after `lv_timer_handler` in `Lvgl::timer_handler`.
 
 | Item | What it is | Access | Cost |
 | --- | --- | --- | --- |
-| `Obj::delete_later(&self)` (handles) | Deletes the object at the next drain. Permanent structural refusals fail now (`Internal`); `Busy` is retried by the drain. Takes a registry slot until then if the object has none (`RegistryFull`). | shared | a registry slot |
+| `Obj::delete_later(&self)` (handles) | Deletes the object at the next drain. Permanent structural refusals fail now (`Internal`); `Busy` is retried by the drain. Takes a registry slot until then if the object has none (`RegistryFull`; `OutOfMemory` when a `growable-registry` cannot grow). | shared | a registry slot |
 | `Obj::clean_later(&self)` (handles) | Deletes the children at the next drain, as above. | shared | a registry slot |
 | `Lvgl::post(&self, f, data: D)` | Runs `f(&mut Lvgl, data)` at the next drain with exclusive access. `f` is a function item or a closure without captures. `Busy` when the queue is full. Entries posted while the queue runs wait for the next drain. | shared | 8 B per entry; queue `8·P + 4` B of `.bss`, P = `LVGL_RUST_POST_SLOTS` (default 4) |
 | `Lvgl::load_screen_later` | See [Screens](#screens). | shared | — |

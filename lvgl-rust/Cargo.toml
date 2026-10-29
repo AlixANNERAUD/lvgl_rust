@@ -30,6 +30,10 @@ fmt = []
 defmt = ["dep:defmt"]
 # Four 16-bit counters (8 bytes of .bss) read by `DebugCounters::read`.
 debug-counters = []
+# Registry slots beyond `LVGL_RUST_HANDLE_SLOTS`, in chunks from the
+# global allocator (`alloc`), never freed: up to 65,535 slots. No effect in
+# views-only mode.
+growable-registry = []
 
 color_depth_1 = ["lvgl-rust-sys/color_depth_1"]
 color_depth_8 = ["lvgl-rust-sys/color_depth_8"]

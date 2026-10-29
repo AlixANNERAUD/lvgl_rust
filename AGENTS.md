@@ -194,12 +194,20 @@ What the suites cover:
   requests, structural checks). The same tests run against LVGL and, under
   Miri, against `ffi_stub.rs`; keep the stub's behaviour in line with LVGL's
   for every function `ffi.rs` exposes. Tests hold the `LOCK` guard.
-- `mise run miri` runs the core tests twice: without features, and with
+- `mise run miri` runs the core tests three times: without features, with
   `heap` (the deferred-free list and `LvBox` against the stub's heap,
   `ffi::malloc`/`free`, where Miri's leak check catches a block never
-  freed).
+  freed), and with `growable-registry` (registry chunks from the global
+  allocator; reachable from the static, so not reported as leaks).
 - `lvgl-rust/src/tests.rs` `protocol` module: loom models of `Owned::drop`
-  racing the drain (`--cfg loom`).
+  racing the drain (`--cfg loom`), and with `growable-registry` racing the
+  publication of a chunk (`mise run loom` runs both).
+- `lvgl-rust/src/tests.rs` `growth` module (`growable-registry`): chunk
+  arithmetic up to the 65,535-slot limit, then objects filling the static
+  slots and several chunks. `test-safe` runs with and without the
+  feature (`defmt` and `debug-counters` in both). Tests
+  that fill the registry must stop at `reg().capacity()` with the
+  feature (the 65,535-slot limit is out of reach of LVGL's heap).
 - `lvgl-rust/tests/lifecycle.rs`: `init`, ticks, `deinit` (terminal, so in
   its own process).
 - `lvgl-rust/tests/compile_fail.rs`: trybuild cases
@@ -226,9 +234,12 @@ What the suites cover:
   budget only in the change that needs it, and say why. The task also
   checks that `async` and `heap` compile for both targets, and
   `test-views-only` runs with and without them. An optional fourth
-  argument enables firmware features (`defmt`, `debug-counters`); the gate
-  then expects the 8 bytes of counters in `.bss`, and none without
-  `debug-counters`.
+  argument enables firmware features (`defmt`, `debug-counters`,
+  `growable-registry`); the gate then expects the 8 bytes of counters in
+  `.bss`, and none without `debug-counters`, and with `growable-registry`
+  `4·(16 − log2 N) + 8` more bytes of registry. That firmware brings a
+  bump allocator over a 4 KiB static (its own symbols, not the crate's),
+  and its runs have their own budgets.
 - `lvgl-rust/tests/counters.rs`: the `debug-counters` values (drained and
   refused requests, skipped callbacks, leaked drivers) and, with `defmt`,
   which types implement `defmt::Format` (a host has no logger).
@@ -611,7 +622,12 @@ review the `access.toml` and `events.toml` diffs.
   riscv32imc have no compare-and-swap): code without a token only stores
   `req`, `any_req` and `ticks`. `Registry::request_drop` and `drain` pair
   SeqCst fences; keep that pairing if either side changes, and rerun
-  `mise run loom`.
+  `mise run loom`. With `growable-registry` (cfg `lvgl_rust_growable`),
+  a chunk is initialized before its pointer is stored with Release, once,
+  by the token holder; every lookup loads it with Acquire. Chunks never
+  move and are never freed (an `Owned` may store into its slot after
+  `deinit`), and every index lookup stays panic-free (indices of no
+  published chunk give the FREE sentinel slot).
 - **Display buffers.** LVGL checks draw buffer sizes only when they are
   set (and only with `LV_USE_CHECK_ARG`). A display call that changes what
   is rendered into them (resolution, rotation, color format, render mode)

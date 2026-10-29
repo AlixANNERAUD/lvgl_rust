@@ -2,9 +2,11 @@
 # Size gate for lvgl-rust: builds the firmware in this directory for an
 # embedded target and checks the crate's footprint in the linked image.
 #
-#   gate.sh <target> <slots> <text budget in bytes> [firmware features: defmt, debug-counters]
+#   gate.sh <target> <slots> <text budget in bytes> [firmware features: defmt, debug-counters, growable-registry]
 #
-# Checks: the registry static is 8·N + 24 bytes in .bss (8 bytes with N = 0),
+# Checks: the registry static is 8·N + 24 bytes in .bss (8 bytes with N = 0;
+# 4·(16 − log2 N) + 8 more with growable-registry, whose firmware brings a
+# bump allocator),
 # and the `post` queue 8·P + 4 bytes (none with P = 0,
 # LVGL_RUST_POST_SLOTS, default 4), plus the 8 bytes of counters with
 # `debug-counters` (and nothing else from them without it);
@@ -58,6 +60,13 @@ symbols=$("$nm" -S -C "$elf" | awk 'NF >= 4' | sort -u -k1,1)
 crate=$(grep -E "^\S+ \S+ \S (<)?lvgl_rust::|^\S+ \S+ \S ($hooks)$" <<<"$symbols" || true)
 
 if [ "$slots" = 0 ]; then expected_reg=8; else expected_reg=$((8 * slots + 24)); fi
+# growable-registry: a 4-byte pointer per possible chunk (16 - log2 N) and
+# an 8-byte sentinel slot; no effect in views-only mode.
+if [ "$slots" != 0 ] && [[ ",$features," == *,growable-registry,* ]]; then
+    log2=0
+    while [ $((1 << log2)) -lt "$slots" ]; do log2=$((log2 + 1)); done
+    expected_reg=$((expected_reg + 4 * (16 - log2) + 8))
+fi
 reg=$(grep -E ' lvgl_rust::base::registry::REG$' <<<"$symbols" || fail "registry static not found")
 reg_size=$((16#$(awk '{print $2}' <<<"$reg")))
 reg_type=$(awk '{print $3}' <<<"$reg")

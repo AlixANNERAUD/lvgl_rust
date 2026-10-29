@@ -95,7 +95,7 @@ target-aware compiler from `cc`.
 
 | Variable | Content |
 | --- | --- |
-| `DEP_LVGL_RUST_HANDLE_SLOTS` | The number of handle slots after rounding (`0` in views-only mode). |
+| `DEP_LVGL_RUST_HANDLE_SLOTS` | The number of handle slots after rounding (`0` in views-only mode); the static slots with `growable-registry`. |
 
 `links = "lvgl_rust"` also means only one copy of `lvgl-rust` can be in a
 build: it defines LVGL's OBJ_ID hook symbols.
@@ -104,7 +104,7 @@ build: it defines LVGL's OBJ_ID hook symbols.
 
 | Variable | Default | Values | Effect |
 | --- | --- | --- | --- |
-| `LVGL_RUST_HANDLE_SLOTS` | 32 | 0 to 32,768 | Size of the handle registry, rounded up to a power of two: `8·N + 24` B of `.bss` on 32-bit targets. `0` selects views-only mode (cfg `lvgl_rust_views_only`): no handles, `Owned`, timers, groups, components, deferred deletion or OBJ_ID hooks; 8 B of state. |
+| `LVGL_RUST_HANDLE_SLOTS` | 32 | 0 to 32,768 | Size of the handle registry, rounded up to a power of two: `8·N + 24` B of `.bss` on 32-bit targets. With feature `growable-registry`, the static slots and the size of the first chunk: the registry then grows to 2N, 4N, ... slots, up to 65,535, from the global allocator, and its static takes `8·N + 24 + 4·(16 − log2 N) + 8` B (cfg `lvgl_rust_growable`). `0` selects views-only mode (cfg `lvgl_rust_views_only`): no handles, `Owned`, timers, groups, components, deferred deletion or OBJ_ID hooks; 8 B of state. |
 | `LVGL_RUST_POST_SLOTS` | 4 | 0 to 255 | Entries of the `Lvgl::post` queue: `8·P + 4` B of `.bss`, none for 0. |
 | `LVGL_RUST_MAX_CALLBACK_DEPTH` | 16 | 1 to 254 | Nested callbacks (event handlers, timers, animations, observers) that run Rust code; deeper ones are skipped (`skipped` with `debug-counters`). |
 | `LVGL_RUST_GEN_STRICT` | unset | any non-empty value | Stale table entries (functions or parameters missing from these bindings and not in `universe.txt`) fail the build instead of printing a warning. Every mise task sets it to `1`. |

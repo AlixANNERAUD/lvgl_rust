@@ -8,9 +8,11 @@
 pub enum Error {
     /// The object (or resource) was deleted.
     Dead = 1,
-    /// No registry slot is left (`LVGL_RUST_HANDLE_SLOTS`).
+    /// No registry slot is left: the `LVGL_RUST_HANDLE_SLOTS` static slots,
+    /// or with `growable-registry` the 65,535 slots raw handles can address.
     RegistryFull,
-    /// LVGL could not allocate memory.
+    /// LVGL could not allocate memory, or with `growable-registry` the
+    /// global allocator could not allocate a chunk of registry slots.
     OutOfMemory,
     /// An argument is out of range or would make LVGL's state inconsistent
     /// (a parent cycle, loading a screen that has a parent, ...).
@@ -36,7 +38,10 @@ impl core::fmt::Display for Error {
         f.write_str(match self {
             Error::Dead => "the object was deleted",
             Error::RegistryFull => "no registry slot is left",
+            #[cfg(not(lvgl_rust_growable))]
             Error::OutOfMemory => "LVGL could not allocate memory",
+            #[cfg(lvgl_rust_growable)]
+            Error::OutOfMemory => "out of memory",
             Error::InvalidArg => "invalid argument",
             Error::Busy => "LVGL still uses it; retried later",
             Error::Internal => "LVGL keeps pointers to it: refused",

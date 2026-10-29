@@ -129,6 +129,7 @@ description = "Build lvgl-rust-sys and lvgl-rust for wasm32-unknown-unknown (no 
 run = [
   "cargo build -p lvgl-rust-sys --target wasm32-unknown-unknown",
   "DEP_LV_CONFIG_PATH={{config_root}}/lvgl-rust/conf CARGO_TARGET_DIR=target/safe-wasm32 cargo build -p lvgl-rust --target wasm32-unknown-unknown",
+  "DEP_LV_CONFIG_PATH={{config_root}}/lvgl-rust/conf CARGO_TARGET_DIR=target/safe-wasm32 cargo build -p lvgl-rust --target wasm32-unknown-unknown --features growable-registry",
 ]
 
 [tasks.cross-wasip1]
@@ -178,7 +179,10 @@ env.RUSTFLAGS = "-D warnings"
 # +8 B of .bss for the counters, defmt built for thumbv6m and free while
 # nothing logs, within the same budgets, except views-only thumbv6m with
 # the counters: 2368 B, since the part tables and the counters together
-# took 2310 B.
+# took 2310 B. `growable-registry` has its own budgets (5376 B, 7168 B):
+# chunk lookups and growth took 5146 B on thumbv6m and 6868 B on
+# riscv32imc, against 4518 B and 5674 B without it; its firmware brings a
+# bump allocator (firmware symbols, not counted).
 run = [
   "lvgl-rust/size-gate/gate.sh thumbv6m-none-eabi 16 4608",
   "lvgl-rust/size-gate/gate.sh thumbv6m-none-eabi 0 2304",
@@ -187,10 +191,12 @@ run = [
   "lvgl-rust/size-gate/gate.sh thumbv6m-none-eabi 16 4608 defmt,debug-counters",
   "lvgl-rust/size-gate/gate.sh thumbv6m-none-eabi 0 2368 debug-counters",
   "lvgl-rust/size-gate/gate.sh riscv32imc-unknown-none-elf 16 5888 debug-counters",
-  # The firmware builds with every feature off: check `async` and `heap`
-  # compile for both targets too.
-  "DEP_LV_CONFIG_PATH={{config_root}}/lvgl-rust/conf CARGO_TARGET_DIR=target/size-gate/features cargo check -q -p lvgl-rust --features async,heap --target thumbv6m-none-eabi",
-  "DEP_LV_CONFIG_PATH={{config_root}}/lvgl-rust/conf CARGO_TARGET_DIR=target/size-gate/features cargo check -q -p lvgl-rust --features async,heap --target riscv32imc-unknown-none-elf",
+  "lvgl-rust/size-gate/gate.sh thumbv6m-none-eabi 16 5376 growable-registry",
+  "lvgl-rust/size-gate/gate.sh riscv32imc-unknown-none-elf 16 7168 growable-registry",
+  # The firmware builds without `async` and `heap`: check they compile for
+  # both targets too, with `growable-registry`.
+  "DEP_LV_CONFIG_PATH={{config_root}}/lvgl-rust/conf CARGO_TARGET_DIR=target/size-gate/features cargo check -q -p lvgl-rust --features async,heap,growable-registry --target thumbv6m-none-eabi",
+  "DEP_LV_CONFIG_PATH={{config_root}}/lvgl-rust/conf CARGO_TARGET_DIR=target/size-gate/features cargo check -q -p lvgl-rust --features async,heap,growable-registry --target riscv32imc-unknown-none-elf",
 ]
 
 [tasks.overhead]
@@ -217,7 +223,7 @@ run = [
   "rustc --version",
   "cargo check --workspace --all-targets",
   "cargo check -p lvgl-rust-sys -p lvgl-rust --target wasm32-unknown-unknown",
-  "cargo check -p lvgl-rust-sys -p lvgl-rust --target riscv32imc-unknown-none-elf",
+  "cargo check -p lvgl-rust-sys -p lvgl-rust --target riscv32imc-unknown-none-elf --features lvgl-rust/growable-registry",
 ]
 
 # lvgl-rust builds lvgl-rust-sys with its own configuration (OBJ_ID hooks
@@ -228,14 +234,21 @@ description = "Run clippy on lvgl-rust"
 env.RUSTFLAGS = "-D warnings"
 env.DEP_LV_CONFIG_PATH = "{{config_root}}/lvgl-rust/conf"
 env.CARGO_TARGET_DIR = "target/safe"
-run = "cargo clippy -p lvgl-rust -p lvgl-rust-size-gate --all-targets --features lvgl-rust/async,lvgl-rust/heap,lvgl-rust/fmt,lvgl-rust/defmt,lvgl-rust/debug-counters"
+run = [
+  "cargo clippy -p lvgl-rust -p lvgl-rust-size-gate --all-targets --features lvgl-rust/async,lvgl-rust/heap,lvgl-rust/fmt,lvgl-rust/defmt,lvgl-rust/debug-counters",
+  "cargo clippy -p lvgl-rust --all-targets --features async,heap,fmt,growable-registry",
+]
 
 [tasks.test-safe]
-description = "Test lvgl-rust against LVGL"
+description = "Test lvgl-rust against LVGL, with a fixed and a growable registry"
 env.RUSTFLAGS = "-D warnings"
 env.DEP_LV_CONFIG_PATH = "{{config_root}}/lvgl-rust/conf"
 env.CARGO_TARGET_DIR = "target/safe"
-run = "cargo test -p lvgl-rust --features async,heap,fmt,defmt,debug-counters"
+# Both registries, each with the diagnostic features.
+run = [
+  "cargo test -p lvgl-rust --features async,heap,fmt,defmt,debug-counters",
+  "cargo test -p lvgl-rust --features async,heap,fmt,defmt,debug-counters,growable-registry",
+]
 
 [tasks.test-views-only]
 description = "Lint and test lvgl-rust without handles, on a config that keeps LVGL's own OBJ_ID support"
@@ -247,8 +260,9 @@ run = [
   "cargo clippy -p lvgl-rust --all-targets",
   "cargo clippy -p lvgl-rust --all-targets --features defmt,debug-counters",
   "cargo test -p lvgl-rust",
-  "cargo clippy -p lvgl-rust --all-targets --features async,heap",
-  "cargo test -p lvgl-rust --features async,heap",
+  # `growable-registry` has no effect without a registry.
+  "cargo clippy -p lvgl-rust --all-targets --features async,heap,growable-registry",
+  "cargo test -p lvgl-rust --features async,heap,growable-registry",
   "cargo test -p lvgl-rust --features defmt,debug-counters --test counters",
 ]
 
@@ -321,10 +335,12 @@ env.CARGO_TARGET_DIR = "target/miri"
 # The model passes C pointers through exposed provenance, as C code does.
 env.MIRIFLAGS = "-Zmiri-permissive-provenance"
 # Miri provides its own `strlen` & co. The second run adds `heap`: the
-# deferred-free list and `LvBox` against the model's heap.
+# deferred-free list and `LvBox` against the model's heap; the third the
+# registry chunks of `growable-registry`, against the global allocator.
 run = [
   "cargo miri test -p lvgl-rust --lib --no-default-features",
   "cargo miri test -p lvgl-rust --lib --no-default-features --features heap",
+  "cargo miri test -p lvgl-rust --lib --no-default-features --features growable-registry",
 ]
 
 [tasks.loom]
@@ -333,7 +349,11 @@ env.RUSTFLAGS = "--cfg loom"
 env.LVGL_RUST_HANDLE_SLOTS = "4"
 env.DEP_LV_CONFIG_PATH = "{{config_root}}/lvgl-rust/conf"
 env.CARGO_TARGET_DIR = "target/loom"
-run = "cargo test -p lvgl-rust --lib --release protocol"
+# The second run adds chunk publication (`growable-registry`).
+run = [
+  "cargo test -p lvgl-rust --lib --release protocol",
+  "cargo test -p lvgl-rust --lib --release --features growable-registry protocol",
+]
 
 # The access audit: compiles LVGL to LLVM IR with a pinned clang and
 # derives lvgl-rust-gen/tables/<version>/access.toml from its call graph.

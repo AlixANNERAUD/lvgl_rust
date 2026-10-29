@@ -12,6 +12,9 @@ build = "build.rs"
 # The diagnostic features of lvgl-rust, measured by `gate.sh ... <features>`.
 defmt = ["lvgl-rust/defmt"]
 debug-counters = ["lvgl-rust/debug-counters"]
+# Registry chunks from a global allocator: the firmware adds a bump
+# allocator, outside the crate's measured symbols.
+growable-registry = ["lvgl-rust/growable-registry"]
 
 [dependencies]
 lvgl-rust = { path = ".." }

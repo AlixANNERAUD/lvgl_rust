@@ -1,5 +1,15 @@
 //! The handle registry: one zeroed static in `.bss`.
 //!
+//! With the `growable-registry` feature (cfg `lvgl_rust_growable`), slots
+//! beyond the static ones live in chunks taken from the global allocator:
+//! chunk `k` holds slots `N·2^k` to `N·2^(k+1) - 1`, so the capacity doubles
+//! with each chunk, up to the 65,535 slots raw handles can address. Chunks
+//! never move and are never freed, not even by `deinit`: an `Owned` may store
+//! into its slot's `req` at any time. That leaks at most `65,535 - N` slots
+//! (524,024 B on 32-bit targets with N = 32, 1,048,048 B on 64-bit ones). The
+//! global allocator must therefore outlive LVGL: it must not take its memory
+//! from LVGL's heap, which `deinit` releases.
+//!
 //! Every field has a single writer. `Cell` fields are read and written only by
 //! the token holder (a [`Session`](crate::Session), or a trampoline called by
 //! it). Code without a token (`Owned::drop`, `tick_inc`) touches only the
@@ -19,6 +29,9 @@ use super::{
 use crate::{Error, config::HANDLE_SLOTS as N};
 #[cfg(not(lvgl_rust_views_only))]
 use core::{ffi::c_void, ptr, ptr::NonNull};
+
+#[cfg(lvgl_rust_growable)]
+use super::sync::AtomicPtr;
 
 /// Defines a `const fn`, except under loom, whose atomics have no `const`
 /// constructors.
@@ -172,6 +185,38 @@ pub(crate) struct Registry {
     pub(crate) hdr: Header,
     #[cfg(not(lvgl_rust_views_only))]
     slots: [Slot; N],
+    #[cfg(lvgl_rust_growable)]
+    growth: Growth,
+}
+
+/// The slots beyond the static ones: `CHUNKS` pointers and one slot, 56 B on
+/// 32-bit targets with N = 16 (12 pointers of 4 B and a slot of 8 B), 52 B
+/// with the default 32.
+#[cfg(lvgl_rust_growable)]
+#[repr(C)]
+struct Growth {
+    /// Chunk `k` (slots `N·2^k` to `N·2^(k+1) - 1`, see [`chunk_len`]), null
+    /// until published. Written once, by the token holder: see
+    /// [`Registry::grow`] for the ordering.
+    chunks: [AtomicPtr<Slot>; CHUNKS],
+    /// What indices of no published chunk resolve to: always FREE, so a
+    /// handle to it is dead. No index the registry hands out reaches it.
+    sentinel: Slot,
+}
+
+#[cfg(lvgl_rust_growable)]
+impl Growth {
+    const_fn! {
+        fn new() -> Self {
+            Self {
+                #[cfg(not(loom))]
+                chunks: [const { AtomicPtr::new(ptr::null_mut()) }; CHUNKS],
+                #[cfg(loom)]
+                chunks: core::array::from_fn(|_| AtomicPtr::new(ptr::null_mut())),
+                sentinel: Slot::new(),
+            }
+        }
+    }
 }
 
 // SAFETY: the `Cell` fields are accessed only while a session exists, or by
@@ -205,6 +250,8 @@ impl Registry {
                 slots: [const { Slot::new() }; N],
                 #[cfg(all(not(lvgl_rust_views_only), loom))]
                 slots: core::array::from_fn(|_| Slot::new()),
+                #[cfg(lvgl_rust_growable)]
+                growth: Growth::new(),
             }
         }
     }
@@ -237,18 +284,141 @@ const _: () = {
 };
 #[cfg(all(lvgl_rust_views_only, not(loom)))]
 const _: () = assert!(size_of::<Header>() == 8);
+#[cfg(all(lvgl_rust_growable, not(loom)))]
+const _: () = assert!(
+    size_of::<Growth>() == CHUNKS * size_of::<usize>() + size_of::<Slot>()
+        && size_of::<Registry>()
+            == size_of::<Header>() + (N + 1) * size_of::<Slot>() + CHUNKS * size_of::<usize>()
+);
 
 /// Slot index encoded in a raw handle (`generation << 16 | index + 1`). The
 /// mask keeps it in bounds without a panic path.
-#[cfg(not(lvgl_rust_views_only))]
+#[cfg(all(not(lvgl_rust_views_only), not(lvgl_rust_growable)))]
 pub(crate) fn index(raw: u32) -> usize {
     (raw as usize & 0xFFFF).wrapping_sub(1) & (N - 1)
 }
 
+/// Slot index encoded in a raw handle (`generation << 16 | index + 1`).
+/// [`Registry::slot`] maps the indices of no published chunk to a FREE slot.
+#[cfg(lvgl_rust_growable)]
+pub(crate) fn index(raw: u32) -> usize {
+    (raw as usize & 0xFFFF).wrapping_sub(1)
+}
+
+/// The indices an object id or a raw handle can name.
+#[cfg(all(not(lvgl_rust_views_only), not(lvgl_rust_growable)))]
+const INDEX_LIMIT: usize = N;
+#[cfg(lvgl_rust_growable)]
+const INDEX_LIMIT: usize = LIMIT;
+
+/// Slots raw handles can address: their low half holds `index + 1`.
+#[cfg(lvgl_rust_growable)]
+pub(crate) const LIMIT: usize = 0xFFFF;
+/// `N = 2^SHIFT`.
+#[cfg(lvgl_rust_growable)]
+const SHIFT: u32 = N.trailing_zeros();
+/// Chunks needed to reach `LIMIT`: 16 - log2(N), 1 to 16.
+#[cfg(lvgl_rust_growable)]
+pub(crate) const CHUNKS: usize = 16 - SHIFT as usize;
+
+/// The chunk holding slot `index` (at least `2^shift`) and its offset there,
+/// when the static part has `2^shift` slots: chunk `k` starts at
+/// `2^(shift + k)`, so `k = log2(index) - shift`. Wrapping arithmetic: no
+/// panic path for indices out of range (the chunk is then out of range too).
+#[cfg(lvgl_rust_growable)]
+pub(crate) const fn locate(index: usize, shift: u32) -> (usize, usize) {
+    let log2 = (usize::BITS - 1).wrapping_sub(index.leading_zeros());
+    let chunk = log2.wrapping_sub(shift) as usize;
+    (chunk, index.wrapping_sub(1usize.wrapping_shl(log2)))
+}
+
+/// Slots of chunk `chunk`: as many as before it, `2^(shift + chunk)`, except
+/// the last one, which stops at `LIMIT`.
+#[cfg(lvgl_rust_growable)]
+pub(crate) const fn chunk_len(chunk: usize, shift: u32) -> usize {
+    let start = 1usize.wrapping_shl(shift + chunk as u32);
+    if start > LIMIT - start {
+        LIMIT - start
+    } else {
+        start
+    }
+}
+
+/// The chunk that starts at `hwm` once every slot below it is in use, or
+/// `None` at `LIMIT`.
+#[cfg(lvgl_rust_growable)]
+pub(crate) const fn next_chunk(hwm: usize, shift: u32) -> Option<usize> {
+    if hwm >= LIMIT {
+        None
+    } else {
+        Some(locate(hwm, shift).0)
+    }
+}
+
+/// Slots addressable once `hwm` slots were used: `2^shift`, doubled by each
+/// chunk. A chunk is taken only when every slot is in use, so the chunks
+/// published are exactly those below `hwm`.
+#[cfg(lvgl_rust_growable)]
+pub(crate) const fn capacity(hwm: usize, shift: u32) -> usize {
+    let static_slots = 1usize << shift;
+    let total = if hwm <= static_slots {
+        static_slots
+    } else {
+        hwm.next_power_of_two()
+    };
+    if total > LIMIT { LIMIT } else { total }
+}
+
+/// Makes the next growth fail as an allocator returning null would.
+#[cfg(all(test, lvgl_rust_growable))]
+pub(crate) static FAIL_GROWTH: core::sync::atomic::AtomicBool =
+    core::sync::atomic::AtomicBool::new(false);
+
 #[cfg(not(lvgl_rust_views_only))]
 impl Registry {
+    #[cfg(not(lvgl_rust_growable))]
     pub(crate) fn slot(&self, index: usize) -> &Slot {
         &self.slots[index & (N - 1)]
+    }
+
+    #[cfg(lvgl_rust_growable)]
+    pub(crate) fn slot(&self, index: usize) -> &Slot {
+        match self.slots.get(index) {
+            Some(slot) => slot,
+            None => self.chunk_slot(index),
+        }
+    }
+
+    /// A slot of a chunk, or the FREE sentinel for an index of no published
+    /// chunk. Kept out of line: the static slots stay a bounds check away.
+    #[cfg(lvgl_rust_growable)]
+    #[inline(never)]
+    fn chunk_slot(&self, index: usize) -> &Slot {
+        let (chunk, offset) = locate(index, SHIFT);
+        let start = match self.growth.chunks.get(chunk) {
+            // Acquire: pairs with the Release of `grow`.
+            Some(cell) if index < LIMIT => cell.load(Ordering::Acquire),
+            _ => ptr::null_mut(),
+        };
+        if start.is_null() {
+            return &self.growth.sentinel;
+        }
+        // SAFETY: a published chunk holds `chunk_len(chunk)` initialized
+        // slots, never moved or freed; `index < LIMIT` keeps `offset` below
+        // that length.
+        unsafe { &*start.add(offset) }
+    }
+
+    /// Slots that can be taken without growing.
+    #[cfg(not(lvgl_rust_growable))]
+    fn capacity(&self) -> usize {
+        N
+    }
+
+    /// Slots that can be taken without growing.
+    #[cfg(lvgl_rust_growable)]
+    pub(crate) fn capacity(&self) -> usize {
+        capacity(self.high_water_mark(), SHIFT)
     }
 
     /// Slots ever used: those at or above it are implicitly free.
@@ -265,7 +435,7 @@ impl Registry {
         if kind == Kind::Obj {
             // SAFETY: `p` is a live object (callers hold a view of it).
             let id = unsafe { ffi::obj_id(p.cast()) };
-            if let Some(index) = id.checked_sub(1).filter(|&i| i < N) {
+            if let Some(index) = id.checked_sub(1).filter(|&i| i < INDEX_LIMIT) {
                 let slot = self.slot(index);
                 if slot.ptr.get() == p && slot.is_live(kind) {
                     return Ok(Minted {
@@ -276,7 +446,7 @@ impl Registry {
                 }
             }
         }
-        let index = self.alloc().ok_or(Error::RegistryFull)?;
+        let index = self.alloc()?;
         let slot = self.slot(index);
         slot.ptr.set(p);
         slot.meta.set(LIVE | kind.bits());
@@ -328,21 +498,84 @@ impl Registry {
         Ok(unsafe { NonNull::new_unchecked(p) })
     }
 
-    /// Fresh slots first, then the oldest free one.
-    fn alloc(&self) -> Option<usize> {
+    /// Fresh slots first, then the oldest free one, then (with growth) the
+    /// first slot of a new chunk.
+    fn alloc(&self) -> Result<usize, Error> {
         let hwm = self.hdr.hwm.get();
-        if (hwm as usize) < N {
+        if (hwm as usize) < self.capacity() {
             self.hdr.hwm.set(hwm + 1);
-            return Some(hwm as usize);
+            return Ok(hwm as usize);
         }
         let head = self.hdr.head.get();
-        let index = (head as usize).checked_sub(1)?;
+        let Some(index) = (head as usize).checked_sub(1) else {
+            return self.grow(hwm);
+        };
         let next = self.slot(index).next();
         self.hdr.head.set(next);
         if next == 0 {
             self.hdr.tail.set(0);
         }
-        Some(index)
+        Ok(index)
+    }
+
+    #[cfg(not(lvgl_rust_growable))]
+    fn grow(&self, _: u16) -> Result<usize, Error> {
+        Err(Error::RegistryFull)
+    }
+
+    /// Every slot is in use (`hwm` is the capacity): publishes the next
+    /// chunk and takes its first slot.
+    ///
+    /// Publication: the chunk is fully initialized (zeroed: FREE,
+    /// generation 0, no request) before its pointer is stored with Release,
+    /// and readers load it with Acquire. The token holder reads its own
+    /// stores, or those of an earlier holder, ordered by the `LvglAccess`
+    /// contract. Code without a token (`Owned::drop`, through
+    /// `request_drop`) reads only the chunk of an `Owned`, which was minted
+    /// under the token after the store; moving the `Owned` to another
+    /// thread synchronizes with that thread (as `Send` requires: a channel,
+    /// a spawn, a lock), so the store happens before the load and the load
+    /// sees the pointer (it is written once: no later value exists). Loads
+    /// and stores only, no read-modify-write: this works without
+    /// compare-and-swap.
+    #[cfg(lvgl_rust_growable)]
+    #[cold]
+    fn grow(&self, hwm: u16) -> Result<usize, Error> {
+        let index = hwm as usize;
+        let Some((chunk, cell)) = next_chunk(index, SHIFT)
+            .and_then(|chunk| Some((chunk, self.growth.chunks.get(chunk)?)))
+        else {
+            return Err(Error::RegistryFull);
+        };
+        let len = chunk_len(chunk, SHIFT);
+        // SAFETY: a nonzero size (a chunk has at least one slot) of at most
+        // 32,767 slots of at most 16 B, aligned for `Slot`.
+        let layout = unsafe {
+            alloc::alloc::Layout::from_size_align_unchecked(
+                len * size_of::<Slot>(),
+                align_of::<Slot>(),
+            )
+        };
+        #[cfg(test)]
+        if FAIL_GROWTH.load(core::sync::atomic::Ordering::Relaxed) {
+            FAIL_GROWTH.store(false, core::sync::atomic::Ordering::Relaxed);
+            return Err(Error::OutOfMemory);
+        }
+        // SAFETY: nonzero size. All-zero bytes are a FREE slot: null
+        // pointer, generation 0, no flags, no request.
+        let start = unsafe { alloc::alloc::alloc_zeroed(layout) }.cast::<Slot>();
+        if start.is_null() {
+            return Err(Error::OutOfMemory);
+        }
+        // Loom's atomics are not plain bytes: construct them.
+        #[cfg(loom)]
+        for offset in 0..len {
+            // SAFETY: in the block just allocated; the zeroes need no drop.
+            unsafe { start.add(offset).write(Slot::new()) };
+        }
+        cell.store(start, Ordering::Release);
+        self.hdr.hwm.set(hwm + 1);
+        Ok(index)
     }
 
     /// Records a dropped `Owned` (no token needed). Paired with the drain's
@@ -407,7 +640,7 @@ impl Registry {
 
     /// The OBJ_ID free hook: `o` is being destroyed and `id` is its id.
     pub(crate) fn on_free(&self, o: *mut ffi::lv_obj_t, id: usize) {
-        let Some(index) = id.checked_sub(1).filter(|&i| i < N) else {
+        let Some(index) = id.checked_sub(1).filter(|&i| i < INDEX_LIMIT) else {
             return; // untracked object
         };
         let slot = self.slot(index);
