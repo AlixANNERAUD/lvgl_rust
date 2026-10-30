@@ -272,7 +272,9 @@ impl Obj {
     /// Deletes this object at the next drain (next
     /// [`Lvgl::enter`](crate::Lvgl::enter) or after
     /// [`Lvgl::timer_handler`](crate::Lvgl::timer_handler)). Usable from
-    /// callbacks. Takes a registry slot until then if the object has none.
+    /// callbacks. Takes a registry slot until then if the object has none
+    /// ([`Error::RegistryFull`], or [`Error::OutOfMemory`] when a
+    /// `growable-registry` cannot grow).
     #[cfg(not(lvgl_rust_views_only))]
     pub fn delete_later(&self) -> Result<(), Error> {
         self.request(P_DELETE, structural::check_delete)
@@ -309,14 +311,17 @@ impl Obj {
 #[cfg(not(lvgl_rust_views_only))]
 pub trait WidgetExt: Widget + private::Sealed {
     /// A handle to this object, taking a registry slot the first time
-    /// ([`Error::RegistryFull`] when none is left).
+    /// ([`Error::RegistryFull`] when none is left; with
+    /// `growable-registry`, [`Error::OutOfMemory`] when the registry cannot
+    /// grow).
     fn handle(&self) -> Result<Handle<Self>, Error>
     where
         Self: Sized;
 
     /// Takes ownership: the object is deleted when the [`Owned`] is dropped.
-    /// Fails with [`Error::AlreadyOwned`] for an object that has an owner and
-    /// [`Error::Internal`] for objects LVGL manages (display layers).
+    /// Fails with [`Error::AlreadyOwned`] for an object that has an owner,
+    /// [`Error::Internal`] for objects LVGL manages (display layers), and as
+    /// [`handle`](WidgetExt::handle) when it needs a slot.
     fn own(&self) -> Result<Owned<Self>, Error>
     where
         Self: Sized;

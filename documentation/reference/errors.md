@@ -13,8 +13,8 @@ the error, so it is dropped.
 | Variant | Meaning | `Display` (feature `fmt`) |
 | --- | --- | --- |
 | `Dead` | The object or resource was deleted, or is about to be. | the object was deleted |
-| `RegistryFull` | No handle slot is left (`LVGL_RUST_HANDLE_SLOTS`). | no registry slot is left |
-| `OutOfMemory` | LVGL could not allocate memory. | LVGL could not allocate memory |
+| `RegistryFull` | No handle slot is left (`LVGL_RUST_HANDLE_SLOTS`, or 65,535 slots with `growable-registry`). | no registry slot is left |
+| `OutOfMemory` | LVGL could not allocate memory, or a growable registry could not allocate a chunk. | LVGL could not allocate memory (out of memory with `growable-registry`) |
 | `InvalidArg` | An argument is out of range or would make LVGL's state inconsistent. | invalid argument |
 | `Busy` | LVGL still uses the object, or a queue is full; retrying later can succeed. | LVGL still uses it; retried later |
 | `Internal` | LVGL keeps pointers to the object (a display layer, a part of a widget): the operation is refused. | LVGL keeps pointers to it: refused |
@@ -51,6 +51,11 @@ inside callbacks, when the object or an ancestor is being deleted.
 | `Obj::on_removable`, `Obj::subscribe_owned`, `ObjMut<Keyboard>::set_textarea` | as above |
 | `Lvgl::timer`, `Lvgl::timer_boxed`, `Lvgl::create_group` | as above |
 
+With feature `growable-registry`, these calls take a slot from a new chunk
+instead, and return `RegistryFull` only once 65,535 slots are in use (the
+limit of the 16-bit index in a handle). A failed allocation of the chunk
+is `OutOfMemory` (below).
+
 ## OutOfMemory
 
 | Returned by | Action |
@@ -59,6 +64,7 @@ inside callbacks, when the object or an ancestor is being deleted.
 | `Obj::on*` registrations, `Obj::subscribe`, `subscribe_owned`, `observe`, `observe_obj`, `bind_value`, `bind_checked`, `bind_text` | as above |
 | `Obj::on_boxed`, `Lvgl::timer_boxed`, `set_src_owned`, `set_src_buffer`, `Display::create_boxed`, `Indev::create_boxed`, `create_button_boxed` | as above |
 | `Lvgl::timer`, `Lvgl::create_group`, `ObjMut::animate`, `Display::create`, `Indev::create`, `Indev::create_button`, `Chart::add_series` | as above |
+| Every call listed under [RegistryFull](#registryfull), with `growable-registry` | Every slot is in use and the global allocator returned null for the next chunk (as many slots as the registry has, 8 B each on 32-bit targets). Nothing is taken: the object, timer or group is left as it was (a new timer or group is deleted again). Free memory, or drop handles so that slots come back. |
 | `ObjMut::set_grid_dsc_array` | A template could not be stored; the layout is not set. |
 | `Label::set_text_str`, `Label::set_text_fmt` | The label is left empty. |
 

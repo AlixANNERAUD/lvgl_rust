@@ -476,8 +476,9 @@ unsafe extern "C" fn owned_delete_trampoline<E: Copy + Send + 'static, const N: 
 impl Obj {
     /// Records the events `options` select into a queue of `N` events
     /// (1 to 255) on LVGL's heap, through `capture`, and returns its
-    /// receiver. Takes the object's registry slot ([`Error::RegistryFull`]),
-    /// or shares the one it has.
+    /// receiver. Takes the object's registry slot ([`Error::RegistryFull`],
+    /// or [`Error::OutOfMemory`] when a growable registry cannot grow), or
+    /// shares the one it has.
     pub fn subscribe_owned<E: Copy + Send + 'static, const N: usize>(
         &self,
         options: impl Into<SubscribeOptions>,

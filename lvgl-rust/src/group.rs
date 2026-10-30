@@ -21,7 +21,9 @@ impl Sealed for Group {}
 impl crate::Tracked for Group {}
 
 impl Lvgl {
-    /// Creates a group. Takes a registry slot; dropping the [`Owned`]
+    /// Creates a group. Takes a registry slot ([`Error::RegistryFull`], or
+    /// [`Error::OutOfMemory`] when a `growable-registry` cannot grow, as
+    /// when LVGL cannot allocate the group); dropping the [`Owned`]
     /// deletes the group at the next drain (its objects and input devices
     /// are detached).
     pub fn create_group(&self) -> Result<Owned<Group>, Error> {

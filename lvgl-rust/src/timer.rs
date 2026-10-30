@@ -91,8 +91,10 @@ impl Lvgl {
     /// Calls `f(ctx, data)` every `period_ms` from
     /// [`Lvgl::timer_handler`]. `f` is a function item or a closure without
     /// captures, and `data` a [`UserData`] value stored in the timer: no
-    /// allocation besides LVGL's timer. Takes a registry slot; dropping the
-    /// [`Owned`] deletes the timer at the next drain.
+    /// allocation besides LVGL's timer. Takes a registry slot
+    /// ([`Error::RegistryFull`], or [`Error::OutOfMemory`] when a
+    /// `growable-registry` cannot grow); dropping the [`Owned`] deletes the
+    /// timer at the next drain.
     pub fn timer<D, F>(&self, period_ms: u32, data: D, f: F) -> Result<Owned<Timer>, Error>
     where
         D: UserData,

@@ -81,6 +81,17 @@ your interface needs, in `.cargo/config.toml`:
 LVGL_RUST_HANDLE_SLOTS = "16"
 ```
 
+If the number of handles cannot be bounded at build time, enable the
+`growable-registry` feature rather than sizing for the worst case: the
+static slots stay, and chunks from the global allocator double the
+capacity when they run out, up to 65,535 slots. It needs a
+`#[global_allocator]`, adds 4 B per possible chunk and an 8-byte slot to
+the static (52 B with 32 slots, 56 B with 16, on 32-bit targets) and
+code (628 B on `thumbv6m-none-eabi`, 1194 B on `riscv32imc-unknown-none-elf`
+in the size gate's firmware with 16 slots), and never frees a chunk, so the peak number of slots stays allocated. Keep
+it off on targets without an allocator, or when a fixed bound is known:
+`Error::RegistryFull` then reports the bound being reached.
+
 ### 4. Drop handles altogether (views-only mode)
 
 `LVGL_RUST_HANDLE_SLOTS=0` keeps sessions, views and `ObjMut` and removes
@@ -127,7 +138,8 @@ codegen-units = 1
 - **Per-object cost of handles.** Every LVGL object carries the 4-byte
   OBJ_ID field when handles are on, whether or not it has a handle.
 - **Too few slots fail at run time, not at build time.** Check the
-  `Result` of `handle()`, `own()` and `delete_later()`.
+  `Result` of `handle()`, `own()` and `delete_later()` (with
+  `growable-registry`, for `Error::OutOfMemory` too).
 - **Views-only mode removes API.** Code using `Handle`, `Owned` or timers
   stops compiling; plan the mode before writing the interface.
 - **Firmware numbers are one configuration.** Rerun `mise run overhead`

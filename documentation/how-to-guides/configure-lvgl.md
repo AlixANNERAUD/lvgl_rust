@@ -128,6 +128,18 @@ Each registry slot costs 8 bytes of `.bss` on 32-bit targets, and each
 `post` entry 8 bytes: [Reduce the footprint](reduce-the-footprint.md)
 and the [overhead reference](../reference/overhead.md) give the totals.
 
+When the application has a global allocator and cannot bound its handles,
+enable the `growable-registry` feature of lvgl-rust instead of a large
+`LVGL_RUST_HANDLE_SLOTS`: the registry starts with that many static
+slots and allocates chunks that double it when they are all in use, up
+to 65,535 slots, never freed
+([features reference](../reference/features.md)).
+
+```toml
+[dependencies]
+lvgl-rust = { git = "https://github.com/AlixANNERAUD/lvgl_rust", features = ["growable-registry"] }
+```
+
 ### 6. Build without handles (optional)
 
 With `LVGL_RUST_HANDLE_SLOTS=0`, lvgl-rust keeps only sessions, views and

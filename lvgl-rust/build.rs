@@ -21,6 +21,7 @@ const DEFAULT_POST: u32 = 4;
 fn main() {
     println!("cargo::rustc-check-cfg=cfg(lvgl_rust_views_only)");
     println!("cargo::rustc-check-cfg=cfg(lvgl_rust_docs)");
+    println!("cargo::rustc-check-cfg=cfg(lvgl_rust_growable)");
 
     let mut errors = Vec::new();
     let slots = match handle_slots(env_var(SLOTS_VAR).as_deref()) {
@@ -46,6 +47,10 @@ fn main() {
     };
     if slots == 0 {
         println!("cargo::rustc-cfg=lvgl_rust_views_only");
+    } else if env::var_os("CARGO_FEATURE_GROWABLE_REGISTRY").is_some() {
+        // Views-only mode has no registry to grow: the feature does nothing
+        // there, so a dependency enabling it cannot break such a build.
+        println!("cargo::rustc-cfg=lvgl_rust_growable");
     }
     // For dependents' build scripts: `DEP_LVGL_RUST_HANDLE_SLOTS`.
     println!("cargo::metadata=HANDLE_SLOTS={slots}");

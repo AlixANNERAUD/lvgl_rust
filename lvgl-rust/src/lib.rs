@@ -1,7 +1,8 @@
 //! Safe, idiomatic bindings to [LVGL](https://lvgl.io), built on
 //! [`lvgl_rust_sys`].
 //!
-//! The crate is `no_std`, needs no allocator and never locks: callers prove
+//! The crate is `no_std`, needs no allocator (unless the registry is made
+//! growable, below) and never locks: callers prove
 //! exclusive access to LVGL with a token ([`LvglAccess`]) and get a
 //! [`Session`], from which every call is made.
 //!
@@ -21,7 +22,9 @@
 //! Build variables: `LVGL_RUST_HANDLE_SLOTS` (registry size, default 32;
 //! `0` for views only, without handles) and `LVGL_RUST_MAX_CALLBACK_DEPTH`
 //! (default 16) and `LVGL_RUST_POST_SLOTS` (entries of [`Lvgl::post`],
-//! default 4).
+//! default 4). With the `growable-registry` feature, the registry grows
+//! past `LVGL_RUST_HANDLE_SLOTS` in chunks from the global allocator, up to
+//! 65,535 slots, never freed.
 //!
 //! Diagnostic features, free when off: `defmt` (`defmt::Format` for
 //! [`Error`], handles and the public enums and plain types) and
@@ -29,6 +32,10 @@
 //! without returning an error, in 8 bytes of `.bss`).
 
 #![no_std]
+
+// Chunks of registry slots (`growable-registry`): the global allocator.
+#[cfg(lvgl_rust_growable)]
+extern crate alloc;
 
 #[allow(dead_code)] // `HANDLE_SLOTS` is unused in views-only mode.
 mod config {

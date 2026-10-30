@@ -82,11 +82,58 @@ lazily: only objects you take a handle to, own, or request a deferred
 operation on use one, plus owned timers and groups. When none is left,
 the call returns `Error::RegistryFull`; nothing is allocated.
 
-A fixed capacity is a deliberate trade-off. A growable table would need
-an allocator and a fallible, unbounded operation in the middle of
-ordinary calls; most interfaces hold a known, small number of objects
-they need to find again, and everything else is reached through views
-from a parent or an event.
+A fixed capacity is the default trade-off. A growable table needs an
+allocator and a fallible operation in the middle of ordinary calls; most
+interfaces hold a known, small number of objects they need to find
+again, and everything else is reached through views from a parent or an
+event.
+
+### Growing the registry (`growable-registry`)
+
+For applications whose number of handles is not known in advance, the
+`growable-registry` feature keeps the N static slots and adds chunks
+from the global allocator (the `alloc` crate, no `std`) when every slot
+is in use and the free list is empty:
+
+```text
+static REG                      global allocator (never freed)
+┌ Header, 24 B ┐                chunk 0: slots N   .. 2N - 1   (N slots)
+├ N slots ─────┤                chunk 1: slots 2N  .. 4N - 1   (2N slots)
+├ chunk table ─┤ ─ pointers ─▶  chunk 2: slots 4N  .. 8N - 1   (4N slots)
+│ sentinel slot│                ...
+└──────────────┘                last:    slots ... 65,534
+```
+
+Each chunk is as large as the registry before it, so the capacity
+doubles (N·2^k after k chunks) and a slot index finds its chunk in
+constant time: chunk `log2(index) − log2(N)`, at offset
+`index − 2^log2(index)`. The limit is 65,535 slots, since a handle keeps
+`index + 1` in 16 bits (handles stay 4 bytes); the last chunk stops
+there. The chunk table holds one pointer per possible chunk,
+16 − log2(N) of them, appended only; with the sentinel slot (what an
+index of no published chunk resolves to: always free, so dead) it costs
+52 B of `.bss` on 32-bit targets with the default 32 slots.
+
+Slots never move: a `BTreeMap` or a reallocated array would move them,
+while an `Owned` dropped on another thread writes into its slot without
+the token. For the same reason chunks are never freed, not even by
+`Lvgl::deinit` (an `Owned` dropped after it still stores its request):
+at most (65,535 − N) slots of 8 B (524,024 B with N = 32 on 32-bit
+targets; 16 B per slot on 64-bit ones) stay allocated once reached. The
+global allocator must outlive LVGL for the same reason: it must not take
+its memory from LVGL's own heap, which `Lvgl::deinit` releases. When the allocator returns null, the call that
+needed a slot returns `Error::OutOfMemory` and takes nothing;
+`Error::RegistryFull` remains for the 65,535-slot limit.
+
+A chunk is published once: zeroed (every slot free, generation 0, no
+request), then its pointer stored with Release ordering; every lookup
+loads it with Acquire. The token holder sees its own stores and those of
+earlier holders (ordered by the `LvglAccess` contract). A thread without
+the token only reaches a chunk through an `Owned` minted in it, after
+the store; moving that `Owned` to the thread synchronized with it (as
+`Send` requires: a channel, a spawn, a lock), so the pointer is visible
+there. Like the rest of the protocol below, this is loads and stores
+only, without compare-and-swap.
 
 ### Kept in sync by LVGL
 
@@ -137,7 +184,8 @@ drain looks again. Code without the token writes only `req`, `any_req`
 and `ticks`; every other field is a `Cell` touched only by the token
 holder, and successive holders are ordered by the `LvglAccess` contract.
 The loom models in `lvgl-rust/src/tests.rs` (`mise run loom`) explore
-the interleavings of drops racing the drain, and Miri runs the core tests
+the interleavings of drops racing the drain (and, with
+`growable-registry`, racing the publication of a chunk), and Miri runs the core tests
 against a Rust model of the LVGL functions the core calls (`mise run
 miri`).
 

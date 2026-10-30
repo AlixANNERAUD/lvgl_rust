@@ -15,6 +15,7 @@ Every Cargo feature of the three crates. Memory costs come from
 | `fmt` | no | `Label::set_text_fmt` (32-byte chunks), `impl Display for Error`, `impl core::error::Error for Error`. | Links `core::fmt`. Without it, `Label::set_text_i32` and `set_text_u32` format numbers without `core::fmt`. | — |
 | `defmt` | no | `defmt::Format` for `Error`, `Handle`, `Owned`, the event codes and the other public enums and plain types. Adds the `defmt` 1.0 dependency. | Not measured on its own. The size gate's thumbv6m firmware with `defmt` and `debug-counters` has 80 B more crate code than without them (4578 B against 4498 B) and stays within the same 4608 B budget (see [Overhead measurements](overhead.md#static-memory-in-firmware)). | — |
 | `debug-counters` | no | `DebugCounters::read` and `DebugCounters::reset`: four 16-bit counters (`drained`, `refused`, `skipped`, `leaked`). | 8 B of `.bss`, plus code: +28 B on thumbv6m in views-only mode (2274 B against 2246 B), +122 B on riscv32imc with 16 slots (5780 B against 5658 B) ([Overhead measurements](overhead.md#static-memory-in-firmware)). | — |
+| `growable-registry` | no | Handle slots beyond the `LVGL_RUST_HANDLE_SLOTS` static ones: when every slot is in use, the registry allocates a chunk from the global allocator (the `alloc` crate) as large as the registry so far (N, 2N, 4N, ... slots), up to the 65,535 slots raw handles address. `handle()`, `own()`, `create_owned`, `delete_later` and the other calls that take a slot then fail with `Error::OutOfMemory` when the allocator returns null, and with `Error::RegistryFull` only at 65,535 slots. No effect in views-only mode (`LVGL_RUST_HANDLE_SLOTS=0`). | The registry static grows by a pointer per possible chunk (16 − log2 N) and an 8-byte sentinel slot: 52 B of `.bss` on 32-bit targets with the default 32 slots, 56 B with 16. Each chunk is 8 B per slot on 32-bit targets (16 B on 64-bit ones), plus the allocator's header; chunks are never freed, not even by `Lvgl::deinit`, so at most (65,535 − N) × 8 B (524,024 B with N = 32) stay allocated. The application must provide a `#[global_allocator]` that does not take its memory from LVGL's heap (`Lvgl::deinit` releases that heap, the chunks outlive it). Code: the size gate's firmware with 16 slots has 5146 B of crate code on `thumbv6m-none-eabi` (4518 B without the feature) and 6868 B on `riscv32imc-unknown-none-elf` (5674 B without), measured by `mise run size-gate` with a bump allocator in the firmware. | — |
 | `shadcn-theme` | no | `lvgl-rust-sys/shadcn-theme`. | See [lvgl-rust-sys](#lvgl-rust-sys). | — |
 | `color_depth_1`, `color_depth_8`, `color_depth_16`, `color_depth_24`, `color_depth_32` | no | The matching `lvgl-rust-sys` feature. | — | `LV_COLOR_FORMAT_DEFAULT` guarded by `#ifndef`. |
 
@@ -26,8 +27,8 @@ of `lvgl-rust-sys`. It does not forward `use-vendored-config`: set
 
 `async` and `heap` are checked to compile for `thumbv6m-none-eabi` and
 `riscv32imc-unknown-none-elf` by `mise run size-gate`; the size gate
-firmware itself builds without them (default features, plus `defmt` and
-`debug-counters` in the runs that measure them).
+firmware itself builds without them (default features, plus `defmt`,
+`debug-counters` or `growable-registry` in the runs that measure them).
 
 ## lvgl-rust-sys
 

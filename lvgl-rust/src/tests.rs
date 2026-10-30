@@ -511,25 +511,25 @@ mod handles {
             .unwrap()
             .handle()
             .unwrap();
+        let stale_index = crate::base::registry::index(stale.raw());
         stale.get_mut(&mut lv).unwrap().delete().unwrap();
-        // Take every free slot, so the stale handle's slot is reused.
-        let mut handles = std::vec::Vec::new();
-        while let Ok(handle) = Obj::create(&mut lv.screen_active_mut().unwrap())
-            .unwrap()
-            .handle()
-        {
-            handles.push(handle);
-        }
-        assert_eq!(stale.get(&lv).err(), Some(Error::Dead));
-        assert!(handles.iter().all(|h| h.get(&lv).is_ok()));
-        // The object created by the failed iteration has no handle.
-        lv.edit(|lv| lv.screen_active()?.child(-1))
-            .unwrap()
-            .delete()
-            .unwrap();
-        for handle in handles {
+        // Take slots, giving back the others at once, until the stale
+        // handle's slot is reused (fresh slots first, then the free list in
+        // order: at most every slot once).
+        let reused = loop {
+            let handle = Obj::create(&mut lv.screen_active_mut().unwrap())
+                .unwrap()
+                .handle()
+                .unwrap();
+            if crate::base::registry::index(handle.raw()) == stale_index {
+                break handle;
+            }
             handle.get_mut(&mut lv).unwrap().delete().unwrap();
-        }
+        };
+        assert_ne!(reused, stale);
+        assert_eq!(stale.get(&lv).err(), Some(Error::Dead));
+        assert!(reused.get(&lv).is_ok());
+        reused.get_mut(&mut lv).unwrap().delete().unwrap();
     }
 
     #[test]
@@ -701,6 +701,212 @@ mod model {
     }
 }
 
+/// The `growable-registry` feature: chunk arithmetic, then objects in
+/// chunks, against LVGL or its model.
+#[cfg(all(lvgl_rust_growable, not(loom)))]
+mod growth {
+    use super::*;
+    use crate::base::registry::{
+        CHUNKS, FAIL_GROWTH, Kind, LIMIT, capacity, chunk_len, index, locate, next_chunk,
+    };
+    use crate::config::HANDLE_SLOTS as N;
+    use core::sync::atomic::Ordering;
+
+    /// Chunks tile the indices from `2^shift` to `LIMIT - 1`, in order,
+    /// each as large as everything before it except the last one.
+    fn check_chunks(shift: u32) {
+        let static_slots = 1usize << shift;
+        let chunks = 16 - shift as usize;
+        let mut expected = (0, 0);
+        for index in static_slots..LIMIT {
+            assert_eq!(locate(index, shift), expected, "index {index}");
+            expected.1 += 1;
+            if expected.1 == chunk_len(expected.0, shift) {
+                expected = (expected.0 + 1, 0);
+            }
+        }
+        assert_eq!(expected, (chunks, 0));
+        let total: usize = (0..chunks).map(|chunk| chunk_len(chunk, shift)).sum();
+        assert_eq!(static_slots + total, LIMIT);
+        // `LIMIT` is just past the last chunk (`slot` checks it), larger
+        // indices fall outside the chunk table.
+        assert_eq!(
+            locate(LIMIT, shift),
+            (chunks - 1, chunk_len(chunks - 1, shift))
+        );
+        assert!(locate(LIMIT + 1, shift).0 >= chunks);
+        assert!(locate(usize::MAX, shift).0 >= chunks);
+    }
+
+    #[test]
+    fn chunks_double_the_capacity_up_to_the_handle_limit() {
+        assert_eq!(CHUNKS, 16 - N.trailing_zeros() as usize);
+        // One static slot, the default 32, and the largest static part.
+        for shift in [0, N.trailing_zeros(), 15] {
+            check_chunks(shift);
+        }
+        // With N = 32: 32, then 64, 128, ..., 32,768, then 65,535.
+        for shift in [0, N.trailing_zeros(), 15] {
+            let static_slots = 1usize << shift;
+            assert_eq!(capacity(0, shift), static_slots);
+            assert_eq!(capacity(static_slots, shift), static_slots);
+            let mut total = static_slots;
+            for chunk in 0..16 - shift as usize {
+                assert_eq!(next_chunk(total, shift), Some(chunk));
+                assert_eq!(chunk_len(chunk, shift), total.min(LIMIT - total));
+                total += chunk_len(chunk, shift);
+                assert_eq!(capacity(total, shift), total);
+                assert_eq!(capacity(total - chunk_len(chunk, shift) + 1, shift), total);
+            }
+            assert_eq!(total, LIMIT);
+            // At the limit, no chunk is left: the registry is full.
+            assert_eq!(next_chunk(LIMIT, shift), None);
+            assert_eq!(capacity(LIMIT, shift), LIMIT);
+        }
+        // 65,535 slots keep `index + 1` in the low half of a raw handle.
+        assert_eq!(index(0x0001_FFFF), LIMIT - 1);
+    }
+
+    #[test]
+    fn indices_of_no_chunk_resolve_to_a_free_slot() {
+        let mut guard = guard();
+        let lv = session(&mut guard);
+        let reg = reg();
+        // A raw handle whose index no chunk holds yet, and one with no index.
+        for raw in [0x0003_FFFF, 0x0003_0000] {
+            assert_eq!(reg.slot(index(raw)).state(), 0);
+            assert_eq!(
+                reg.resolve(raw, Kind::Obj, core::ptr::null()).err(),
+                Some(Error::Dead)
+            );
+        }
+        drop(lv);
+    }
+
+    /// Fills the slots, grows into several chunks, then gives everything
+    /// back: allocation failure, resolution, `Owned` drops on both sides of
+    /// chunk boundaries, reuse with new generations, `delete_later` and
+    /// timers in chunks.
+    #[test]
+    fn objects_grow_into_chunks_and_give_their_slots_back() {
+        let mut guard = guard();
+        let mut lv = session(&mut guard);
+        let reg = reg();
+        let before = used_slots();
+        let mut handles = std::vec::Vec::new();
+        fn new_handle(lv: &mut Lvgl) -> Result<Handle<Obj>, Error> {
+            Obj::create(&mut lv.screen_active_mut().unwrap())
+                .unwrap()
+                .handle()
+        }
+        // Every slot in use, without growing.
+        let start = reg.capacity();
+        while used_slots() < start {
+            handles.push(new_handle(&mut lv).unwrap());
+        }
+        assert_eq!(reg.capacity(), start);
+
+        // The allocator fails: no slot, the object stays untracked.
+        FAIL_GROWTH.store(true, Ordering::Relaxed);
+        assert_eq!(new_handle(&mut lv).err(), Some(Error::OutOfMemory));
+        assert_eq!(used_slots(), start);
+        FAIL_GROWTH.store(true, Ordering::Relaxed);
+        let last = lv.screen_active().unwrap().child(-1).unwrap();
+        assert_eq!(last.delete_later(), Err(Error::OutOfMemory));
+        assert_eq!(used_slots(), start);
+        lv.edit(|lv| lv.screen_active()?.child(-1))
+            .unwrap()
+            .delete()
+            .unwrap();
+        assert_eq!(reg.capacity(), start);
+
+        // Growth: the first slot of the new chunk, then the rest of it,
+        // until at least two chunks follow the static part.
+        let target = start.max(4 * N);
+        while reg.capacity() < target || used_slots() < reg.capacity() {
+            let capacity = reg.capacity();
+            let handle = new_handle(&mut lv).unwrap();
+            if used_slots() > capacity {
+                assert_eq!(index(handle.raw()), capacity);
+                assert_eq!(reg.capacity(), 2 * capacity);
+            }
+            handles.push(handle);
+        }
+        assert!(used_slots() >= 4 * N);
+        for handle in &handles {
+            let slot = reg.slot(index(handle.raw()));
+            assert_eq!(slot.ptr(), handle.get(&lv).unwrap().as_ptr().cast());
+        }
+
+        // `Owned` on each side of the boundaries of the static part and of
+        // chunk 0, dropped on another thread: those this test took (a slot
+        // an earlier test left in use is not its to drop).
+        let owned: std::vec::Vec<_> = [N - 1, N, 2 * N - 1, 2 * N]
+            .iter()
+            .filter_map(|&i| handles.iter().find(|h| index(h.raw()) == i))
+            .map(|handle| handle.get(&lv).unwrap().own().unwrap())
+            .collect();
+        if before == 0 {
+            assert_eq!(owned.len(), 4);
+        }
+        let boundaries: std::vec::Vec<_> = owned.iter().map(|o| index(o.handle().raw())).collect();
+        let dropped: std::vec::Vec<_> = owned.iter().map(|o| o.handle()).collect();
+        #[cfg(not(target_os = "wasi"))]
+        std::thread::spawn(move || drop(owned)).join().unwrap();
+        #[cfg(target_os = "wasi")]
+        drop(owned);
+        lv.timer_handler();
+        assert!(
+            dropped
+                .iter()
+                .all(|h| h.get(&lv).err() == Some(Error::Dead))
+        );
+        handles.retain(|h| !dropped.contains(h));
+        assert_eq!(used_slots(), before + handles.len());
+
+        // The freed slots come back from the free list (every other slot is
+        // in use), with a new generation.
+        let mut reused = std::vec::Vec::new();
+        for _ in &boundaries {
+            let handle = new_handle(&mut lv).unwrap();
+            assert!(boundaries.contains(&index(handle.raw())));
+            assert!(!dropped.contains(&handle));
+            reused.push(handle);
+        }
+        assert!(
+            dropped
+                .iter()
+                .all(|h| h.get(&lv).err() == Some(Error::Dead))
+        );
+        handles.extend(reused);
+
+        // A temporary slot for `delete_later`, in a new chunk.
+        let capacity = reg.capacity();
+        Obj::create(&mut lv.screen_active_mut().unwrap()).unwrap();
+        let object = lv.screen_active().unwrap().child(-1).unwrap();
+        object.delete_later().unwrap();
+        let temp = reg.slot(capacity);
+        assert_eq!(temp.ptr(), object.as_ptr().cast());
+        assert!(temp.has(crate::base::registry::meta::TEMP));
+        lv.timer_handler();
+        assert_eq!(temp.state(), 0);
+        assert_eq!(used_slots(), before + handles.len());
+
+        // A timer slot in a chunk, found by its pointer.
+        let timer = core::ptr::without_provenance_mut(0x1000);
+        let minted = reg.mint(timer, Kind::Timer).unwrap();
+        assert!(minted.index >= N);
+        assert_eq!(reg.find_timer(timer), Some(minted.index));
+        reg.free(minted.index);
+        assert_eq!(reg.find_timer(timer), None);
+
+        for handle in handles {
+            handle.get_mut(&mut lv).unwrap().delete().unwrap();
+        }
+        assert_eq!(used_slots(), before);
+    }
+}
+
 /// `Owned::drop` on another thread against the drain: no lost request, no
 /// slot freed twice, never the wrong object deleted.
 #[cfg(all(loom, not(lvgl_rust_views_only)))]
@@ -708,17 +914,24 @@ mod protocol {
     use super::*;
     use crate::base::drain::drain;
 
-    /// Every slot handed out by the free list is distinct.
+    /// Every slot handed out by the free list is distinct (up to the
+    /// capacity, with growth).
     fn assert_free_list_consistent() {
         let mut guard = guard();
         let mut lv = session(&mut guard);
         let mut handles = std::vec::Vec::new();
+        #[cfg(lvgl_rust_growable)]
+        let capacity = reg().capacity();
         while let Ok(handle) = Obj::create(&mut lv.screen_active_mut().unwrap())
             .unwrap()
             .handle()
         {
             assert!(!handles.contains(&handle));
             handles.push(handle);
+            #[cfg(lvgl_rust_growable)]
+            if used_slots() == capacity {
+                break;
+            }
         }
         drop(lv);
     }
@@ -763,6 +976,60 @@ mod protocol {
             drain();
             assert_eq!(used_slots(), 1);
             assert!(reused.get(&lv).is_ok());
+            drop(lv);
+            drop(guard);
+            assert_free_list_consistent();
+        });
+    }
+
+    /// The token holder publishes a chunk and takes a slot in it while
+    /// another thread drops an `Owned` of the static part and one of an
+    /// earlier chunk (`LVGL_RUST_HANDLE_SLOTS=4`: chunk 0 holds slots 4 to
+    /// 7, chunk 1 slots 8 to 15). It covers growth racing drops and the
+    /// drain on other slots; a drop racing the publication of its own
+    /// chunk cannot happen (the `Owned` is minted after it), so weakening
+    /// the Release/Acquire pair of the chunk pointers would not fail here.
+    #[cfg(lvgl_rust_growable)]
+    #[test]
+    fn drops_reach_the_drain_while_the_registry_grows() {
+        loom::model(|| {
+            let mut guard = guard();
+            let mut lv = session(&mut guard);
+            let mut owned = std::vec::Vec::new();
+            for _ in 0..8 {
+                owned.push(Obj::create_owned(&mut lv.screen_active_mut().unwrap()).unwrap());
+            }
+            assert_eq!(reg().capacity(), 8);
+            let in_chunk = owned.pop().unwrap();
+            let in_static = owned.remove(0);
+            let dropped = [in_chunk.handle(), in_static.handle()];
+            assert_eq!(
+                dropped.map(|h| crate::base::registry::index(h.raw())),
+                [7, 0]
+            );
+            let thread = loom::thread::spawn(move || {
+                drop(in_chunk);
+                drop(in_static);
+            });
+            let grown = Obj::create(&mut lv.screen_active_mut().unwrap())
+                .unwrap()
+                .handle()
+                .unwrap();
+            assert_eq!(crate::base::registry::index(grown.raw()), 8);
+            drain();
+            thread.join().unwrap();
+            drain();
+            assert!(
+                dropped
+                    .iter()
+                    .all(|h| h.get(&lv).err() == Some(Error::Dead))
+            );
+            assert_eq!(used_slots(), owned.len() + 1);
+            assert!(grown.get(&lv).is_ok());
+            grown.get_mut(&mut lv).unwrap().delete().unwrap();
+            drop(owned);
+            drain();
+            assert_eq!(used_slots(), 0);
             drop(lv);
             drop(guard);
             assert_free_list_consistent();
