@@ -57,11 +57,12 @@ jobs:
     needs: validate
     if: github.repository_owner == 'AlixANNERAUD'
     runs-on: ubuntu-latest
-    # Publishing verifies each crate from its package; lvgl-rust needs a
-    # configuration with the OBJ_ID hooks (lvgl-rust-sys builds with it too).
-    # Only here: the validate tasks set their own configuration.
+    # The semver check documents lvgl-rust with every feature, and some
+    # need their own lv_conf.h (`allocator`): build the documentation as
+    # docs.rs does, which skips the configuration checks and links nothing.
     env:
-      DEP_LV_CONFIG_PATH: ${{ github.workspace }}/lvgl-rust/conf
+      DOCS_RS: "1"
+      DEP_LV_CONFIG_PATH: ""
     permissions:
       contents: write
       pull-requests: write
