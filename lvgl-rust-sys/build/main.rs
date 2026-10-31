@@ -48,8 +48,20 @@ impl Paths {
             shims: manifest.join("shims"),
             freestanding: manifest.join("shims/freestanding"),
             vendored_config: manifest.join("conf"),
-            shadcn_theme: manifest.join("lvgl_theme_shadcn"),
+            shadcn_theme: shadcn_theme_dir(&manifest),
         }
+    }
+}
+
+/// The shadcn theme: the submodule in a checkout. Cargo leaves the
+/// submodule out of the package (it is a workspace of its own), so the
+/// package carries its sources under `shadcn-theme/`, through symlinks.
+fn shadcn_theme_dir(manifest: &Path) -> PathBuf {
+    let submodule = manifest.join("lvgl_theme_shadcn");
+    if submodule.join("include").is_dir() {
+        submodule
+    } else {
+        manifest.join("shadcn-theme")
     }
 }
 
