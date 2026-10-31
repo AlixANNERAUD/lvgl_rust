@@ -322,6 +322,10 @@ Other workflows:
   (`CARGO_REGISTRY_TOKEN`), tags them `<crate>-v<version>` and creates
   GitHub releases for `lvgl-rust-sys` and `lvgl-rust`. Path dependencies
   between the crates carry a version, which release-plz bumps.
+  The release PR job runs cargo-semver-checks, which documents
+  `lvgl-rust` with every feature at once; it runs in docs.rs mode
+  (`DOCS_RS=1`), since some features need their own `lv_conf.h`. A new
+  feature must keep that build working.
 - `pr-title.yml`: pull request titles follow the commit convention below
   (squash merges become changelog entries).
 
