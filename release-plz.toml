@@ -1,10 +1,6 @@
 [workspace]
 release_always = false
-# Off until 0.1.1 is published: the semver check builds the published
-# 0.1.0 with every feature, and its lvgl-rust-sys package lacks the shadcn
-# theme's sources. Turn it back on once a fixed lvgl-rust-sys is out (the
-# baseline's dependency then resolves to it).
-semver_check = false
+semver_check = true
 dependencies_update = false
 pr_name = "{% if version %}chore: release v{{ version }}{% else %}chore: release{% endif %}"
 git_release_body = "{{ changelog }}"
