@@ -116,10 +116,11 @@ explains where the costs come from.
 
 Host build, release profile (\`cargo bench\`, feature \`heap\`), with the
 vendored \`lvgl-rust/conf/lv_conf.h\` (LVGL's builtin heap, 32 handle
-slots). Each cell is the median of 21 samples, each the mean of a batch of
-5 000 or 100 000 operations after a warm-up batch, with the fastest
-sample in brackets; the samples of the two paths of a row alternate, so
-both see the same machine load. Raw calls include the crate's OBJ_ID hooks, which
+slots). Each path of a row is timed in 21 samples, each the mean of a
+batch of 5 000 or 100 000 operations after a warm-up batch; the samples
+of the two paths alternate, so both see the same machine load. Each cell
+gives the fastest sample, with the median in brackets, and the difference
+is between the fastest samples. Raw calls include the crate's OBJ_ID hooks, which
 LVGL runs for every object; "0" means the raw program does nothing for
 that step.
 
@@ -205,11 +206,19 @@ EOF
 
 ## How to read these numbers
 
-Host times are relative: they depend on the machine, so compare the
-lvgl-rust and raw columns of one run, not runs on different machines. The
-difference column is what the safe API adds to the LVGL work of the same
-row; read it against the raw column, which is that work. Differences of a
-nanosecond or less are within the noise of the measurement. Embedded
+The tables lead with the fastest sample: it is the batch the machine
+disturbed least (no preemption, interrupt or cache eviction from other
+work), so it is the closest to the cost of the code itself, and it stays
+stable from run to run. The median, in brackets, shows the jitter: on a
+loaded or virtualised machine it can move by several times between runs
+while the fastest sample does not.
+
+The difference column is what matters: what the safe API adds to the
+LVGL work of the same row. Read it against the raw column, which is that
+work. Differences of a nanosecond or less are within the noise of the
+measurement. Host times depend on the machine, so compare the lvgl-rust
+and raw columns of one run, or runs on the same machine, never runs on
+different machines. Embedded
 sizes are with the size profile and no LTO, so the crate's symbols stay
 separate; in an application built with LTO, code it does not call is
 dropped. Rerun `mise run overhead` after changing the crate or LVGL.

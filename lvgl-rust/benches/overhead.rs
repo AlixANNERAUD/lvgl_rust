@@ -1,7 +1,9 @@
 //! What lvgl-rust adds to raw `lvgl_rust::sys` calls doing the same LVGL
 //! work: each benchmark times the safe path and its raw equivalent on the
-//! host, in nanoseconds per operation (median and minimum of 21 samples,
-//! after a warm-up batch; the two paths' samples alternate).
+//! host, in nanoseconds per operation (fastest and median of 21 samples,
+//! after a warm-up batch; the two paths' samples alternate). The fastest
+//! sample leads: it is the least disturbed by the machine and stays stable
+//! from run to run, while the median moves with the load.
 //!
 //! Run with `mise run overhead`, which writes
 //! `documentation/reference/overhead.md`. With `LVGL_RUST_OVERHEAD_OUTPUT`
@@ -174,8 +176,8 @@ mod overhead {
 
     #[derive(Clone, Copy)]
     struct Stats {
+        fastest: f64,
         median: f64,
-        min: f64,
     }
 
     /// The mean time per iteration of `batch(token, iterations)`.
@@ -188,8 +190,8 @@ mod overhead {
     fn stats(mut samples: [f64; SAMPLES]) -> Stats {
         samples.sort_by(f64::total_cmp);
         Stats {
+            fastest: samples[0],
             median: samples[SAMPLES / 2],
-            min: samples[0],
         }
     }
 
@@ -604,9 +606,10 @@ mod overhead {
         rows
     }
 
+    /// The fastest sample, with the median beside it to show the jitter.
     fn cell(stats: Option<Stats>) -> String {
         match stats {
-            Some(s) => format!("{:.1} (min {:.1})", s.median, s.min),
+            Some(s) => format!("{:.1} (median {:.1})", s.fastest, s.median),
             None => "0".into(),
         }
     }
@@ -619,11 +622,11 @@ mod overhead {
     fn performance_table(rows: &[Row]) -> String {
         let mut out = String::new();
         out.push_str(
-            "| Operation | lvgl-rust | Raw `lvgl_rust::sys` | lvgl-rust, ns | Raw, ns | Difference, ns |\n",
+            "| Operation | lvgl-rust | Raw `lvgl_rust::sys` | lvgl-rust, fastest ns | Raw, fastest ns | Difference of the fastest, ns |\n",
         );
         out.push_str("| --- | --- | --- | ---: | ---: | ---: |\n");
         for r in rows {
-            let raw_median = r.raw_stats.map_or(0.0, |s| s.median);
+            let raw_fastest = r.raw_stats.map_or(0.0, |s| s.fastest);
             let _ = writeln!(
                 out,
                 "| {} | {} | {} | {} | {} | {:+.1} |",
@@ -632,7 +635,7 @@ mod overhead {
                 escape(r.raw),
                 cell(Some(r.safe_stats)),
                 cell(r.raw_stats),
-                r.safe_stats.median - raw_median
+                r.safe_stats.fastest - raw_fastest
             );
         }
         out
