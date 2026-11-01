@@ -23,9 +23,9 @@ include = [
   "/lvgl/include/**",
   "/lvgl/*.h",
   "/lvgl/LICENCE.txt",
-  "/lvgl_theme_shadcn/src/**",
-  "/lvgl_theme_shadcn/include/**",
-  "/lvgl_theme_shadcn/LICENSE",
+  "/shadcn-theme/src/**",
+  "/shadcn-theme/include/**",
+  "/shadcn-theme/LICENSE",
   "/README.md",
 ]
 

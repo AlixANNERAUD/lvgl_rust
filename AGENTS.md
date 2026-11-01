@@ -41,6 +41,7 @@ start at the repository root (`mise.toml`, `.github/`, `.cargo/`).
 | `lvgl-rust-sys/conf/lv_conf.h` | Vendored LVGL configuration (tests, docs.rs, `use-vendored-config`). |
 | `lvgl-rust-sys/lvgl/` | LVGL submodule (do not edit; bump the pinned commit instead). |
 | `lvgl-rust-sys/lvgl_theme_shadcn/` | shadcn theme submodule, compiled with `shadcn-theme`. |
+| `lvgl-rust-sys/shadcn-theme/` | Symlinks to the theme's `src/`, `include/` and `LICENSE`: Cargo leaves the submodule (a workspace of its own) out of the package, so the package ships these instead, and the build script falls back to them when the submodule is absent. |
 | `lvgl-rust-sys/examples/external-fonts/` | Separate package showing how to build fonts in their own crate. |
 | `lvgl-rust-sys/tests/` | Unit tests for `build/config.rs` and integration tests driving nested `cargo` builds. |
 | `lvgl-rust-sys/tests/common/mod.rs` | Shared helpers for the integration tests. |

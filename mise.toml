@@ -98,9 +98,12 @@ env.MBX_BUILD_SCRIPT_EXECUTION = "false"
 # job to job) and the units built from them in the target directory, so a
 # later run would verify lvgl-rust against the generator and bindings of an
 # older revision. Start from neither.
+# The second run builds lvgl-rust-sys's package with the shadcn theme, whose
+# sources reach the package through the symlinks of `shadcn-theme/`.
 run = [
   "rm -rf {{config_root}}/target/package \"${CARGO_HOME:-$HOME/.cargo}\"/registry/src/-*/lvgl-rust-*",
   "cargo package -p lvgl-rust-sys -p lvgl-rust-gen -p lvgl-rust",
+  "cargo package -p lvgl-rust-sys --features shadcn-theme",
 ]
 
 [tasks.coverage]
