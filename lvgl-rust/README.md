@@ -240,7 +240,8 @@ AddressSanitizer in CI.
   [errors](https://github.com/AlixANNERAUD/lvgl_rust/blob/main/documentation/reference/errors.md),
   [supported targets](https://github.com/AlixANNERAUD/lvgl_rust/blob/main/documentation/reference/supported-targets.md),
   [overhead measurements](https://github.com/AlixANNERAUD/lvgl_rust/blob/main/documentation/reference/overhead.md),
-  [development tasks](https://github.com/AlixANNERAUD/lvgl_rust/blob/main/documentation/reference/development-tasks.md)
+  [development tasks](https://github.com/AlixANNERAUD/lvgl_rust/blob/main/documentation/reference/development-tasks.md),
+  [versioning](https://github.com/AlixANNERAUD/lvgl_rust/blob/main/documentation/reference/versioning.md)
 - API documentation: [docs.rs](https://docs.rs/lvgl-rust)
 
 ## License

@@ -35,8 +35,12 @@ commit_parsers = [
   { message = "^.*", group = "Other" },
 ]
 
+# lvgl-rust-sys and lvgl-rust share one version, whose build metadata
+# names the vendored LVGL (`<version>+lvgl.9.6.0`); release-plz keeps that
+# metadata when it bumps. See documentation/reference/versioning.md.
 [[package]]
 name = "lvgl-rust-sys"
+version_group = "lvgl"
 changelog_path = "./lvgl-rust-sys/CHANGELOG.md"
 git_tag_enable = true
 git_tag_name = "{{ package }}-v{{ version }}"
@@ -45,6 +49,7 @@ git_release_name = "{{ package }} v{{ version }}"
 
 [[package]]
 name = "lvgl-rust"
+version_group = "lvgl"
 changelog_path = "./lvgl-rust/CHANGELOG.md"
 git_tag_enable = true
 git_tag_name = "{{ package }}-v{{ version }}"

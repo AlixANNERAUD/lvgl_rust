@@ -1313,3 +1313,21 @@ mod lvgl_only {
         lv.timer_handler();
     }
 }
+
+/// The build metadata of the crate version names the LVGL it was
+/// generated for, as `lvgl-rust-sys`'s does (`<version>+lvgl.9.6.0`).
+#[test]
+fn version_metadata_names_lvgl() {
+    let lvgl = std::format!(
+        "{}.{}.{}",
+        sys::LVGL_VERSION_MAJOR,
+        sys::LVGL_VERSION_MINOR,
+        sys::LVGL_VERSION_PATCH
+    );
+    let version = env!("CARGO_PKG_VERSION");
+    assert_eq!(
+        version.split_once('+').map(|(_, build)| build),
+        Some(std::format!("lvgl.{lvgl}").as_str()),
+        "the version {version} does not name LVGL {lvgl}"
+    );
+}

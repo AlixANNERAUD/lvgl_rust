@@ -141,6 +141,13 @@ building: compiling old sources against the 9.6 `lv_conf.h` fails.
    the full test suite.
 5. Update the version in the README badge and feature list, in this file, and
    in the `vendored_lvgl_version_matches_readme` test in `src/lib.rs`.
+6. Set the build metadata of the `lvgl-rust-sys` and `lvgl-rust` versions
+   to the new release (`+lvgl.9.7.0`; the `version_metadata_*` tests of
+   both crates check it) and add a row to the compatibility table of
+   `documentation/reference/versioning.md`. An LVGL major or minor bump is
+   a breaking release of both crates: mark its commit and pull request
+   title with `!` (`build!: bump LVGL to 9.7.0`) so release-plz raises the
+   right component.
 
 ## Testing
 
@@ -323,6 +330,11 @@ Other workflows:
   (`CARGO_REGISTRY_TOKEN`), tags them `<crate>-v<version>` and creates
   GitHub releases for `lvgl-rust-sys` and `lvgl-rust`. Path dependencies
   between the crates carry a version, which release-plz bumps.
+  `lvgl-rust-sys` and `lvgl-rust` share one version (`version_group`),
+  whose build metadata names the vendored LVGL (`+lvgl.9.6.0`), and
+  release-plz keeps that metadata when it bumps; dependency requirements
+  carry no metadata (Cargo ignores it). See
+  `documentation/reference/versioning.md`.
   The release PR job runs cargo-semver-checks, which documents
   `lvgl-rust` with every feature at once; it runs in docs.rs mode
   (`DOCS_RS=1`), since some features need their own `lv_conf.h`. A new
