@@ -221,4 +221,17 @@ mod tests {
             "README badge does not mention LVGL {version}"
         );
     }
+
+    /// The build metadata of the crate version names the vendored LVGL
+    /// (`<version>+lvgl.9.6.0`): an LVGL bump updates it in the same change.
+    #[test]
+    fn version_metadata_names_vendored_lvgl() {
+        let lvgl = std::format!("{LVGL_VERSION_MAJOR}.{LVGL_VERSION_MINOR}.{LVGL_VERSION_PATCH}");
+        let version = env!("CARGO_PKG_VERSION");
+        assert_eq!(
+            version.split_once('+').map(|(_, build)| build),
+            Some(std::format!("lvgl.{lvgl}").as_str()),
+            "the version {version} does not name LVGL {lvgl}"
+        );
+    }
 }

@@ -216,7 +216,7 @@ dependencies = [
 
 [[package]]
 name = "lvgl-rust"
-version = "0.1.1"
+version = "0.1.2+lvgl.9.6.0"
 dependencies = [
  "defmt",
  "loom",
@@ -247,7 +247,7 @@ dependencies = [
 
 [[package]]
 name = "lvgl-rust-sys"
-version = "0.1.1"
+version = "0.1.2+lvgl.9.6.0"
 dependencies = [
  "bindgen",
  "cc",
