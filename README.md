@@ -4,6 +4,7 @@
 
 [![CI](https://github.com/AlixANNERAUD/lvgl_rust/actions/workflows/ci.yml/badge.svg)](https://github.com/AlixANNERAUD/lvgl_rust/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/AlixANNERAUD/lvgl_rust/graph/badge.svg)](https://codecov.io/gh/AlixANNERAUD/lvgl_rust)
+[![vulnerabilities](https://vulnerabilites.anneraud.fr/badges/83721a0713f21663723008e4950186c7.svg)](https://vulnerabilites.anneraud.fr/organizations/alix_anneraud/projects/lvgl_rust)
 [![crates.io: lvgl-rust](https://img.shields.io/crates/v/lvgl-rust.svg?label=lvgl-rust)](https://crates.io/crates/lvgl-rust)
 [![docs.rs: lvgl-rust](https://img.shields.io/docsrs/lvgl-rust?label=docs%20lvgl-rust)](https://docs.rs/lvgl-rust)
 [![crates.io: lvgl-rust-sys](https://img.shields.io/crates/v/lvgl-rust-sys.svg?label=lvgl-rust-sys)](https://crates.io/crates/lvgl-rust-sys)
