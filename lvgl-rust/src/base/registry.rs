@@ -475,6 +475,9 @@ impl Registry {
     }
 
     /// The live object slot tracking `o`, through its id: O(1).
+    // Keep minting identical to the untagged path before this lookup was
+    // shared with owner operations: outlining it costs code on small targets.
+    #[inline(always)]
     pub(crate) fn find(&self, o: *const ffi::lv_obj_t) -> Option<usize> {
         // SAFETY: `o` is a live object (callers hold a view of it).
         let id = unsafe { ffi::obj_id(o) };

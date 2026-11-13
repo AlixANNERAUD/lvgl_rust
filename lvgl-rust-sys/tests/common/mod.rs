@@ -66,12 +66,32 @@ pub fn run(command: &mut Command, what: &str) -> Output {
 
 /// `OUT_DIR` of the `lvgl-rust-sys` build script under `target_dir`.
 pub fn lvgl_out_dir(target_dir: &Path) -> PathBuf {
-    fs::read_dir(target_dir.join("debug/build"))
-        .unwrap()
-        .filter_map(Result::ok)
-        .map(|entry| entry.path().join("out"))
-        .find(|path| path.join("bindings.rs").exists())
-        .expect("lvgl-rust-sys build output directory")
+    build_out_dir(target_dir, "bindings.rs").expect("lvgl-rust-sys build output directory")
+}
+
+/// Finds a build-script output by a file it produces, across Cargo layouts.
+pub fn build_out_dir(target_dir: &Path, file: &str) -> Option<PathBuf> {
+    let build = target_dir.join("debug/build");
+    let packages = fs::read_dir(&build).unwrap();
+    for package in packages.filter_map(Result::ok) {
+        let path = package.path();
+        // Before Cargo 1.100: build/<package>-<hash>/out.
+        let out = path.join("out");
+        if out.join(file).exists() {
+            return Some(out);
+        }
+        // Cargo 1.100: build/<package>/<hash>/out. Other units now live
+        // under build/ too, so identify the build script by its output.
+        if let Ok(units) = fs::read_dir(path) {
+            for unit in units.filter_map(Result::ok) {
+                let out = unit.path().join("out");
+                if out.join(file).exists() {
+                    return Some(out);
+                }
+            }
+        }
+    }
+    None
 }
 
 /// Output of a binutils tool (`nm`, `objdump`, ...).

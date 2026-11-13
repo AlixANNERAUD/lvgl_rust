@@ -30,8 +30,11 @@ pub enum Error {
     AlreadyOwned,
     /// A buffer is too small.
     TooSmall,
-    /// The object is tracked for another owner, or for none (feature
-    /// `owners`, [`WidgetExt::handle_for`](crate::WidgetExt::handle_for)).
+    /// The object is tracked for another owner, or for none (feature `owners`).
+    #[cfg_attr(
+        lvgl_rust_owners,
+        doc = "See [`WidgetExt::handle_for`](crate::WidgetExt::handle_for)."
+    )]
     OtherOwner,
 }
 

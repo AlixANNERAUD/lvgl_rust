@@ -36,12 +36,9 @@ fn build(target: &Path, config: &Path, what: &str) -> Output {
 }
 
 fn marker(target: &Path) -> PathBuf {
-    fs::read_dir(target.join("debug/build"))
-        .unwrap()
-        .filter_map(Result::ok)
-        .map(|entry| entry.path().join("out/font-input.marker"))
-        .find(|path| path.exists())
+    build_out_dir(target, "font-input.marker")
         .expect("font fixture build marker")
+        .join("font-input.marker")
 }
 
 fn modified(path: &Path) -> SystemTime {

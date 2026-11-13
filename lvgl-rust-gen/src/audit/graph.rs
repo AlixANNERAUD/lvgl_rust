@@ -247,8 +247,7 @@ fn constructed_class(f: &Function, c: &Construction, site: usize) -> Option<Stri
             return None;
         }
     }
-    for b in first..=last {
-        let events = &held.events[b];
+    for (b, events) in held.events.iter().enumerate().take(last + 1).skip(first) {
         let from = if b == first {
             events.iter().position(|e| *e == Ev::Call(*create_site))? + 1
         } else {
