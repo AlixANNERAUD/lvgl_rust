@@ -508,3 +508,6 @@ with shared access, and the parent used while a child's view lives.
 | `as_ptr()` | On views, `Display`, `Indev`, `Layer`, `Font`, `ImageDsc`, `ImageSrc`, `ButtonMap`, `GridTemplate`, `ScaleLabels`, `GradDsc`, `TransitionDsc`, `ColorFilter`, `ImageColorkey`, `StyleRef`. |
 | `Obj::from_raw`, `Lvgl::assume`, `Lvgl::enter_callback` | Entry points from raw code (`unsafe`). |
 | `$OUT_DIR/coverage.txt` | What happened to every bound function: wrapped (and how), raw, manual or skipped. See [Build configuration](build-configuration.md#generated-files). |
+
+Subjects (`IntSubject`, `ColorSubject`, `ObserverCtx`) are available only
+when `LV_USE_OBSERVER` is enabled in the LVGL configuration.

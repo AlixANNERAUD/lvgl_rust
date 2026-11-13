@@ -749,6 +749,12 @@ mod owners {
         assert_eq!(Handle::<Obj>::from_raw_for(raw, b()), None);
         assert!(lv.resolve_for::<Obj>(raw, a()).is_ok());
         assert_eq!(lv.resolve_for::<Obj>(raw, b()).err(), Some(Error::Dead));
+        // Replacing the public owner bits cannot turn A's slot into B's:
+        // resolution also compares the entire stored generation.
+        let forged = (raw & ((1_u32 << (32 - crate::config::OWNER_BITS)) - 1))
+            | (u32::from(b().get()) << (32 - crate::config::OWNER_BITS));
+        assert!(Handle::<Obj>::from_raw_for(forged, b()).is_some());
+        assert_eq!(lv.resolve_for::<Obj>(forged, b()).err(), Some(Error::Dead));
         assert_eq!(Handle::<Obj>::from_raw(0), None);
         handle.get_mut(&mut lv).unwrap().delete().unwrap();
         assert_eq!(lv.resolve_for::<Obj>(raw, a()).err(), Some(Error::Dead));

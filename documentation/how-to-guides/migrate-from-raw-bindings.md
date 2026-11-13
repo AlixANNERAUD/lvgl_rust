@@ -235,6 +235,32 @@ the crate); `skip` ones get nothing (deprecated, variadic, defined by the
 crate, or not in the access table). Keep raw calls under the lock
 until a wrapper exists.
 
+## Hosts with independent clients
+
+Enable `owners` and optionally `growable-registry`. Give each live client a
+unique `Owner`, and mint `object.handle_for(owner)` only for objects it owns.
+For every incoming raw handle, use `lv.resolve_for::<Obj>(raw, owner)`, taking
+the owner from trusted host state. Checking the public owner bits alone is
+insufficient; resolution also checks the slot's full generation and liveness.
+An owner tag is an isolation check, not a cryptographic capability.
+
+Keep each client's objects under a private, deletable root. At teardown,
+`lv.delete_owner(owner)` deletes tagged roots, including untracked descendants.
+Protected objects are released without deletion; shared display layers must
+stay host-owned. Do not reuse an owner until its objects and retained host
+resources have been cleaned up. `release_owner` invalidates handles without
+deleting the objects.
+
+Use `object.find_handle()` for O(1) lookup through the LVGL object ID. Install
+one `lv.set_free_observer(Some(callback))` for all clients to discard retained
+side-table data using `Freed::handle().into_raw()`. The observer runs within
+the destructor; it must not call LVGL or enter another session.
+
+The default four owner bits allow fifteen clients and leave twelve generation
+bits (4096 slot reuses before a handle can repeat). Configure
+`LVGL_RUST_OWNER_BITS` for your tradeoff. Growth never moves or frees published
+chunks, even at deinitialization: their allocator must outlive LVGL.
+
 ## Pitfalls
 
 - **Raw calls can invalidate views.** A raw call that deletes, cleans or
