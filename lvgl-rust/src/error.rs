@@ -30,6 +30,9 @@ pub enum Error {
     AlreadyOwned,
     /// A buffer is too small.
     TooSmall,
+    /// The object is tracked for another owner, or for none (feature
+    /// `owners`, [`WidgetExt::handle_for`](crate::WidgetExt::handle_for)).
+    OtherOwner,
 }
 
 #[cfg(feature = "fmt")]
@@ -49,6 +52,7 @@ impl core::fmt::Display for Error {
             Error::NotInitialized => "LVGL is not initialized",
             Error::AlreadyOwned => "already owned",
             Error::TooSmall => "buffer too small",
+            Error::OtherOwner => "tracked for another owner",
         })
     }
 }

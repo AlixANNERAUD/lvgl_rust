@@ -14,6 +14,8 @@ pub(crate) mod handle;
 #[cfg(all(not(lvgl_rust_views_only), not(lvgl_rust_docs)))]
 mod hook;
 mod objmut;
+#[cfg(lvgl_rust_owners)]
+mod owners;
 pub(crate) mod post;
 pub(crate) mod registry;
 mod session;
@@ -24,6 +26,8 @@ mod view;
 #[cfg(not(lvgl_rust_views_only))]
 pub use handle::{Handle, HandleCell, Owned, Tracked};
 pub use objmut::ObjMut;
+#[cfg(lvgl_rust_owners)]
+pub use owners::{Freed, Owner};
 pub use session::{DepthGuard, Lvgl, LvglAccess, Session, init, tick_inc};
 #[cfg(not(lvgl_rust_views_only))]
 pub use view::WidgetExt;

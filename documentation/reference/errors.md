@@ -22,6 +22,7 @@ the error, so it is dropped.
 | `NotInitialized` | LVGL is not initialised, or was deinitialised. | LVGL is not initialized |
 | `AlreadyOwned` | The object already has an owner, or a driver cell or draw buffer is in use. | already owned |
 | `TooSmall` | A buffer is too small. | buffer too small |
+| `OtherOwner` | The object is tracked for another owner, or for none (feature `owners`). | tracked for another owner |
 
 ## Dead
 
@@ -158,6 +159,16 @@ refusal `Owned::delete` returns is not, since the caller sees it.
 A cell or buffer is released when its display or device is deleted
 (`Display::try_delete`, `Indev::delete`); dropping a `Display` or `Indev`
 without deleting it keeps it claimed.
+
+## OtherOwner
+
+| Returned by | Condition |
+| --- | --- |
+| `WidgetExt::handle_for` (`owners`) | The object already has a slot tagged with another owner, or with none (an untagged handle or an `Owned`), and that slot does not only serve a deferred request. |
+
+An object has a single slot, so a single owner at a time. Release the
+other owner's slots (`Lvgl::release_owner`) or the object's other handles
+first; `find_handle` tells which one it has.
 
 ## TooSmall
 

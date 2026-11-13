@@ -121,13 +121,14 @@ Structural rules, checked before LVGL is called (`base/structural.rs`):
 | `Handle::get_mut(self, &mut Lvgl) -> Result<ObjMut<W>, Error>` | Exclusive access, or `Dead`. | exclusive | — |
 | `Handle::upcast::<B>(self) -> Handle<B>` | The same handle as a base class. | none | — |
 | `Handle::downcast::<D>(self, &Lvgl) -> Option<Handle<D>>` | The same handle as a subclass, if the object's class is `D` or a subclass. | shared | — |
+| `Handle::into_raw(self) -> u32`, `Handle::from_raw(u32) -> Option<Handle<W>>` | The handle as a nonzero `u32` (generation in the high half, slot index + 1 in the low half), to cross an FFI boundary or serve as a key, and back. Any value is safe: lookups check the slot, the generation and the class. | none | — |
 | `Owned<W: Tracked>` | The single owner of an object, a timer or a group. Not `Clone`. Dropping it records a deletion, carried out at the next drain, from any thread and without a session. | — | 4 B; `Option<Owned<W>>` 4 B |
 | `Owned::handle(&self) -> Handle<W>` | A handle to what it owns. | none | — |
 | `Owned::get`, `Owned::get_mut` | As for `Handle`. | shared / exclusive | — |
 | `Owned::delete(self, &mut Lvgl) -> Result<(), Error>` | Deletes at once. A screen LVGL is still loading gives `Busy` and stays pending, retried at each drain. A permanent structural refusal (`Internal`, only reachable after raw code moved the object) is returned: the object stays alive, released from its owner, and its handles report `Dead`. If a pending `Busy` deletion is later refused for good, the drain releases it the same way (counted as `refused` with `debug-counters`). What is already dead is released and gives `Ok(())`. | exclusive | — |
 | `Owned::upcast::<B>(self) -> Owned<B>` | The same owner as a base class. | none | — |
 | `HandleCell<W>` | An optional handle in a `static`: `new()` (const), `get() -> Option<Handle<W>>`, `set(Option<Handle<W>>)`. Atomic loads and stores only. | none | 4 B |
-| `trait WidgetExt` | Implemented for every widget. `handle(&self) -> Result<Handle<Self>, Error>` takes a registry slot the first time (`RegistryFull`; `OutOfMemory` when a `growable-registry` cannot grow); `own(&self) -> Result<Owned<Self>, Error>` (`AlreadyOwned`, `Internal`, `RegistryFull`, `OutOfMemory`). | shared | one registry slot |
+| `trait WidgetExt` | Implemented for every widget. `handle(&self) -> Result<Handle<Self>, Error>` takes a registry slot the first time (`RegistryFull`; `OutOfMemory` when a `growable-registry` cannot grow); `own(&self) -> Result<Owned<Self>, Error>` (`AlreadyOwned`, `Internal`, `RegistryFull`, `OutOfMemory`); `find_handle(&self) -> Option<Handle<Self>>` returns the existing handle, of any owner, without taking a slot (O(1), through the object's id); with `owners`, `handle_for(&self, Owner) -> Result<Handle<Self>, Error>` (also `OtherOwner`). | shared | one registry slot |
 | `trait Tracked` | What an `Owned` can own: every widget, `Timer`, `Group`. Sealed. | — | — |
 | `trait Component` | A widget made of other widgets, as a plain struct: `type Root: Widget`, `fn root(&self) -> Handle<Self::Root>`, provided `fn delete(self, &mut Lvgl) -> Result<(), Error>` (deletes the root and so the parts; `Dead` if the root is gone, otherwise the errors of `ObjMut::delete`). Nothing is allocated beyond the objects and the registry slots of the handles. | exclusive (`delete`) | — |
 
@@ -136,6 +137,20 @@ Registry: a static array of 8-byte slots (16 B on 64-bit hosts) plus a
 `LVGL_RUST_HANDLE_SLOTS` (default 32, rounded up to a power of two). In
 views-only mode only the 8-byte header remains. Each LVGL object costs
 4 B for `lv_obj_t::id` (`LV_USE_OBJ_ID`), whether or not it has a handle.
+
+### Owners (`owners`)
+
+| Item | What it is | Access | Cost |
+| --- | --- | --- | --- |
+| `Owner` | Who a handle was minted for: 1 to `Owner::MAX` (`2^LVGL_RUST_OWNER_BITS − 1`). `new(u8) -> Option<Owner>`, `get(self) -> u8`. | — | 1 B; `Option<Owner>` 1 B |
+| `WidgetExt::handle_for(&self, Owner)` | A handle tagged with the owner, in the top bits of its generation. An object has one slot: `OtherOwner` if it is tracked for another owner or for none (an untagged handle, an `Owned`); a slot that only serves a deferred request takes the owner. `handle()` on a tagged object returns its tagged handle. | shared | one registry slot |
+| `Handle::owner(self) -> Option<Owner>` | The owner it was minted for, from its bits. | none | — |
+| `Handle::from_raw_for(u32, Owner) -> Option<Handle<W>>` | `from_raw`, only for a handle of that owner: a bit test, no lookup. | none | — |
+| `Lvgl::resolve_for::<W>(&self, u32, Owner) -> Result<&W, Error>` | `from_raw_for`, then `get`; `Dead` for a handle of another owner. | shared | — |
+| `Lvgl::set_free_observer(&mut self, Option<fn(Freed)>)` | Called for every tracked object LVGL frees, on every deletion path, from the OBJ_ID free hook: no per-object event callback. Runs inside LVGL's destructor, without access to LVGL or the crate. | exclusive | 4 B of `.bss` (32-bit) |
+| `Freed` | `handle(&self) -> Handle<Obj>` (dead once the observer returns), `owner(&self) -> Option<Owner>`, `object(&self) -> *mut lv_obj_t` (a key, never dereferenced). | — | — |
+| `Lvgl::delete_owner(&mut self, Owner) -> usize` | Deletes the owner's objects whose parent is not the owner's (the rest go with them), then `release_owner`: objects the structural checks refuse to delete (a layer, a screen being loaded) stay alive, untracked. Returns the objects deleted. | exclusive | scans the slots up to the high-water mark |
+| `Lvgl::release_owner(&mut self, Owner) -> usize` | Untracks what is tracked for the owner, deleting nothing: its handles are dead and its slots free, except those an `Owned` or a pending request still uses, which only lose the tag. Returns the slots released. | exclusive | as above |
 
 ## Creation
 

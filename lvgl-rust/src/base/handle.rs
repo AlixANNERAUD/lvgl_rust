@@ -66,18 +66,37 @@ impl<W> Handle<W> {
     pub(crate) fn raw(self) -> u32 {
         self.raw.get()
     }
+
+    /// The handle as 32 bits (the slot's generation in the high half, its
+    /// index + 1 in the low half), never zero: to cross an FFI boundary or
+    /// to serve as a key. [`Handle::from_raw`] turns it back into a handle.
+    pub fn into_raw(self) -> u32 {
+        self.raw.get()
+    }
 }
 
 impl<W: Widget> Handle<W> {
     /// # Safety
     ///
     /// `raw` must come from the registry for a slot tracking a `W`.
-    pub(crate) unsafe fn from_raw(raw: u32) -> Self {
+    pub(crate) unsafe fn from_raw_unchecked(raw: u32) -> Self {
         Self {
             // Raw handles hold `index + 1` in their low half: never zero.
             raw: NonZeroU32::new(raw).unwrap_or(NonZeroU32::MIN),
             _w: PhantomData,
         }
+    }
+
+    /// A handle from [`Handle::into_raw`], `None` for 0. Any value is
+    /// safe: every lookup checks the slot, its generation and the class, so
+    /// a forged or stale value only resolves to [`Error::Dead`] (or, like
+    /// any handle, to an object of class `W` that safe code could reach
+    /// anyway).
+    pub fn from_raw(raw: u32) -> Option<Self> {
+        NonZeroU32::new(raw).map(|raw| Self {
+            raw,
+            _w: PhantomData,
+        })
     }
 
     /// A view of the object, or [`Error::Dead`] if it was deleted.
