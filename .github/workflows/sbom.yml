@@ -1,0 +1,24 @@
+name: SBOM
+
+# Uploads the dependencies (from Cargo.lock, scanned by Syft) to the maintainer's nanobom
+# instance, which checks them against OSV after each upload and every night.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  upload:
+    name: Upload the SBOM
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: AlixANNERAUD/nanobom-action@v1
+        with:
+          url: https://vulnerabilites.anneraud.fr
+          token: ${{ secrets.NANOBOM_TOKEN }}
+          organization: alix_anneraud
+          project: lvgl_rust
