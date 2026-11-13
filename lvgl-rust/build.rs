@@ -17,11 +17,14 @@ const MAX_SLOTS: u32 = 32_768;
 const DEFAULT_DEPTH: u32 = 16;
 const POST_VAR: &str = "LVGL_RUST_POST_SLOTS";
 const DEFAULT_POST: u32 = 4;
+const OWNER_VAR: &str = "LVGL_RUST_OWNER_BITS";
+const DEFAULT_OWNER_BITS: u32 = 4;
 
 fn main() {
     println!("cargo::rustc-check-cfg=cfg(lvgl_rust_views_only)");
     println!("cargo::rustc-check-cfg=cfg(lvgl_rust_docs)");
     println!("cargo::rustc-check-cfg=cfg(lvgl_rust_growable)");
+    println!("cargo::rustc-check-cfg=cfg(lvgl_rust_owners)");
 
     let mut errors = Vec::new();
     let slots = match handle_slots(env_var(SLOTS_VAR).as_deref()) {
@@ -45,12 +48,32 @@ fn main() {
             DEFAULT_POST
         }
     };
+    let owners = env::var_os("CARGO_FEATURE_OWNERS").is_some();
+    // Read only with the feature, so the variable alone changes nothing.
+    let owner_bits = if owners {
+        match owner_bits(env_var(OWNER_VAR).as_deref()) {
+            Ok(bits) => bits,
+            Err(error) => {
+                errors.push(error);
+                DEFAULT_OWNER_BITS
+            }
+        }
+    } else {
+        0
+    };
     if slots == 0 {
         println!("cargo::rustc-cfg=lvgl_rust_views_only");
-    } else if env::var_os("CARGO_FEATURE_GROWABLE_REGISTRY").is_some() {
-        // Views-only mode has no registry to grow: the feature does nothing
-        // there, so a dependency enabling it cannot break such a build.
-        println!("cargo::rustc-cfg=lvgl_rust_growable");
+    } else {
+        if env::var_os("CARGO_FEATURE_GROWABLE_REGISTRY").is_some() {
+            // Views-only mode has no registry to grow: the feature does
+            // nothing there, so a dependency enabling it cannot break such a
+            // build.
+            println!("cargo::rustc-cfg=lvgl_rust_growable");
+        }
+        // Likewise, owners tag registry slots: nothing to tag without them.
+        if owners {
+            println!("cargo::rustc-cfg=lvgl_rust_owners");
+        }
     }
     // For dependents' build scripts: `DEP_LVGL_RUST_HANDLE_SLOTS`.
     println!("cargo::metadata=HANDLE_SLOTS={slots}");
@@ -101,6 +124,7 @@ fn main() {
     writeln!(config, "pub(crate) const HANDLE_SLOTS: usize = {slots};").unwrap();
     writeln!(config, "pub(crate) const MAX_CALLBACK_DEPTH: u8 = {depth};").unwrap();
     writeln!(config, "pub(crate) const POST_SLOTS: usize = {post};").unwrap();
+    writeln!(config, "pub(crate) const OWNER_BITS: u32 = {owner_bits};").unwrap();
     for error in errors {
         writeln!(config, "compile_error!({error:?});").unwrap();
     }
@@ -165,6 +189,20 @@ fn post_slots(raw: Option<&str>) -> Result<u32, String> {
         Ok(slots @ 0..=255) => Ok(slots),
         _ => Err(format!(
             "{POST_VAR} must be an integer from 0 to 255, got {raw:?}"
+        )),
+    }
+}
+
+/// `LVGL_RUST_OWNER_BITS` (feature `owners`): 1 to 8 bits of each handle's
+/// 16-bit generation name its owner, leaving 15 to 8 bits of generation.
+fn owner_bits(raw: Option<&str>) -> Result<u32, String> {
+    let Some(raw) = raw else {
+        return Ok(DEFAULT_OWNER_BITS);
+    };
+    match raw.trim().parse::<u32>() {
+        Ok(bits @ 1..=8) => Ok(bits),
+        _ => Err(format!(
+            "{OWNER_VAR} must be an integer from 1 to 8, got {raw:?}"
         )),
     }
 }

@@ -15,6 +15,8 @@ debug-counters = ["lvgl-rust/debug-counters"]
 # Registry chunks from a global allocator: the firmware adds a bump
 # allocator, outside the crate's measured symbols.
 growable-registry = ["lvgl-rust/growable-registry"]
+# Owner tags, compiled for the firmware targets by `mise run cross-arm`.
+owners = ["lvgl-rust/owners"]
 
 [dependencies]
 lvgl-rust = { path = ".." }

@@ -34,6 +34,11 @@ debug-counters = []
 # global allocator (`alloc`), never freed: up to 65,535 slots. No effect in
 # views-only mode.
 growable-registry = []
+# Owner tags in handles and registry slots (`LVGL_RUST_OWNER_BITS`, default
+# 4, taken from the 16-bit generation): `WidgetExt::handle_for`,
+# `Lvgl::delete_owner`, `Lvgl::release_owner` and `Lvgl::set_free_observer`,
+# for hosts running several untrusted clients. No effect in views-only mode.
+owners = []
 
 color_depth_1 = ["lvgl-rust-sys/color_depth_1"]
 color_depth_8 = ["lvgl-rust-sys/color_depth_8"]

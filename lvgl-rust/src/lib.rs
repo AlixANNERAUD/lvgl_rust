@@ -104,6 +104,7 @@ mod queue;
 mod scale_labels;
 mod screen;
 mod style;
+#[cfg(lv_use_observer)]
 mod subject;
 #[cfg(lv_use_table)]
 mod table;
@@ -231,6 +232,7 @@ pub use style::{
     AnimPath, ColorFilter, ConstProp, ConstStyle, Font, GradDir, GradDsc, Selector, Style,
     StyleMut, StyleProp, StyleRef, TransitionDsc, color,
 };
+#[cfg(lv_use_observer)]
 pub use subject::{ColorSubject, IntSubject, ObserverCtx};
 #[cfg(lv_use_table)]
 pub use table::TABLE_CELL_LIMIT;

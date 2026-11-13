@@ -10,6 +10,12 @@
 //! global allocator must therefore outlive LVGL: it must not take its memory
 //! from LVGL's heap, which `deinit` releases.
 //!
+//! With the `owners` feature (cfg `lvgl_rust_owners`), the top
+//! `OWNER_BITS` bits of a slot's 16-bit generation name the owner the slot
+//! was minted for (0: none), and only the bits below them count reuses.
+//! Handles carry the whole value, so a handle names its owner without a
+//! lookup, and the slot stays 8 B on 32-bit targets.
+//!
 //! Every field has a single writer. `Cell` fields are read and written only by
 //! the token holder (a [`Session`](crate::Session), or a trampoline called by
 //! it). Code without a token (`Owned::drop`, `tick_inc`) touches only the
@@ -142,6 +148,25 @@ impl Slot {
 
     pub(crate) fn is_live(&self, kind: Kind) -> bool {
         self.meta.get() & (STATE | KIND) == LIVE | kind.bits()
+    }
+
+    /// Sets the generation, to test its wrapping.
+    #[cfg(all(test, lvgl_rust_owners))]
+    pub(crate) fn set_generation(&self, generation: u16) {
+        self.generation.set(generation)
+    }
+
+    /// The owner the slot was minted for (0: none).
+    #[cfg(lvgl_rust_owners)]
+    pub(crate) fn owner(&self) -> u8 {
+        owner_of((self.generation.get() as u32) << 16)
+    }
+
+    /// Clears the owner and counts a reuse: handles minted so far are dead.
+    #[cfg(lvgl_rust_owners)]
+    fn disown(&self) {
+        self.generation
+            .set(self.generation.get().wrapping_add(1) & GENERATION_MASK);
     }
 
     fn set_next(&self, next: u16) {
@@ -291,6 +316,25 @@ const _: () = assert!(
             == size_of::<Header>() + (N + 1) * size_of::<Slot>() + CHUNKS * size_of::<usize>()
 );
 
+/// The bits of a slot's generation that count reuses: all 16 without owners,
+/// those below the owner bits with them.
+#[cfg(all(not(lvgl_rust_views_only), not(lvgl_rust_owners)))]
+pub(crate) const GENERATION_MASK: u16 = 0xFFFF;
+#[cfg(lvgl_rust_owners)]
+pub(crate) const GENERATION_MASK: u16 = (0xFFFF_u32 >> crate::config::OWNER_BITS) as u16;
+/// Owners `OWNER_BITS` bits can name, 0 (none) excluded.
+#[cfg(lvgl_rust_owners)]
+pub(crate) const OWNER_MAX: u8 = ((1_u32 << crate::config::OWNER_BITS) - 1) as u8;
+
+/// The owner a raw handle (or a slot generation in its high half) names.
+#[cfg(lvgl_rust_owners)]
+pub(crate) const fn owner_of(raw: u32) -> u8 {
+    (raw >> (32 - crate::config::OWNER_BITS)) as u8
+}
+
+#[cfg(lvgl_rust_owners)]
+const _: () = assert!(crate::config::OWNER_BITS >= 1 && crate::config::OWNER_BITS <= 8);
+
 /// Slot index encoded in a raw handle (`generation << 16 | index + 1`). The
 /// mask keeps it in bounds without a panic path.
 #[cfg(all(not(lvgl_rust_views_only), not(lvgl_rust_growable)))]
@@ -430,22 +474,67 @@ impl Registry {
         (self.slot(index).generation.get() as u32) << 16 | (index as u32 + 1)
     }
 
-    /// Returns the slot tracking `p`, taking one if needed (`fresh`).
+    /// The live object slot tracking `o`, through its id: O(1).
+    // Keep minting identical to the untagged path before this lookup was
+    // shared with owner operations: outlining it costs code on small targets.
+    #[inline(always)]
+    pub(crate) fn find(&self, o: *const ffi::lv_obj_t) -> Option<usize> {
+        // SAFETY: `o` is a live object (callers hold a view of it).
+        let id = unsafe { ffi::obj_id(o) };
+        let index = id.checked_sub(1).filter(|&i| i < INDEX_LIMIT)?;
+        let slot = self.slot(index);
+        (slot.ptr.get() == o.cast_mut().cast() && slot.is_live(Kind::Obj)).then_some(index)
+    }
+
+    /// Returns the slot tracking `p`, taking one if needed (`fresh`). An
+    /// existing slot is returned whatever its owner; a fresh one has none.
     pub(crate) fn mint(&self, p: *mut c_void, kind: Kind) -> Result<Minted, Error> {
-        if kind == Kind::Obj {
-            // SAFETY: `p` is a live object (callers hold a view of it).
-            let id = unsafe { ffi::obj_id(p.cast()) };
-            if let Some(index) = id.checked_sub(1).filter(|&i| i < INDEX_LIMIT) {
-                let slot = self.slot(index);
-                if slot.ptr.get() == p && slot.is_live(kind) {
-                    return Ok(Minted {
-                        index,
-                        raw: self.raw(index),
-                        fresh: false,
-                    });
-                }
-            }
+        if kind == Kind::Obj
+            && let Some(index) = self.find(p.cast())
+        {
+            return Ok(Minted {
+                index,
+                raw: self.raw(index),
+                fresh: false,
+            });
         }
+        self.take(p, kind)
+    }
+
+    /// Returns the slot tracking object `o` for `owner`, taking one if
+    /// needed. Fails with [`Error::OtherOwner`] if the object is tracked
+    /// for another owner, or for none, unless that slot only serves a
+    /// deferred request (TEMP): no handle to it was handed out, so it can
+    /// change owner.
+    #[cfg(lvgl_rust_owners)]
+    pub(crate) fn mint_for(&self, o: *mut ffi::lv_obj_t, owner: u8) -> Result<Minted, Error> {
+        let Some(index) = self.find(o) else {
+            let minted = self.take(o.cast(), Kind::Obj)?;
+            let slot = self.slot(minted.index);
+            slot.generation
+                .set(slot.generation.get() | (owner as u16) << (16 - crate::config::OWNER_BITS));
+            return Ok(Minted {
+                raw: self.raw(minted.index),
+                ..minted
+            });
+        };
+        let slot = self.slot(index);
+        if slot.owner() != owner {
+            if slot.owner() != 0 || !slot.has(TEMP) {
+                return Err(Error::OtherOwner);
+            }
+            slot.generation
+                .set(slot.generation.get() | (owner as u16) << (16 - crate::config::OWNER_BITS));
+        }
+        Ok(Minted {
+            index,
+            raw: self.raw(index),
+            fresh: false,
+        })
+    }
+
+    /// Takes a free slot for `p`.
+    fn take(&self, p: *mut c_void, kind: Kind) -> Result<Minted, Error> {
         let index = self.alloc()?;
         let slot = self.slot(index);
         slot.ptr.set(p);
@@ -592,7 +681,9 @@ impl Registry {
         let slot = self.slot(index);
         slot.meta.set(FREE);
         slot.req.store(0, Ordering::Relaxed);
-        slot.generation.set(slot.generation.get().wrapping_add(1));
+        // Also clears the owner bits: a fresh slot has none.
+        slot.generation
+            .set(slot.generation.get().wrapping_add(1) & GENERATION_MASK);
         slot.set_next(0);
         let tail = self.hdr.tail.get();
         match (tail as usize).checked_sub(1) {
@@ -647,6 +738,10 @@ impl Registry {
         if slot.ptr.get() != o.cast() || !slot.is_live(Kind::Obj) {
             return; // foreign or garbage id
         }
+        #[cfg(lvgl_rust_owners)]
+        if let Some(observer) = OBSERVER.0.get() {
+            observer(super::owners::Freed::new(self.raw(index), o));
+        }
         if slot.has(OWNED) {
             // The `Owned` still refers to the slot: keep it until the drain
             // observes its request.
@@ -660,6 +755,48 @@ impl Registry {
         }
     }
 }
+
+/// The owner-scoped operations (`owners`).
+#[cfg(lvgl_rust_owners)]
+impl Registry {
+    /// Untracks every slot of `owner`: live objects without an `Owned` or a
+    /// pending request are released (their id cleared); the others lose the
+    /// owner and a generation, so the owner's handles to them are dead, and
+    /// stay for their `Owned` or request. Returns the slots released.
+    pub(crate) fn release_owner(&self, owner: u8) -> usize {
+        let mut released = 0;
+        for index in 0..self.high_water_mark() {
+            let slot = self.slot(index);
+            if slot.state() == FREE || slot.owner() != owner {
+                continue;
+            }
+            if slot.state() == LIVE && !slot.has(OWNED | P_DELETE | P_CLEAN) {
+                self.release(index);
+                released += 1;
+            } else {
+                slot.disown();
+            }
+        }
+        released
+    }
+
+    /// The owner of the slot tracking `o`, 0 when untracked.
+    pub(crate) fn owner_of_obj(&self, o: *const ffi::lv_obj_t) -> u8 {
+        self.find(o).map_or(0, |index| self.slot(index).owner())
+    }
+}
+
+/// The observer of tracked objects being freed (`owners`). Written by the
+/// token holder only, read in the free hook, which runs under the token.
+#[cfg(lvgl_rust_owners)]
+pub(crate) struct Observer(pub(crate) Cell<Option<fn(super::owners::Freed)>>);
+
+// SAFETY: as `Registry`: accessed only by the token holder.
+#[cfg(lvgl_rust_owners)]
+unsafe impl Sync for Observer {}
+
+#[cfg(lvgl_rust_owners)]
+pub(crate) static OBSERVER: Observer = Observer(Cell::new(None));
 
 /// Result of [`Registry::mint`].
 #[cfg(not(lvgl_rust_views_only))]

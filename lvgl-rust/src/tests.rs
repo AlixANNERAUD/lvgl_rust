@@ -701,6 +701,232 @@ mod model {
     }
 }
 
+/// The `owners` feature: tagged handles, the free observer and the
+/// cleanup of an owner, against LVGL or its model.
+#[cfg(all(lvgl_rust_owners, not(loom)))]
+mod owners {
+    use super::*;
+    use crate::base::registry::{GENERATION_MASK, index};
+    use crate::config::OWNER_BITS;
+
+    fn a() -> Owner {
+        Owner::new(1).unwrap()
+    }
+
+    fn b() -> Owner {
+        Owner::new(Owner::MAX).unwrap()
+    }
+
+    #[test]
+    fn owners_cover_the_configured_bits() {
+        assert_eq!(Owner::MAX as u32, (1 << OWNER_BITS) - 1);
+        assert!(Owner::new(0).is_none());
+        assert_eq!(Owner::new(Owner::MAX).map(Owner::get), Some(Owner::MAX));
+        if Owner::MAX < u8::MAX {
+            assert!(Owner::new(Owner::MAX + 1).is_none());
+        }
+    }
+
+    #[test]
+    fn tagged_handles_resolve_only_for_their_owner() {
+        if Owner::MAX == 1 {
+            return; // needs two owners
+        }
+        let mut guard = guard();
+        let mut lv = session(&mut guard);
+        let before = used_slots();
+        let mut screen = lv.screen_active_mut().unwrap();
+        let object = Obj::create(&mut screen).unwrap();
+        let handle = object.handle_for(a()).unwrap();
+        assert_eq!(handle.owner(), Some(a()));
+        // The same slot and tag again, also through the untagged path.
+        assert_eq!(object.handle_for(a()).unwrap(), handle);
+        assert_eq!(object.handle().unwrap(), handle);
+        assert_eq!(object.find_handle(), Some(handle));
+        assert_eq!(object.handle_for(b()).err(), Some(Error::OtherOwner));
+        let raw = handle.into_raw();
+        assert_eq!(Handle::<Obj>::from_raw_for(raw, a()), Some(handle));
+        assert_eq!(Handle::<Obj>::from_raw_for(raw, b()), None);
+        assert!(lv.resolve_for::<Obj>(raw, a()).is_ok());
+        assert_eq!(lv.resolve_for::<Obj>(raw, b()).err(), Some(Error::Dead));
+        // Replacing the public owner bits cannot turn A's slot into B's:
+        // resolution also compares the entire stored generation.
+        let forged = (raw & ((1_u32 << (32 - crate::config::OWNER_BITS)) - 1))
+            | (u32::from(b().get()) << (32 - crate::config::OWNER_BITS));
+        assert!(Handle::<Obj>::from_raw_for(forged, b()).is_some());
+        assert_eq!(lv.resolve_for::<Obj>(forged, b()).err(), Some(Error::Dead));
+        assert_eq!(Handle::<Obj>::from_raw(0), None);
+        handle.get_mut(&mut lv).unwrap().delete().unwrap();
+        assert_eq!(lv.resolve_for::<Obj>(raw, a()).err(), Some(Error::Dead));
+        assert_eq!(used_slots(), before);
+    }
+
+    #[test]
+    fn untagged_objects_are_not_handed_to_owners() {
+        let mut guard = guard();
+        let mut lv = session(&mut guard);
+        let mut screen = lv.screen_active_mut().unwrap();
+        let object = Obj::create(&mut screen).unwrap();
+        let handle = object.handle().unwrap();
+        assert_eq!(handle.owner(), None);
+        assert_eq!(object.handle_for(a()).err(), Some(Error::OtherOwner));
+        handle.get_mut(&mut lv).unwrap().delete().unwrap();
+    }
+
+    #[test]
+    fn a_slot_serving_a_deferred_request_takes_an_owner() {
+        let mut guard = guard();
+        let mut lv = session(&mut guard);
+        let before = used_slots();
+        let mut screen = lv.screen_active_mut().unwrap();
+        let object = Obj::create(&mut screen).unwrap();
+        object.delete_later().unwrap();
+        let handle = object.handle_for(a()).unwrap();
+        assert_eq!(handle.owner(), Some(a()));
+        drop(lv);
+        let lv = session(&mut guard);
+        assert_eq!(handle.get(&lv).err(), Some(Error::Dead));
+        assert_eq!(used_slots(), before);
+    }
+
+    #[test]
+    fn freed_slots_drop_the_owner_and_keep_counting_reuses() {
+        let mut guard = guard();
+        let mut lv = session(&mut guard);
+        let mut screen = lv.screen_active_mut().unwrap();
+        let object = Obj::create(&mut screen).unwrap();
+        let handle = object.handle_for(b()).unwrap();
+        let slot = reg().slot(index(handle.raw()));
+        // The last generation below the owner bits: the next one wraps.
+        slot.set_generation(GENERATION_MASK | (handle.raw() >> 16) as u16);
+        let stale = Handle::<Obj>::from_raw(reg().handle_raw(index(handle.raw()))).unwrap();
+        assert_eq!(stale.owner(), Some(b()));
+        stale.get_mut(&mut lv).unwrap().delete().unwrap();
+        // Freed: generation 0, no owner.
+        let reused = loop {
+            let handle = Obj::create(&mut lv.screen_active_mut().unwrap())
+                .unwrap()
+                .handle()
+                .unwrap();
+            if index(handle.raw()) == index(stale.raw()) {
+                break handle;
+            }
+            handle.get_mut(&mut lv).unwrap().delete().unwrap();
+        };
+        assert_eq!(reused.owner(), None);
+        assert_eq!(stale.get(&lv).err(), Some(Error::Dead));
+        reused.get_mut(&mut lv).unwrap().delete().unwrap();
+    }
+
+    static FREED: Mutex<std::vec::Vec<(u32, Option<Owner>)>> = Mutex::new(std::vec::Vec::new());
+
+    fn record(freed: Freed) {
+        assert!(!freed.object().is_null());
+        FREED
+            .lock()
+            .unwrap()
+            .push((freed.handle().into_raw(), freed.owner()));
+    }
+
+    #[test]
+    fn the_free_observer_sees_every_tracked_object_once() {
+        let mut guard = guard();
+        let mut lv = session(&mut guard);
+        FREED.lock().unwrap().clear();
+        lv.set_free_observer(Some(record));
+        let parent = Obj::create(&mut lv.screen_active_mut().unwrap())
+            .unwrap()
+            .handle_for(a())
+            .unwrap();
+        let child = Obj::create(&mut parent.get_mut(&mut lv).unwrap())
+            .unwrap()
+            .handle()
+            .unwrap();
+        // Untracked: not reported.
+        Obj::create(&mut child.get_mut(&mut lv).unwrap()).unwrap();
+        parent.get_mut(&mut lv).unwrap().delete().unwrap();
+        lv.set_free_observer(None);
+        let mut freed = core::mem::take(&mut *FREED.lock().unwrap());
+        freed.sort_unstable();
+        let mut expected = std::vec![(parent.raw(), Some(a())), (child.raw(), None)];
+        expected.sort_unstable();
+        assert_eq!(freed, expected);
+    }
+
+    #[test]
+    fn deleting_an_owner_deletes_its_roots_and_releases_the_rest() {
+        if Owner::MAX == 1 {
+            return; // needs two owners
+        }
+        let mut guard = guard();
+        let mut lv = session(&mut guard);
+        let before = used_slots();
+        // B's object, holding one of A's.
+        let foreign = Obj::create(&mut lv.screen_active_mut().unwrap())
+            .unwrap()
+            .handle_for(b())
+            .unwrap();
+        let nested = Obj::create(&mut foreign.get_mut(&mut lv).unwrap())
+            .unwrap()
+            .handle_for(a())
+            .unwrap();
+        // A's root, with a tagged child and an untracked grandchild.
+        let root = Obj::create(&mut lv.screen_active_mut().unwrap())
+            .unwrap()
+            .handle_for(a())
+            .unwrap();
+        let child = Obj::create(&mut root.get_mut(&mut lv).unwrap())
+            .unwrap()
+            .handle_for(a())
+            .unwrap();
+        Obj::create(&mut child.get_mut(&mut lv).unwrap()).unwrap();
+        // A display layer cannot be deleted: released instead.
+        let layer = top_layer(&lv).handle_for(a()).unwrap();
+        assert_eq!(lv.delete_owner(a()), 2);
+        for handle in [nested, root, child, layer] {
+            assert_eq!(handle.get(&lv).err(), Some(Error::Dead));
+        }
+        assert!(foreign.get(&lv).is_ok());
+        assert_eq!(top_layer(&lv).find_handle(), None);
+        assert_eq!(foreign.get(&lv).unwrap().child(0).map(|_| ()), None);
+        foreign.get_mut(&mut lv).unwrap().delete().unwrap();
+        assert_eq!(used_slots(), before);
+    }
+
+    #[test]
+    fn releasing_an_owner_keeps_its_objects() {
+        let mut guard = guard();
+        let mut lv = session(&mut guard);
+        let before = used_slots();
+        let kept = Obj::create(&mut lv.screen_active_mut().unwrap())
+            .unwrap()
+            .handle_for(a())
+            .unwrap();
+        let mut screen = lv.screen_active_mut().unwrap();
+        let owned = Obj::create(&mut screen).unwrap();
+        owned.handle_for(a()).unwrap();
+        let owned = owned.own().unwrap();
+        assert_eq!(lv.release_owner(a()), 1);
+        assert_eq!(kept.get(&lv).err(), Some(Error::Dead));
+        // The `Owned` keeps its slot, without the tag.
+        assert_eq!(owned.get(&lv).err(), Some(Error::Dead));
+        assert_eq!(used_slots(), before + 1);
+        drop(owned);
+        drop(lv);
+        let mut lv = session(&mut guard);
+        assert_eq!(used_slots(), before);
+        // `kept` is alive, untracked: the screen's last two children were
+        // `kept` and the deleted owned object.
+        let screen = lv.screen_active().unwrap();
+        let alive = screen.child(-1).unwrap();
+        assert_eq!(alive.find_handle(), None);
+        let handle = alive.handle().unwrap();
+        assert_ne!(handle, kept);
+        handle.get_mut(&mut lv).unwrap().delete().unwrap();
+        assert_eq!(used_slots(), before);
+    }
+}
+
 /// The `growable-registry` feature: chunk arithmetic, then objects in
 /// chunks, against LVGL or its model.
 #[cfg(all(lvgl_rust_growable, not(loom)))]
