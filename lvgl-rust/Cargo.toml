@@ -1,6 +1,6 @@
 [package]
 name = "lvgl-rust"
-version = "0.1.2+lvgl.9.6.0"
+version = "0.2.0+lvgl.9.6.0"
 edition.workspace = true
 rust-version.workspace = true
 description = "Safe, generated no_std Rust bindings to LVGL 9"
@@ -47,7 +47,7 @@ color_depth_32 = ["lvgl-rust-sys/color_depth_32"]
 
 [dependencies]
 # The safe layer calls into the linked C library: `build-lvgl` is required.
-lvgl-rust-sys = { version = "0.1.2", path = "../lvgl-rust-sys", default-features = false, features = ["build-lvgl"] }
+lvgl-rust-sys = { version = "0.2.0", path = "../lvgl-rust-sys", default-features = false, features = ["build-lvgl"] }
 defmt = { version = "1.0.1", optional = true }
 
 [dev-dependencies]
@@ -60,7 +60,7 @@ name = "overhead"
 harness = false
 
 [build-dependencies]
-lvgl-rust-gen = { version = "0.1.0", path = "../lvgl-rust-gen" }
+lvgl-rust-gen = { version = "0.1.1", path = "../lvgl-rust-gen" }
 
 # Model checking of the cross-thread request protocol (`RUSTFLAGS="--cfg loom"`).
 [target.'cfg(loom)'.dependencies]
