@@ -9,13 +9,13 @@ pub(crate) mod ffi;
 #[cfg(feature = "heap")]
 pub(crate) mod deferred;
 pub(crate) mod drain;
+#[cfg(lvgl_rust_free_observer)]
+mod free_observer;
 #[cfg(not(lvgl_rust_views_only))]
 pub(crate) mod handle;
 #[cfg(all(not(lvgl_rust_views_only), not(lvgl_rust_docs)))]
 mod hook;
 mod objmut;
-#[cfg(lvgl_rust_owners)]
-mod owners;
 pub(crate) mod post;
 pub(crate) mod registry;
 mod session;
@@ -23,11 +23,11 @@ pub(crate) mod structural;
 pub(crate) mod sync;
 mod view;
 
+#[cfg(lvgl_rust_free_observer)]
+pub use free_observer::Freed;
 #[cfg(not(lvgl_rust_views_only))]
 pub use handle::{Handle, HandleCell, Owned, Tracked};
 pub use objmut::ObjMut;
-#[cfg(lvgl_rust_owners)]
-pub use owners::{Freed, Owner};
 pub use session::{DepthGuard, Lvgl, LvglAccess, Session, init, tick_inc};
 #[cfg(not(lvgl_rust_views_only))]
 pub use view::WidgetExt;

@@ -182,7 +182,7 @@ the [build configuration reference](https://github.com/AlixANNERAUD/lvgl_rust/bl
 | `defmt` | | `defmt::Format` for `Error`, handles, the event codes and the other public enums and plain types |
 | `debug-counters` | | `DebugCounters::read()`: four 16-bit counters (8 bytes of `.bss`) of what the crate did or refused without returning an error |
 | `growable-registry` | | Handle slots beyond `LVGL_RUST_HANDLE_SLOTS`, in chunks from the global allocator (`alloc`) that double the capacity, up to 65,535 slots; chunks are never freed. 52 B more `.bss` on 32-bit targets with the default 32 slots |
-| `owners` | | Owner tags in handles (`LVGL_RUST_OWNER_BITS` bits of the generation, default 4): handles minted for one client that others cannot use, a free observer, and the deletion of everything a client had; slots and handles keep their size |
+| `free-observer` | | `Lvgl::set_free_observer`: one function called for every tracked object LVGL frees (4 bytes of `.bss`), to drop what a host keeps per handle |
 | `shadcn-theme` | | The shadcn theme of `lvgl-rust-sys` |
 | `color_depth_1` ... `color_depth_32` | | LVGL's color depth (1, 8, 16, 24 or 32 bits), as in `lvgl-rust-sys` |
 

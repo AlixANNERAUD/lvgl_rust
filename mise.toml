@@ -163,11 +163,11 @@ env.RUSTFLAGS = "-D warnings"
 run = "cargo build -p lvgl-rust-sys --target riscv32imc-unknown-none-elf"
 
 [tasks.cross-arm]
-description = "Build lvgl-rust firmware for Cortex-M4/M7 (thumbv7em) and Cortex-M33 (thumbv8m.main), with handles (also growable and with owners) and views only"
+description = "Build lvgl-rust firmware for Cortex-M4/M7 (thumbv7em) and Cortex-M33 (thumbv8m.main), with handles (also growable and with the free observer) and views only"
 env.RUSTFLAGS = "-D warnings"
 run = [
   "DEP_LV_CONFIG_PATH={{config_root}}/lvgl-rust/conf CARGO_TARGET_DIR=target/cross-arm cargo build -q -p lvgl-rust-size-gate --profile size --target thumbv7em-none-eabihf",
-  "DEP_LV_CONFIG_PATH={{config_root}}/lvgl-rust/conf CARGO_TARGET_DIR=target/cross-arm cargo build -q -p lvgl-rust-size-gate --profile size --target thumbv7em-none-eabihf --features growable-registry,owners",
+  "DEP_LV_CONFIG_PATH={{config_root}}/lvgl-rust/conf CARGO_TARGET_DIR=target/cross-arm cargo build -q -p lvgl-rust-size-gate --profile size --target thumbv7em-none-eabihf --features growable-registry,free-observer",
   # Generic TARGET_* variables: see ARM_NEWLIB_FLAGS.
   "TARGET_CC=arm-none-eabi-gcc TARGET_AR=arm-none-eabi-ar TARGET_CFLAGS=\"$ARM_NEWLIB_FLAGS\" BINDGEN_EXTRA_CLANG_ARGS=\"$ARM_NEWLIB_FLAGS\" DEP_LV_CONFIG_PATH={{config_root}}/lvgl-rust/conf CARGO_TARGET_DIR=target/cross-arm cargo build -q -p lvgl-rust-size-gate --profile size --target thumbv8m.main-none-eabihf",
   "DEP_LV_CONFIG_PATH={{config_root}}/lvgl-rust-sys/conf LVGL_RUST_HANDLE_SLOTS=0 CARGO_TARGET_DIR=target/cross-arm-views cargo build -q -p lvgl-rust-size-gate --profile size --target thumbv7em-none-eabihf",
@@ -239,8 +239,8 @@ env.RUSTFLAGS = "-D warnings"
 env.DEP_LV_CONFIG_PATH = "{{config_root}}/lvgl-rust/conf"
 env.CARGO_TARGET_DIR = "target/safe"
 run = [
-  "cargo clippy -p lvgl-rust -p lvgl-rust-size-gate --all-targets --features lvgl-rust/async,lvgl-rust/heap,lvgl-rust/fmt,lvgl-rust/defmt,lvgl-rust/debug-counters",
-  "cargo clippy -p lvgl-rust --all-targets --features async,heap,fmt,growable-registry,owners",
+  "cargo clippy -p lvgl-rust -p lvgl-rust-size-gate --all-targets --features lvgl-rust/async,lvgl-rust/heap,lvgl-rust/fmt,lvgl-rust/defmt,lvgl-rust/debug-counters,lvgl-rust/free-observer",
+  "cargo clippy -p lvgl-rust --all-targets --features async,heap,fmt,growable-registry",
 ]
 
 [tasks.test-safe]
@@ -248,11 +248,11 @@ description = "Test lvgl-rust against LVGL, with a fixed and a growable registry
 env.RUSTFLAGS = "-D warnings"
 env.DEP_LV_CONFIG_PATH = "{{config_root}}/lvgl-rust/conf"
 env.CARGO_TARGET_DIR = "target/safe"
-# Both registries, each with the diagnostic features; owner tags with the
-# growable one.
+# Both registries, each with the diagnostic features; the free observer with
+# the fixed one.
 run = [
-  "cargo test -p lvgl-rust --features async,heap,fmt,defmt,debug-counters",
-  "cargo test -p lvgl-rust --features async,heap,fmt,defmt,debug-counters,growable-registry,owners",
+  "cargo test -p lvgl-rust --features async,heap,fmt,defmt,debug-counters,free-observer",
+  "cargo test -p lvgl-rust --features async,heap,fmt,defmt,debug-counters,growable-registry",
 ]
 
 [tasks.test-views-only]
@@ -342,11 +342,11 @@ env.MIRIFLAGS = "-Zmiri-permissive-provenance"
 # Miri provides its own `strlen` & co. The second run adds `heap`: the
 # deferred-free list and `LvBox` against the model's heap; the third the
 # registry chunks of `growable-registry`, against the global allocator, and
-# the owner tags of `owners`.
+# the free observer.
 run = [
   "cargo miri test -p lvgl-rust --lib --no-default-features",
   "cargo miri test -p lvgl-rust --lib --no-default-features --features heap",
-  "cargo miri test -p lvgl-rust --lib --no-default-features --features growable-registry,owners",
+  "cargo miri test -p lvgl-rust --lib --no-default-features --features growable-registry,free-observer",
 ]
 
 [tasks.loom]
