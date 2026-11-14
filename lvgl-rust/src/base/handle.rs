@@ -91,7 +91,9 @@ impl<W: Widget> Handle<W> {
     /// safe: every lookup checks the slot, its generation and the class, so
     /// a forged or stale value only resolves to [`Error::Dead`] (or, like
     /// any handle, to an object of class `W` that safe code could reach
-    /// anyway).
+    /// anyway). Never give raw handles to code you do not trust: it could
+    /// name any tracked object. Give it indices into a table of your own
+    /// instead (see the how-to guide on hosting several clients).
     pub fn from_raw(raw: u32) -> Option<Self> {
         NonZeroU32::new(raw).map(|raw| Self {
             raw,

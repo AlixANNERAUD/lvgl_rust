@@ -156,46 +156,24 @@ correct when raw `sys` code, a widget or LVGL's screen loading deletes
 its object. `lv_obj_set_id` is reserved to the crate, and taking a handle
 to an object finds its existing slot through `id` instead of scanning.
 
-### Owners (`owners`)
+### The free observer (`free-observer`)
 
-A host that runs several untrusted clients (applications in sandboxes,
-scripts, remote sessions) on one LVGL hands each of them handles as plain
-numbers. Each client must reach only its own objects, and when a client
-goes away its objects must go too. The `owners` feature records the
-owner in the handle itself: the top `LVGL_RUST_OWNER_BITS` bits of the
-slot's 16-bit generation (4 by default) hold the owner it was minted for
-(`handle_for`), 0 for none, and only the bits below count reuses.
+The OBJ_ID free hook already sees every deletion of a tracked object,
+whatever its path. With the `free-observer` feature it also calls one
+function the application installs (`Lvgl::set_free_observer`), with the
+object's handle. A host releases there what it keeps per handle (the
+entry of a client's table, events queued for the object) without an
+event callback per object, whose descriptor LVGL would allocate. The
+observer runs inside LVGL's destructor: it gets no `Lvgl`, and entering a
+session from it fails with `Reentrant`.
 
-```text
-raw handle:  [ owner | generation ][ slot index + 1 ]
-               4 bits   12 bits         16 bits
-```
-
-Nothing grows: a slot stays 8 bytes on 32-bit targets, a handle 4. A
-host checks a client's number with `Handle::from_raw_for`, a test of its
-bits; the lookup that follows checks the whole generation, owner
-included, as for any handle. The cost is in the generation: a stale
-handle is reported dead until its slot has been reused 2^(16 − bits)
-times instead of 65,536. Freeing a slot clears the owner, so the next
-object starts untagged.
-
-An object has one slot, so one owner at a time: `handle_for` refuses an
-object tracked for another owner, or for none (`Error::OtherOwner`),
-except a slot minted only for a deferred request, which no handle names
-yet.
-
-The OBJ_ID free hook already sees every deletion; with the feature it
-also calls an observer the application installs
-(`Lvgl::set_free_observer`), with the handle, its owner and the object.
-A host releases what it keeps per handle there (data LVGL retains for
-the object, a queue of events) without an event callback per object,
-whose descriptor LVGL would allocate.
-
-`Lvgl::delete_owner` deletes the owner's objects whose parent is not
-the owner's, so each subtree goes once, from its root, then releases
-whatever is left (objects the structural checks refuse to delete stay
-alive, untracked). It scans the slots up to the high-water mark: a
-client's teardown is rare, and the registry keeps no list per owner.
+Which client may use which object is the host's policy, not the crate's.
+A host hands its clients indices into a table of its own, as in
+[Host several clients](../how-to-guides/host-several-clients.md): the
+table costs 4 bytes per object in the host and keeps the full 16-bit
+generation of every handle. Raw handles (`Handle::into_raw`) are keys for
+code you trust, never capabilities: any number is safe to look up, but a
+guessed one can name any tracked object.
 
 ## `Owned`, and dropping from any thread
 

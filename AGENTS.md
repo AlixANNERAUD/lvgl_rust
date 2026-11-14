@@ -205,9 +205,9 @@ What the suites cover:
 - `mise run miri` runs the core tests three times: without features, with
   `heap` (the deferred-free list and `LvBox` against the stub's heap,
   `ffi::malloc`/`free`, where Miri's leak check catches a block never
-  freed), and with `growable-registry` and `owners` (registry chunks from
-  the global allocator, reachable from the static, so not reported as
-  leaks; owner tags).
+  freed), and with `growable-registry` and `free-observer` (registry
+  chunks from the global allocator, reachable from the static, so not
+  reported as leaks; the free observer).
 - `lvgl-rust/src/tests.rs` `protocol` module: loom models of `Owned::drop`
   racing the drain (`--cfg loom`), and with `growable-registry` racing the
   publication of a chunk (`mise run loom` runs both).
@@ -217,10 +217,13 @@ What the suites cover:
   feature (`defmt` and `debug-counters` in both). Tests
   that fill the registry must stop at `reg().capacity()` with the
   feature (the 65,535-slot limit is out of reach of LVGL's heap).
-- `lvgl-rust/src/tests.rs` `owners` module (`owners`): tagged handles,
-  the free observer, `delete_owner` and `release_owner`. `test-safe` runs
-  it with `growable-registry`; tests needing two owners return early with
-  `LVGL_RUST_OWNER_BITS=1`.
+- `lvgl-rust/src/tests.rs` `raw_handles` and `free_observer`
+  (`free-observer`) modules: `find_handle`, `into_raw`/`from_raw`, and the
+  observer seeing every tracked object freed. `test-safe` runs the
+  observer with the fixed registry.
+- `lvgl-rust/tests/clients.rs`: the per-client handle table of
+  `documentation/how-to-guides/host-several-clients.md` (its `host`
+  module is the guide's code: keep the two in step).
 - `lvgl-rust/tests/lifecycle.rs`: `init`, ticks, `deinit` (terminal, so in
   its own process).
 - `lvgl-rust/tests/compile_fail.rs`: trybuild cases
@@ -650,12 +653,12 @@ review the `access.toml` and `events.toml` diffs.
   move and are never freed (an `Owned` may store into its slot after
   `deinit`), and every index lookup stays panic-free (indices of no
   published chunk give the FREE sentinel slot).
-- **Owner bits.** With `owners` (cfg `lvgl_rust_owners`), the top
-  `OWNER_BITS` of a slot's generation are its owner. `Registry::free`
-  masks the incremented generation with `GENERATION_MASK`, which clears
-  them; only `mint_for` sets them, and `disown` clears them with a new
-  generation. The free observer runs inside LVGL's destructor: it gets
-  no `Lvgl` and must never get one.
+- **Free observer.** With `free-observer` (cfg
+  `lvgl_rust_free_observer`), `Registry::on_free` calls the observer
+  inside LVGL's destructor: it gets no `Lvgl` and must never get one.
+  Which client may use which object is the host's policy: keep it out of
+  the registry (no owner bits in handles), and point hosts to
+  `documentation/how-to-guides/host-several-clients.md`.
 - **Display buffers.** LVGL checks draw buffer sizes only when they are
   set (and only with `LV_USE_CHECK_ARG`). A display call that changes what
   is rendered into them (resolution, rotation, color format, render mode)

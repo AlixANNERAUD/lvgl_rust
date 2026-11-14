@@ -318,18 +318,9 @@ pub trait WidgetExt: Widget + private::Sealed {
     where
         Self: Sized;
 
-    /// The handle of this object if it already has one (of any owner),
-    /// without taking a slot: an O(1) lookup through the object's id.
+    /// The handle of this object if it already has one, without taking a
+    /// slot: an O(1) lookup through the object's id.
     fn find_handle(&self) -> Option<Handle<Self>>
-    where
-        Self: Sized;
-
-    /// A handle to this object tagged with `owner` (feature `owners`),
-    /// taking a slot the first time, as [`handle`](WidgetExt::handle).
-    /// Fails with [`Error::OtherOwner`] if the object is tracked for
-    /// another owner or for none (an untagged handle, an `Owned`).
-    #[cfg(lvgl_rust_owners)]
-    fn handle_for(&self, owner: crate::Owner) -> Result<Handle<Self>, Error>
     where
         Self: Sized;
 
@@ -357,15 +348,6 @@ impl<W: Widget> WidgetExt for W {
         let index = reg.find(ptr_of(self))?;
         // SAFETY: the raw handle of a live slot tracking this `W`.
         Some(unsafe { Handle::from_raw_unchecked(reg.handle_raw(index)) })
-    }
-
-    #[cfg(lvgl_rust_owners)]
-    fn handle_for(&self, owner: crate::Owner) -> Result<Handle<W>, Error> {
-        let reg = reg();
-        let minted = reg.mint_for(ptr_of(self), owner.get())?;
-        reg.slot(minted.index).clear(TEMP);
-        // SAFETY: as in `handle`.
-        Ok(unsafe { Handle::from_raw_unchecked(minted.raw) })
     }
 
     fn own(&self) -> Result<Owned<W>, Error> {

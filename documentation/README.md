@@ -35,6 +35,7 @@ changes are in [`AGENTS.md`](../AGENTS.md).
 | [Reduce the footprint](how-to-guides/reduce-the-footprint.md) | Trim what lvgl-rust and LVGL take in flash and RAM |
 | [Migrate from raw bindings](how-to-guides/migrate-from-raw-bindings.md) | Move an application from `lvgl-rust-sys` to lvgl-rust one module at a time |
 | [Use external fonts](how-to-guides/use-external-fonts.md) | Compile `lv_font_conv` fonts in a crate of their own and use them from lvgl-rust |
+| [Host several clients](how-to-guides/host-several-clients.md) | Share LVGL between clients that must reach only their own objects, with a handle table per client |
 
 ## Explanation
 
