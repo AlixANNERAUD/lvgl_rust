@@ -256,6 +256,17 @@ env.LVGL_CFLAGS = "LV_USE_PRIVATE_API=1"
 env.CARGO_TARGET_DIR = "target/external-classes"
 run = "cargo test -p lvgl-rust --features external-class-policy --test external_classes"
 
+[tasks.test-host-object-ids]
+description = "Test views-only mode with a host that defines the OBJ_ID hooks and owns each object's id"
+env.RUSTFLAGS = "-D warnings"
+# `LV_USE_OBJ_ID_BUILTIN 0` leaves the five hooks to the host.
+env.DEP_LV_CONFIG_PATH = "{{config_root}}/lvgl-rust/conf"
+env.CARGO_TARGET_DIR = "target/host-object-ids"
+run = [
+  "cargo clippy -p lvgl-rust --all-targets --features views-only",
+  "cargo test -p lvgl-rust --features views-only --test host_object_ids",
+]
+
 [tasks.test-views-only]
 description = "Lint and test lvgl-rust without handles, on a config that keeps LVGL's own OBJ_ID support"
 env.RUSTFLAGS = "-D warnings"
