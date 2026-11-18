@@ -368,6 +368,30 @@ fn generated_code_matches_golden() {
 }
 
 #[test]
+fn class_tables_name_only_widgets_the_configuration_enables() {
+    // `LV_USE_MENU 0`: the bindings have no `lv_menu_class`, and the tables
+    // classes.toml describes must not mention it, or the linker would keep the
+    // widget's code for a class nobody can create. A class that is enabled
+    // stays in the tables.
+    let (bindings, headers) = inputs();
+    let tables = load(ACCESS, CLASSES, OVERRIDES).unwrap();
+    let output = generate_from(&bindings, &headers, &tables, true).unwrap();
+    let start = output.code.find("pub(crate) static COMPOSITES").unwrap();
+    let end = output.code[start..].find("fn slider_parts").unwrap() + start;
+    let class_tables = &output.code[start..end];
+    for disabled in ["lv_menu_class", "lv_spangroup_class"] {
+        assert!(!BINDINGS.contains(disabled));
+        assert!(
+            !class_tables.contains(disabled),
+            "{disabled} is in the tables"
+        );
+    }
+    for enabled in ["lv_slider_class", "lv_textarea_class", "lv_bar_class"] {
+        assert!(class_tables.contains(enabled), "{enabled} is missing");
+    }
+}
+
+#[test]
 fn a_consuming_create_stays_raw() {
     // A creation that may delete its receiver would leave the parent's
     // `ObjMut` dangling: no wrapper.
