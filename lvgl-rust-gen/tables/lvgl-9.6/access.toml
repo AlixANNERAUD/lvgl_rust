@@ -2773,8 +2773,8 @@ why = "lv_menu_set_sidebar_page -> lv_obj_delete -> core/lv_obj_tree::obj_delete
 consumes = true
 
 [fn.lv_msgbox_add_close_button]
-access = "exclusive"
-why = "lv_msgbox_add_close_button -> lv_msgbox_add_header_button -> lv_obj_class_init_obj -> core/lv_obj_class::lv_obj_construct -> widgets/menu/lv_menu::lv_menu_page_constructor -> lv_obj_set_parent -> lv_obj_remove_child"
+access = "raw"
+why = "its click handler deletes the message box, or its backdrop, from inside LVGL (lv_msgbox.c:254-260, 311-322), without the structural checks `MsgBox::close` runs"
 
 [fn.lv_msgbox_add_footer_button]
 access = "exclusive"

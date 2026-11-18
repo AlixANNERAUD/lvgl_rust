@@ -145,6 +145,48 @@ mod scale {
     }
 }
 
+/// A message box closes by deleting itself, or the backdrop LVGL made for it.
+#[cfg(lv_use_msgbox)]
+mod msgbox {
+    use crate::{Error, ObjMut, base::structural, sys, widgets::MsgBox};
+    use core::ptr;
+
+    impl ObjMut<'_, MsgBox> {
+        /// Closes the message box: deletes it and its children, and the
+        /// backdrop LVGL made for a box without a parent.
+        ///
+        /// The object LVGL deletes gets the checks of
+        /// [`delete`](ObjMut::delete): [`Error::Internal`] if it, or
+        /// anything in it, is owned by the host (a custom class, see
+        /// [`ExternalClassPolicy`](crate::ExternalClassPolicy)), and
+        /// [`Error::Busy`] if it is a screen being loaded. Nothing is
+        /// deleted on error.
+        ///
+        /// `lv_msgbox_close`.
+        pub fn close(self) -> Result<(), Error> {
+            let message_box = self.as_raw();
+            // `lv_msgbox_close` deletes the parent of a box made with the
+            // backdrop (`auto_parent`, private to LVGL). Whatever put a box
+            // under a backdrop, checking the backdrop covers everything
+            // either deletion would take (the box is in its subtree).
+            // SAFETY: exclusive access, live box.
+            let parent = unsafe { sys::lv_obj_get_parent(message_box) };
+            // SAFETY: the descriptor is only compared.
+            let backdrop = ptr::addr_of!(sys::lv_msgbox_backdrop_class);
+            // SAFETY: `parent` is live when not null.
+            let under_backdrop =
+                !parent.is_null() && unsafe { sys::lv_obj_get_class(parent) } == backdrop;
+            // The box itself is no deletable object under a backdrop: a
+            // backdrop is not a widget the part tables describe.
+            structural::check_delete(if under_backdrop { parent } else { message_box })?;
+            // SAFETY: exclusive access, checks passed on every object the
+            // call deletes.
+            unsafe { sys::lv_msgbox_close(message_box) };
+            Ok(())
+        }
+    }
+}
+
 /// Relations (`relations.toml`): an object that keeps another one gets it
 /// cleared when that one is deleted.
 #[cfg(all(lv_use_keyboard, lv_use_textarea, not(lvgl_rust_views_only)))]

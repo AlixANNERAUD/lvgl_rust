@@ -266,8 +266,8 @@ pub(crate) unsafe fn screen_active() -> *mut lv_obj_t {
     with_display(|d| d.active.cast())
 }
 
-pub(crate) unsafe fn screen_auto_delete_candidates(_: *mut lv_obj_t) -> [*mut lv_obj_t; 2] {
-    with_display(|d| [d.active.cast(), d.loading.cast()])
+pub(crate) unsafe fn screen_deletion_candidates(_: *mut lv_obj_t) -> [*mut lv_obj_t; 3] {
+    with_display(|d| [d.active.cast(), d.loading.cast(), d.prev.cast()])
 }
 
 pub(crate) unsafe fn screen_load(screen: *mut lv_obj_t, _: u32, _: u32, _: u32, _: bool) {

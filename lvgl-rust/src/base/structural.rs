@@ -19,6 +19,15 @@
 //!   cannot be deleted yet (`Busy`): LVGL keeps pointers to both. The
 //!   previous screen cannot be loaded either: with `auto_delete`, LVGL
 //!   deletes it first and then loads the freed object.
+//! - Loading a screen can delete screens too: the previous one when a
+//!   pending load finishes first (whatever the new load asks for), and
+//!   the old one when `auto_delete` is set. The load is refused when one
+//!   of the screens involved holds host-owned objects: `Internal` with
+//!   `auto_delete`, `Busy` while another load is pending (retry when it
+//!   completes). LVGL deletes after the animation, not when the load is
+//!   requested: the host must not put host-owned objects in a screen an
+//!   animated `auto_delete` load is about to delete (see
+//!   `documentation/explanation/object-lifetime.md`).
 //! - `set_parent` refuses cycles (LVGL has no guard) and screens (LVGL
 //!   ignores the call).
 //! - Only parentless objects can be loaded as screens.
@@ -400,16 +409,26 @@ pub(crate) fn load_screen(screen: *mut lv_obj_t, anim: ScreenAnim) -> Result<(),
     if is_previous_screen(screen) {
         return Err(Error::Busy);
     }
-    if anim.auto_delete() {
-        // LVGL can finish a pending load first, then delete that screen.
-        // SAFETY: the token is held and the screen is live.
-        let candidates = unsafe { ffi::screen_auto_delete_candidates(screen) };
-        if candidates
+    // SAFETY: the token is held and the screen is live.
+    let candidates = unsafe { ffi::screen_deletion_candidates(screen) };
+    // A new load deletes the old screen when it asks for it. While another
+    // load is pending it also finishes that one first (the new flag is not
+    // consulted), which deletes the previous screen if the pending load
+    // asked for it, and the pending load's own flag is not public: any
+    // screen involved may go. A screen with host-owned objects must not.
+    let pending = !candidates[1].is_null();
+    if (anim.auto_delete() || pending)
+        && candidates
             .into_iter()
             .any(|o| !o.is_null() && o != screen && contains_external(o))
-        {
-            return Err(Error::Internal);
-        }
+    {
+        // Permanent with `auto_delete`; otherwise only until the pending
+        // load has completed.
+        return Err(if anim.auto_delete() {
+            Error::Internal
+        } else {
+            Error::Busy
+        });
     }
     // SAFETY: exclusive access, checks passed.
     unsafe {

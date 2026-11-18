@@ -196,6 +196,15 @@ why = "its handlers read the year dropdown's options as fixed YYYY entries, unch
 access = "raw"
 why = "any text becomes the year options, which the dropdown header's handlers parse as fixed YYYY entries, unchecked (lv_calendar_header_dropdown.c:161-169, 189-193)"
 
+# The close button's click handler calls lv_msgbox_close
+# (lv_msgbox.c:254-260, 311-322), which deletes the box, or the backdrop
+# LVGL made for it, from inside LVGL: no structural check can run first, so
+# it could free host-owned widgets in the box. `close` (manual.rs) checks
+# the deleted object instead.
+[exceptions.lv_msgbox_add_close_button]
+access = "raw"
+why = "its click handler deletes the message box, or its backdrop, from inside LVGL (lv_msgbox.c:254-260, 311-322), without the structural checks `MsgBox::close` runs"
+
 [exceptions.lv_color_make]
 access = "pure"
 why = "computes a value"

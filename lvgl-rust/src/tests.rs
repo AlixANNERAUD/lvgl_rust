@@ -1305,6 +1305,33 @@ mod lvgl_only {
     }
 
     #[test]
+    fn closing_a_message_box_deletes_it_and_the_backdrop_made_for_it() {
+        use crate::widgets::MsgBox;
+        let mut guard = guard();
+        let mut lv = session(&mut guard);
+        let screen = lv.screen_active().unwrap().as_ptr();
+        // SAFETY: session held. The second box has no parent: LVGL makes a
+        // backdrop for it on the top layer and `lv_msgbox_close` deletes it.
+        let boxes = unsafe {
+            [
+                sys::lv_msgbox_create(screen),
+                sys::lv_msgbox_create(core::ptr::null_mut()),
+            ]
+        };
+        let count = |parent| unsafe { sys::lv_obj_get_child_count(parent) };
+        // SAFETY: as above.
+        let top = unsafe { sys::lv_layer_top() };
+        assert_eq!((count(screen), count(top)), (1, 1));
+        for raw in boxes {
+            lv.edit(|lv| from_raw(lv, raw).downcast::<MsgBox>())
+                .unwrap()
+                .close()
+                .unwrap();
+        }
+        assert_eq!((count(screen), count(top)), (0, 0));
+    }
+
+    #[test]
     fn children_are_created_and_reordered_only_where_no_index_shifts() {
         use crate::widgets::Label;
         let mut guard = guard();

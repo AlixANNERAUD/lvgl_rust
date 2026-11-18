@@ -19,6 +19,10 @@ manual = [
     "lv_obj_move_to_index",
     # Copies one entry per button: length-checked (button_map.rs).
     "lv_buttonmatrix_set_ctrl_map",
+    # Deletes the box, or the backdrop `lv_msgbox_create(NULL)` made for it
+    # (lv_msgbox.c:291-296): the deleted object gets the structural checks
+    # (manual.rs).
+    "lv_msgbox_close",
     # The open list's label shows the options as static text: re-pointed
     # after every change (manual.rs).
     "lv_dropdown_set_options",

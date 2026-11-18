@@ -280,7 +280,7 @@ fn composites_free_their_parts_when_deleted() {
         lvgl_rust::sys::lv_msgbox_add_footer_button(mbox, c"OK".as_ptr());
     }
     let children = lv.screen_active().unwrap().get_child_count();
-    lv.edit(last_msgbox).unwrap().close();
+    lv.edit(last_msgbox).unwrap().close().unwrap();
     lv.timer_handler();
     assert_eq!(lv.screen_active().unwrap().get_child_count(), children - 1);
 }

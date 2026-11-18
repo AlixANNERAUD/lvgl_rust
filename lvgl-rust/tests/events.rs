@@ -413,7 +413,12 @@ fn a_child_lent_by_creation_cannot_outlive_a_deleting_send() {
     let mut lv = session(&mut guard);
     let children = lv.screen_active().unwrap().get_child_count();
     MsgBox::create(&mut lv.screen_active_mut().unwrap()).unwrap();
-    lv.edit(msgbox).unwrap().add_close_button().unwrap();
+    // The close button is raw-only: its click handler deletes the box from
+    // inside LVGL, where the structural checks cannot run.
+    // SAFETY: session held, live message box; no host-owned object is in it.
+    unsafe {
+        lvgl_rust::sys::lv_msgbox_add_close_button(msgbox(&lv).unwrap().as_ptr());
+    }
     {
         let mut button = lv.edit(close_button).unwrap();
         // Lent as a view of the button's borrow: shared calls only, so

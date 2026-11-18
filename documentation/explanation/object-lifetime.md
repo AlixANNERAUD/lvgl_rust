@@ -274,6 +274,31 @@ children. A host may mark a class `ChildrenOnly` to allow structural edits
 to its content. Deleting, cleaning, owning or moving an ancestor still
 checks the affected subtree for host-owned objects.
 
+### Message boxes
+
+`lv_msgbox_close` deletes the box, or the backdrop LVGL created on the top
+layer for a box without a parent. `ObjMut<MsgBox>::close` checks the object
+LVGL deletes like any other delete, so a host-owned object inside the box
+keeps it open. `lv_msgbox_add_close_button` is not wrapped: its click
+handler calls `lv_msgbox_close` from inside LVGL, where nothing can run a
+check, and the box would take a host-owned object with it. Raw code that
+uses it owns that risk; safe code adds its own button and calls `close`.
+
+### Screen loads that delete
+
+`auto_delete` makes LVGL delete the old screen, and finishing a pending
+load first deletes the previous screen when that load asked for it, whatever
+the new load asks for. `load_screen` refuses (`Internal` with `auto_delete`,
+`Busy` while a load is pending) when the active, loading or previous screen
+holds a host-owned object.
+
+The check runs when the load is requested, but LVGL deletes later, once
+the animation has completed. Host rule: do not put host-owned objects (a
+Window, any custom class) in a screen an animated `auto_delete` load is
+going to delete, which includes creating one on `lv_screen_active()` while
+such a load is pending. Raw code creating objects there after the check
+cannot be seen by it.
+
 ### Busy screens
 
 One refusal is temporary. While LVGL loads a screen, and during an

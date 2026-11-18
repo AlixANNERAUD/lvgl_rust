@@ -72,6 +72,12 @@ extern "C"
     extern const lv_obj_class_t lv_roller_label_class;
 #endif
 
+#if LV_USE_MSGBOX
+    /** Built-in descriptor for the backdrop `lv_msgbox_create(NULL)` makes
+     *  on the top layer and `lv_msgbox_close` deletes with the box. */
+    extern const lv_obj_class_t lv_msgbox_backdrop_class;
+#endif
+
 #if LV_USE_MENU
     /** Parts of a menu that LVGL caches in the widget. */
     typedef enum {
