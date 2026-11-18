@@ -682,8 +682,14 @@ pub(crate) static COMPOSITES: &[crate::base::structural::Composite] = &[
 /// Widgets that create no child and keep no pointer to their
 /// children.
 #[cfg_attr(miri, allow(dead_code))]
-pub(crate) static LEAVES: &[crate::base::structural::ClassRef] = &[
+pub(crate) const LEAF_COUNT: usize = 1usize;
+/// Non-composite LVGL class descriptors, starting with the leaves.
+#[cfg_attr(miri, allow(dead_code))]
+pub(crate) static NON_COMPOSITES: &[crate::base::structural::ClassRef] = &[
     crate::base::structural::ClassRef(core::ptr::addr_of!(crate ::sys::lv_bar_class)),
+    crate::base::structural::ClassRef(core::ptr::addr_of!(crate ::sys::lv_msgbox_class)),
+    crate::base::structural::ClassRef(core::ptr::addr_of!(crate ::sys::lv_image_class)),
+    crate::base::structural::ClassRef(core::ptr::addr_of!(crate ::sys::lv_label_class)),
 ];
 #[cfg_attr(miri, allow(dead_code))]
 fn slider_parts(

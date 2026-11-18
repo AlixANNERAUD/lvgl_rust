@@ -2319,7 +2319,9 @@
 /** Include `lvgl_private.h` from `lvgl.h` so that LVGL internal data
  *  structures and functions are accessible by default.
  */
-#define LV_USE_PRIVATE_API 0
+#ifndef LV_USE_PRIVATE_API
+    #define LV_USE_PRIVATE_API 0
+#endif
 
 /** By default, LVGL stores all runtime state in a single static
  *  'lv_global_t' variable, sufficient for most single-display

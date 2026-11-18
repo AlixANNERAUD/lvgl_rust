@@ -117,6 +117,19 @@ pub(crate) unsafe fn screen_active() -> *mut lv_obj_t {
     unsafe { sys::lv_screen_active() }
 }
 
+/// The screens a load may delete: the active, the one being loaded and
+/// the previous one (`lv_screen_load_anim`, `scr_anim_completed`).
+pub(crate) unsafe fn screen_deletion_candidates(screen: *mut lv_obj_t) -> [*mut lv_obj_t; 3] {
+    let display = unsafe { sys::lv_obj_get_display(screen) };
+    unsafe {
+        [
+            sys::lv_display_get_screen_active(display),
+            sys::lv_display_get_screen_loading(display),
+            sys::lv_display_get_screen_prev(display),
+        ]
+    }
+}
+
 pub(crate) unsafe fn screen_load(
     screen: *mut lv_obj_t,
     anim: u32,
@@ -168,6 +181,10 @@ pub(crate) fn composites() -> &'static [super::structural::Composite] {
 }
 
 /// Widget classes without parts (generated).
+pub(crate) fn non_composites() -> &'static [super::structural::ClassRef] {
+    crate::generated::NON_COMPOSITES
+}
+
 pub(crate) fn leaves() -> &'static [super::structural::ClassRef] {
-    crate::generated::LEAVES
+    &non_composites()[..crate::generated::LEAF_COUNT]
 }

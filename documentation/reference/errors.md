@@ -108,7 +108,8 @@ error in a `static`, a panic elsewhere.
 | --- | --- | --- |
 | `ObjMut::delete` | The object is a screen being loaded, or the previous screen of an animated load. | Retry after the load, or use `delete_later`, which the drain retries. |
 | `Owned::delete` | as above | The request stays pending and is retried at each drain. |
-| `ObjMut::load_screen`, `Lvgl::load_screen` | The screen is the previous screen of an animated load. | Retry once the load completes. |
+| `ObjMut::load_screen`, `Lvgl::load_screen` | The screen is the previous screen of an animated load; or another load is pending and a screen it involves (active, loading or previous) holds host-owned objects, since finishing it first can delete one. | Retry once the load completes. |
+| `ObjMut<MsgBox>::close` | The message box, or the backdrop LVGL made for it, is a screen being loaded. | Retry after the load. |
 | `Lvgl::post` | The queue is full (`LVGL_RUST_POST_SLOTS`, default 4). | Raise `LVGL_RUST_POST_SLOTS`, or retry after the next drain. |
 | `Obj::on*`, `Obj::subscribe`, `subscribe_owned`, `observe_obj` | Called from a callback on an object LVGL is sending an event to. | Register outside the handler, or post the registration with `Lvgl::post`. |
 | `Display::try_delete` | A flush is pending. The `Display` is returned with the error. | Complete the flush (`FlushDone`), then retry. |
@@ -119,6 +120,8 @@ the drain retries them.
 ## Internal
 
 Refused by the structural checks ([API overview](api-overview.md#exclusive-access-to-an-object-objmut)).
+Structural edits can also fail when they would delete, own or move an object
+whose class is managed by the embedding host.
 
 | Returned by | Condition |
 | --- | --- |
@@ -128,7 +131,8 @@ Refused by the structural checks ([API overview](api-overview.md#exclusive-acces
 | `WidgetExt::own`, `create_owned` | As for `delete`. |
 | `ObjMut::set_parent`, `set_parent_to`, `move_to_index` | The object is a layer, protected as for `delete`, or pinned (a calendar header); or the new parent does not accept children (a closed or indexed widget, a part whose children are counted). |
 | `Obj::create`, `<Widget>::create`, `TileView::create` | The parent does not accept children (for example a tile view: use `add_tile`). |
-| `ObjMut::load_screen`, `Lvgl::load_screen` | The object is a display layer. |
+| `ObjMut::load_screen`, `Lvgl::load_screen` | The object is a display layer; or `auto_delete` is set and the active, loading or previous screen holds host-owned objects. |
+| `ObjMut<MsgBox>::close` | As for `delete`, for the object LVGL deletes: the box, or the backdrop it made on the top layer for a box without a parent. A host-owned object anywhere inside refuses the call, and nothing is deleted. |
 | `Label::set_text_static` | The label belongs to a textarea. |
 | `TileView::create` | LVGL's tile view has no handler to wrap (not expected with LVGL 9.6). |
 

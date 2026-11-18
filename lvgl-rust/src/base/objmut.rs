@@ -21,11 +21,8 @@ use crate::{Handle, Owned, WidgetExt};
 /// while it does, and structural operations (delete, clean, reparent) are
 /// safe.
 ///
-/// Widgets keep pointers to some of their children, so these operations
-/// are refused with [`Error::Internal`] on display layers and wherever a
-/// widget could hold such a pointer: an object can be deleted, owned or
-/// moved only if all its ancestors are plain objects (`lv_obj`), cleaned
-/// only if it is one too, and moved only under a plain object.
+/// Structural operations return [`Error::Internal`] if they would
+/// affect a display layer, widget internals, or a host-owned object.
 pub struct ObjMut<'s, W> {
     p: NonNull<lv_obj_t>,
     _l: PhantomData<&'s mut Lvgl>,

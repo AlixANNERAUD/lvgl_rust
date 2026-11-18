@@ -1,5 +1,10 @@
 # Migrate from raw bindings
 
+Objects that use a host-defined class descriptor keep their raw owner.
+Enable `external-class-policy` to export a policy hook if safe code should
+edit that class's children. See the
+[structural rules](../explanation/object-lifetime.md#structural-checks).
+
 This guide moves an application written against `lvgl-rust-sys` to
 lvgl-rust one module at a time. lvgl-rust builds on `lvgl-rust-sys` and
 does not change it, so raw and safe code live side by side during the

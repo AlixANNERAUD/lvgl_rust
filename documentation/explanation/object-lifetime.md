@@ -267,13 +267,37 @@ lazily created ones count. The checks then decide:
 | set parent, move to index | as for delete, or the (new) parent is a closed or indexed widget; for set parent, also when the object is pinned |
 | create | the parent is closed or indexed (a new child would shift or be cast) |
 
-A widget class with no entry is treated as unknown, and nothing inside it
-can be deleted, owned, moved, cleaned or created: refusing is the safe
-default for a widget nobody has read. Subclasses inherit their base's
-entry. These checks walk the object's ancestors, and they are the main
-work the crate adds when creating and deleting an object: the benchmark
-measures 1,395.9 ns for the pair against 1,250.8 ns for the raw calls,
-a difference of 145.1 ns.
+LVGL classes inherit their built-in part rules. A class defined by the host
+is identified by its exact descriptor, even if it subclasses an LVGL
+widget. The default external class policy protects the object and its
+children. A host may mark a class `ChildrenOnly` to allow structural edits
+to its content. Deleting, cleaning, owning or moving an ancestor still
+checks the affected subtree for host-owned objects.
+
+### Message boxes
+
+`lv_msgbox_close` deletes the box, or the backdrop LVGL created on the top
+layer for a box without a parent. `ObjMut<MsgBox>::close` checks the object
+LVGL deletes like any other delete, so a host-owned object inside the box
+keeps it open. `lv_msgbox_add_close_button` is not wrapped: its click
+handler calls `lv_msgbox_close` from inside LVGL, where nothing can run a
+check, and the box would take a host-owned object with it. Raw code that
+uses it owns that risk; safe code adds its own button and calls `close`.
+
+### Screen loads that delete
+
+`auto_delete` makes LVGL delete the old screen, and finishing a pending
+load first deletes the previous screen when that load asked for it, whatever
+the new load asks for. `load_screen` refuses (`Internal` with `auto_delete`,
+`Busy` while a load is pending) when the active, loading or previous screen
+holds a host-owned object.
+
+The check runs when the load is requested, but LVGL deletes later, once
+the animation has completed. Host rule: do not put host-owned objects (a
+Window, any custom class) in a screen an animated `auto_delete` load is
+going to delete, which includes creating one on `lv_screen_active()` while
+such a load is pending. Raw code creating objects there after the check
+cannot be seen by it.
 
 ### Busy screens
 

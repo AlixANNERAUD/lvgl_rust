@@ -78,6 +78,7 @@ to shared, its method moves to the view.
 | `into_view(self) -> &'s W` | Gives up exclusive access for a view lasting as long as that access was borrowed. | — |
 | `into_base::<B>(self) -> ObjMut<'s, B>` | The same object as a base class (`W: IsA<B>`); takes `self`. | — |
 | `delete(self)` | Deletes the object and its children. | `Internal`, `Busy` |
+| `ObjMut<MsgBox>::close(self)` | Closes the message box: deletes it, or the backdrop LVGL made for a box without a parent, with the checks of `delete` on the object LVGL deletes. The generated close button (`lv_msgbox_add_close_button`) stays in `sys`: its click handler deletes the box from inside LVGL, without these checks. | `Internal`, `Busy` |
 | `clean(&mut self)` | Deletes the children. | `Internal` |
 | `move_to_index(&mut self, index: i32)` | Moves the object among its siblings (negative: from the end; out of range: no change). | `InvalidArg` (a screen), `Internal` |
 | `set_parent(&mut self, parent: Handle<Obj>)` (handles) | Moves the object under `parent`. | `Dead`, `InvalidArg` (a cycle or a screen), `Internal` |
@@ -111,6 +112,11 @@ Structural rules, checked before LVGL is called (`base/structural.rs`):
   (`Busy`).
 - `set_parent` refuses cycles and screens (`InvalidArg`). Only parentless
   objects can be loaded as screens (`InvalidArg`).
+
+- Safe structural operations preserve objects of external classes, including
+  when deleting or moving a containing subtree. A host may allow edits to
+  their children through `ExternalClassPolicy::ChildrenOnly`. The
+  `external-class-policy` feature enables the host-supplied hook.
 
 ## Handles and ownership (handles)
 

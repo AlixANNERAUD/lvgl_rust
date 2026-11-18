@@ -695,9 +695,22 @@ mod model {
         let other = unsafe { ffi::obj_create_other(lv.screen_active().unwrap().as_ptr()) };
         let other = unsafe { Obj::from_raw(&lv, core::ptr::NonNull::new(other).unwrap()) };
         let typed = other.downcast::<Other>().unwrap().handle().unwrap();
+        let other = other.as_ptr();
         assert_eq!(typed.upcast::<Obj>().downcast::<Other>(&lv), Some(typed));
-        typed.get_mut(&mut lv).unwrap().delete().unwrap();
-        plain.get_mut(&mut lv).unwrap().delete().unwrap();
+        assert_eq!(
+            typed.get_mut(&mut lv).unwrap().delete(),
+            Err(Error::Internal)
+        );
+        let owner = plain.get(&lv).unwrap().as_ptr();
+        assert_eq!(
+            plain.get_mut(&mut lv).unwrap().delete(),
+            Err(Error::Internal)
+        );
+        // SAFETY: the fixture owns these live raw objects and holds the test lock.
+        unsafe {
+            ffi::obj_delete(other);
+            ffi::obj_delete(owner);
+        }
     }
 }
 
@@ -1289,6 +1302,33 @@ mod lvgl_only {
         assert_eq!(edit.delete(), Err(Error::Internal));
         let msgbox = from_raw(&lv, msgbox).handle().unwrap();
         msgbox.get_mut(&mut lv).unwrap().delete().unwrap();
+    }
+
+    #[test]
+    fn closing_a_message_box_deletes_it_and_the_backdrop_made_for_it() {
+        use crate::widgets::MsgBox;
+        let mut guard = guard();
+        let mut lv = session(&mut guard);
+        let screen = lv.screen_active().unwrap().as_ptr();
+        // SAFETY: session held. The second box has no parent: LVGL makes a
+        // backdrop for it on the top layer and `lv_msgbox_close` deletes it.
+        let boxes = unsafe {
+            [
+                sys::lv_msgbox_create(screen),
+                sys::lv_msgbox_create(core::ptr::null_mut()),
+            ]
+        };
+        let count = |parent| unsafe { sys::lv_obj_get_child_count(parent) };
+        // SAFETY: as above.
+        let top = unsafe { sys::lv_layer_top() };
+        assert_eq!((count(screen), count(top)), (1, 1));
+        for raw in boxes {
+            lv.edit(|lv| from_raw(lv, raw).downcast::<MsgBox>())
+                .unwrap()
+                .close()
+                .unwrap();
+        }
+        assert_eq!((count(screen), count(top)), (0, 0));
     }
 
     #[test]
