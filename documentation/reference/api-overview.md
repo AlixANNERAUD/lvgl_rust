@@ -112,6 +112,11 @@ Structural rules, checked before LVGL is called (`base/structural.rs`):
 - `set_parent` refuses cycles and screens (`InvalidArg`). Only parentless
   objects can be loaded as screens (`InvalidArg`).
 
+- Safe structural operations preserve objects of external classes, including
+  when deleting or moving a containing subtree. A host may allow edits to
+  their children through `ExternalClassPolicy::ChildrenOnly`. The
+  `external-class-policy` feature enables the host-supplied hook.
+
 ## Handles and ownership (handles)
 
 | Item | What it is | Access | Cost |

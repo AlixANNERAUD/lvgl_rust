@@ -266,6 +266,10 @@ pub(crate) unsafe fn screen_active() -> *mut lv_obj_t {
     with_display(|d| d.active.cast())
 }
 
+pub(crate) unsafe fn screen_auto_delete_candidates(_: *mut lv_obj_t) -> [*mut lv_obj_t; 2] {
+    with_display(|d| [d.active.cast(), d.loading.cast()])
+}
+
 pub(crate) unsafe fn screen_load(screen: *mut lv_obj_t, _: u32, _: u32, _: u32, _: bool) {
     with_display(|d| d.active = obj(screen));
 }
@@ -297,6 +301,10 @@ pub(crate) unsafe fn display_loading_screens(_: *mut lv_display_t) -> [*mut lv_o
 
 /// The model has no LVGL widget classes.
 pub(crate) fn composites() -> &'static [super::structural::Composite] {
+    &[]
+}
+
+pub(crate) fn non_composites() -> &'static [super::structural::ClassRef] {
     &[]
 }
 

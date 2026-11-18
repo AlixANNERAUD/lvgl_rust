@@ -267,13 +267,12 @@ lazily created ones count. The checks then decide:
 | set parent, move to index | as for delete, or the (new) parent is a closed or indexed widget; for set parent, also when the object is pinned |
 | create | the parent is closed or indexed (a new child would shift or be cast) |
 
-A widget class with no entry is treated as unknown, and nothing inside it
-can be deleted, owned, moved, cleaned or created: refusing is the safe
-default for a widget nobody has read. Subclasses inherit their base's
-entry. These checks walk the object's ancestors, and they are the main
-work the crate adds when creating and deleting an object: the benchmark
-measures 1,395.9 ns for the pair against 1,250.8 ns for the raw calls,
-a difference of 145.1 ns.
+LVGL classes inherit their built-in part rules. A class defined by the host
+is identified by its exact descriptor, even if it subclasses an LVGL
+widget. The default external class policy protects the object and its
+children. A host may mark a class `ChildrenOnly` to allow structural edits
+to its content. Deleting, cleaning, owning or moving an ancestor still
+checks the affected subtree for host-owned objects.
 
 ### Busy screens
 

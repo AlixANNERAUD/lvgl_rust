@@ -1008,6 +1008,7 @@ fn emit_composites(classifier: &Classifier) -> TokenStream {
     let mut leaves = Vec::new();
     let mut functions = Vec::new();
     let mut max_parts = 1usize;
+    let mut described = BTreeSet::new();
     for (class, composite) in &classifier.tables.classes.composite {
         if !bindings.statics.contains(&format!("lv_{class}_class")) {
             continue;
@@ -1045,6 +1046,7 @@ fn emit_composites(classifier: &Classifier) -> TokenStream {
         if !complete {
             continue; // a part getter is compiled out: treat the class as unknown
         }
+        described.insert(class);
         max_parts = max_parts.max(parts.len());
         let class_static = format_ident!("lv_{}_class", class);
         let count = parts.len();
@@ -1093,6 +1095,20 @@ fn emit_composites(classifier: &Classifier) -> TokenStream {
             }
         });
     }
+    let leaf_count = leaves.len();
+    let other_classes = classifier.classes.iter().filter_map(|class| {
+        let name = format!("lv_{class}_class");
+        if class == "obj"
+            || described.contains(class)
+            || bindings.static_types.get(&name)?.named() != Some("lv_obj_class_t")
+        {
+            return None;
+        }
+        let class = Ident::new(&name, Span::call_site());
+        Some(quote!(crate::base::structural::ClassRef(
+            core::ptr::addr_of!(crate::sys::#class)
+        )))
+    });
     quote! {
         /// Most parts of a composite widget.
         pub(crate) const MAX_PARTS: usize = #max_parts;
@@ -1103,7 +1119,11 @@ fn emit_composites(classifier: &Classifier) -> TokenStream {
         /// Widgets that create no child and keep no pointer to their
         /// children.
         #[cfg_attr(miri, allow(dead_code))]
-        pub(crate) static LEAVES: &[crate::base::structural::ClassRef] = &[#(#leaves),*];
+        pub(crate) const LEAF_COUNT: usize = #leaf_count;
+        /// Non-composite LVGL class descriptors, starting with the leaves.
+        #[cfg_attr(miri, allow(dead_code))]
+        pub(crate) static NON_COMPOSITES: &[crate::base::structural::ClassRef] =
+            &[#(#leaves,)* #(#other_classes),*];
         #(#functions)*
     }
 }

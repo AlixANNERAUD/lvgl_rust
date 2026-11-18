@@ -12,8 +12,9 @@
 //!   closed widget (a tile view, which casts every child to a tile) gets
 //!   children only from its own API, and a pinned one (a calendar header,
 //!   whose handlers read its parent as the calendar) never changes parent.
-//!   Inside a widget class the tables do not list, nothing can be deleted,
-//!   owned, moved or cleaned. Refusals are `Internal`.
+//!   External class descriptors are protected by default. An embedding
+//!   host can allow structural edits to their children. Refusals are
+//!   `Internal`.
 //! - A screen being loaded, or the previous one during an animated load,
 //!   cannot be deleted yet (`Busy`): LVGL keeps pointers to both. The
 //!   previous screen cannot be loaded either: with `auto_delete`, LVGL
@@ -85,10 +86,76 @@ pub(crate) struct ClassRef(pub(crate) *const ffi::lv_obj_class_t);
 // SAFETY: as for `Composite`.
 unsafe impl Sync for ClassRef {}
 
-/// Whether `o` is a plain `lv_obj` (no widget class).
-fn is_plain(o: *mut lv_obj_t) -> bool {
+/// Structural permissions for an LVGL class defined outside the bindings.
+///
+/// When `external-class-policy` is enabled, the embedding binary must export
+/// one `#[unsafe(no_mangle)]` Rust function named
+/// `lvgl_rust_external_class_policy` with this signature:
+///
+/// ```rust,ignore
+/// fn lvgl_rust_external_class_policy(
+///     class: *const lvgl_rust::sys::lv_obj_class_t,
+/// ) -> lvgl_rust::ExternalClassPolicy
+/// ```
+///
+/// The hook runs under the LVGL token. Compare exact descriptor addresses,
+/// return a consistent policy, and do not call into LVGL or run callbacks.
+/// Return `ChildrenOnly` only when the class leaves its children under the
+/// application's control. All other custom classes must be `Protected`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ExternalClassPolicy {
+    /// The object and its children are managed by the host.
+    Protected,
+    /// Safe code may edit the children; the host manages the object itself.
+    ChildrenOnly,
+}
+
+// The host supplies a single definition when it enables the feature. The
+// direct call requires no registration slot or per-object storage.
+#[cfg(feature = "external-class-policy")]
+unsafe extern "Rust" {
+    fn lvgl_rust_external_class_policy(class: *const ffi::lv_obj_class_t) -> ExternalClassPolicy;
+}
+
+fn is_builtin(class: *const ffi::lv_obj_class_t) -> bool {
+    class == ffi::obj_class()
+        || ffi::non_composites().iter().any(|c| c.0 == class)
+        || ffi::composites().iter().any(|c| c.class == class)
+}
+
+fn external_policy(class: *const ffi::lv_obj_class_t) -> ExternalClassPolicy {
+    #[cfg(feature = "external-class-policy")]
+    // SAFETY: the embedding host provides the documented hook contract.
+    let policy = unsafe { lvgl_rust_external_class_policy(class) };
+    #[cfg(not(feature = "external-class-policy"))]
+    let policy = {
+        let _ = class;
+        ExternalClassPolicy::Protected
+    };
+    policy
+}
+
+fn is_external(o: *mut lv_obj_t) -> bool {
     // SAFETY: token held, `o` is a live object.
-    unsafe { ffi::obj_class_of(o) == ffi::obj_class() }
+    !is_builtin(unsafe { ffi::obj_class_of(o) })
+}
+
+fn contains_external(o: *mut lv_obj_t) -> bool {
+    is_external(o) || children_contain_external(o)
+}
+
+fn children_contain_external(o: *mut lv_obj_t) -> bool {
+    for index in 0.. {
+        // SAFETY: token held, `o` is live. LVGL returns null after the last child.
+        let child = unsafe { ffi::obj_child(o, index) };
+        if child.is_null() {
+            break;
+        }
+        if contains_external(child) {
+            return true;
+        }
+    }
+    false
 }
 
 fn parent(o: *mut lv_obj_t) -> *mut lv_obj_t {
@@ -157,15 +224,19 @@ fn any_part_above(o: *mut lv_obj_t, f: &mut dyn FnMut(*mut lv_obj_t, u8) -> bool
 /// parts (a message box's content has its own class).
 fn is_container(o: *mut lv_obj_t) -> bool {
     // SAFETY: token held, `o` is a live object.
+    let class = unsafe { ffi::obj_class_of(o) };
+    if class == ffi::obj_class() {
+        return true;
+    }
+    if !is_builtin(class) {
+        return external_policy(class) == ExternalClassPolicy::ChildrenOnly;
+    }
     let leaf = || {
         ffi::leaves()
             .iter()
             .any(|c| unsafe { ffi::obj_has_class(o, c.0) })
     };
-    is_plain(o)
-        || leaf()
-        || composites(o).next().is_some()
-        || any_part_above(o, &mut |part, _| part == o)
+    leaf() || composites(o).next().is_some() || any_part_above(o, &mut |part, _| part == o)
 }
 
 /// Whether every object from `o` up is a container.
@@ -195,9 +266,10 @@ fn indexed_reach(o: *mut lv_obj_t) -> Option<(u32, u8)> {
 
 /// Whether deleting, owning or moving `x` would break a widget: `x` is a
 /// part or contains one, LVGL finds `x` by index, or a widget above `x` is
-/// not in the tables.
+/// not in the tables, or the subtree contains a host-owned object.
 fn is_protected(x: *mut lv_obj_t) -> bool {
-    !known_from(parent(x))
+    contains_external(x)
+        || !known_from(parent(x))
         || any_part_above(x, &mut |part, _| distance(part, x).is_some())
         || indexed_reach(x).is_some_and(|(d, depth)| (1..=depth as u32).contains(&d))
 }
@@ -228,7 +300,7 @@ pub(crate) fn check_clean(o: *mut lv_obj_t) -> Result<(), Error> {
     let has_parts = composites(o).any(|c| parts_of(o, c).1 > 0);
     let contains_part = any_part_above(o, &mut |part, _| part != o && distance(part, o).is_some());
     let counted = indexed_reach(o).is_some_and(|(d, depth)| d < depth as u32);
-    if !known_from(o) || has_parts || contains_part || counted {
+    if !known_from(o) || has_parts || contains_part || counted || children_contain_external(o) {
         return Err(Error::Internal);
     }
     Ok(())
@@ -243,15 +315,14 @@ pub(crate) fn check_own(o: *mut lv_obj_t) -> Result<(), Error> {
 }
 
 pub(crate) fn check_set_parent(o: *mut lv_obj_t, parent: *mut lv_obj_t) -> Result<(), Error> {
-    if is_layer(o) {
+    if is_layer(o) || is_protected(o) {
         return Err(Error::Internal);
     }
-    // SAFETY: token held, `o` is a live object.
-    if unsafe { ffi::obj_parent(o) }.is_null() {
+    if self::parent(o).is_null() {
         return Err(Error::InvalidArg); // a screen: LVGL would ignore the call
     }
     let pinned = composites(o).any(|c| c.pinned);
-    if pinned || is_protected(o) || !accepts_children(parent) {
+    if pinned || !accepts_children(parent) {
         return Err(Error::Internal);
     }
     // Reject `o` itself and its descendants.
@@ -280,11 +351,14 @@ pub(crate) fn check_create(parent: *mut lv_obj_t) -> Result<(), Error> {
 /// Moving `o` among its siblings shifts their indexes: the same conditions
 /// as moving it out of its parent and back in.
 pub(crate) fn move_to_index(o: *mut lv_obj_t, index: i32) -> Result<(), Error> {
+    if is_layer(o) || is_protected(o) {
+        return Err(Error::Internal);
+    }
     let p = parent(o);
     if p.is_null() {
         return Err(Error::InvalidArg); // a screen: LVGL would ignore the call
     }
-    if is_layer(o) || is_protected(o) || !accepts_children(p) {
+    if !accepts_children(p) {
         return Err(Error::Internal);
     }
     // SAFETY: exclusive access, checks passed.
@@ -325,6 +399,17 @@ pub(crate) fn load_screen(screen: *mut lv_obj_t, anim: ScreenAnim) -> Result<(),
     }
     if is_previous_screen(screen) {
         return Err(Error::Busy);
+    }
+    if anim.auto_delete() {
+        // LVGL can finish a pending load first, then delete that screen.
+        // SAFETY: the token is held and the screen is live.
+        let candidates = unsafe { ffi::screen_auto_delete_candidates(screen) };
+        if candidates
+            .into_iter()
+            .any(|o| !o.is_null() && o != screen && contains_external(o))
+        {
+            return Err(Error::Internal);
+        }
     }
     // SAFETY: exclusive access, checks passed.
     unsafe {

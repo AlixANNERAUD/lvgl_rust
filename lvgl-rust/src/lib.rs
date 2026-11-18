@@ -191,6 +191,7 @@ mod tests;
 #[cfg(feature = "allocator")]
 pub use allocator::{LvglAllocator, SizedHeader};
 pub use anim::{Anim, AnimCtx};
+pub use base::structural::ExternalClassPolicy;
 pub use base::*;
 #[cfg(lv_use_keyboard)]
 pub use button_map::KeyboardMap;

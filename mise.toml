@@ -176,27 +176,19 @@ run = [
 [tasks.size-gate]
 description = "Check lvgl-rust's footprint in thumbv6m and riscv32imc firmware (see lvgl-rust/size-gate/gate.sh)"
 env.RUSTFLAGS = "-D warnings"
-# Budgets: the crate's code in bytes, with N = 16 slots and in views-only
-# mode. Raise them only with the feature that needs it (the composite part
-# checks took about 1.35 KB on thumbv6m, the calendar and tile view part
-# tables 242 B on riscv32imc). The last runs add the diagnostic features:
-# +8 B of .bss for the counters, defmt built for thumbv6m and free while
-# nothing logs, within the same budgets, except views-only thumbv6m with
-# the counters: 2368 B, since the part tables and the counters together
-# took 2310 B. `growable-registry` has its own budgets (5376 B, 7168 B):
-# chunk lookups and growth took 5146 B on thumbv6m and 6868 B on
-# riscv32imc, against 4518 B and 5674 B without it; its firmware brings a
-# bump allocator (firmware symbols, not counted).
+# Flash budgets include the exact class table and subtree checks for
+# host-owned objects. The gate still requires zero .data and the exact
+# .bss totals for the registry, post queue and optional counters.
 run = [
-  "lvgl-rust/size-gate/gate.sh thumbv6m-none-eabi 16 4608",
-  "lvgl-rust/size-gate/gate.sh thumbv6m-none-eabi 0 2304",
-  "lvgl-rust/size-gate/gate.sh riscv32imc-unknown-none-elf 16 5888",
-  "lvgl-rust/size-gate/gate.sh riscv32imc-unknown-none-elf 0 2944",
-  "lvgl-rust/size-gate/gate.sh thumbv6m-none-eabi 16 4608 defmt,debug-counters",
-  "lvgl-rust/size-gate/gate.sh thumbv6m-none-eabi 0 2368 debug-counters",
-  "lvgl-rust/size-gate/gate.sh riscv32imc-unknown-none-elf 16 5888 debug-counters",
-  "lvgl-rust/size-gate/gate.sh thumbv6m-none-eabi 16 5376 growable-registry",
-  "lvgl-rust/size-gate/gate.sh riscv32imc-unknown-none-elf 16 7168 growable-registry",
+  "lvgl-rust/size-gate/gate.sh thumbv6m-none-eabi 16 4992",
+  "lvgl-rust/size-gate/gate.sh thumbv6m-none-eabi 0 2688",
+  "lvgl-rust/size-gate/gate.sh riscv32imc-unknown-none-elf 16 6400",
+  "lvgl-rust/size-gate/gate.sh riscv32imc-unknown-none-elf 0 3456",
+  "lvgl-rust/size-gate/gate.sh thumbv6m-none-eabi 16 4992 defmt,debug-counters",
+  "lvgl-rust/size-gate/gate.sh thumbv6m-none-eabi 0 2752 debug-counters",
+  "lvgl-rust/size-gate/gate.sh riscv32imc-unknown-none-elf 16 6400 debug-counters",
+  "lvgl-rust/size-gate/gate.sh thumbv6m-none-eabi 16 5760 growable-registry",
+  "lvgl-rust/size-gate/gate.sh riscv32imc-unknown-none-elf 16 7680 growable-registry",
   # The firmware builds without `async` and `heap`: check they compile for
   # both targets too, with `growable-registry`.
   "DEP_LV_CONFIG_PATH={{config_root}}/lvgl-rust/conf CARGO_TARGET_DIR=target/size-gate/features cargo check -q -p lvgl-rust --features async,heap,growable-registry --target thumbv6m-none-eabi",
@@ -254,6 +246,15 @@ run = [
   "cargo test -p lvgl-rust --features async,heap,fmt,defmt,debug-counters,free-observer",
   "cargo test -p lvgl-rust --features async,heap,fmt,defmt,debug-counters,growable-registry",
 ]
+
+[tasks.test-external-classes]
+description = "Test structural protection with a host-defined LVGL class"
+env.RUSTFLAGS = "-D warnings"
+env.DEP_LV_CONFIG_PATH = "{{config_root}}/lvgl-rust/conf"
+# Only the fixture needs the class descriptor layout. The policy uses addresses.
+env.LVGL_CFLAGS = "LV_USE_PRIVATE_API=1"
+env.CARGO_TARGET_DIR = "target/external-classes"
+run = "cargo test -p lvgl-rust --features external-class-policy --test external_classes"
 
 [tasks.test-views-only]
 description = "Lint and test lvgl-rust without handles, on a config that keeps LVGL's own OBJ_ID support"

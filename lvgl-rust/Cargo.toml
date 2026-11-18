@@ -38,6 +38,8 @@ growable-registry = []
 # LVGL frees, from the OBJ_ID free hook (4 B of `.bss` on 32-bit targets).
 # No effect in views-only mode.
 free-observer = []
+# A host-provided, link-time class policy for raw LVGL extensions.
+external-class-policy = []
 
 color_depth_1 = ["lvgl-rust-sys/color_depth_1"]
 color_depth_8 = ["lvgl-rust-sys/color_depth_8"]
@@ -58,6 +60,10 @@ trybuild = "1.0.99"
 [[bench]]
 name = "overhead"
 harness = false
+
+[[test]]
+name = "external_classes"
+required-features = ["external-class-policy"]
 
 [build-dependencies]
 lvgl-rust-gen = { version = "0.1.1", path = "../lvgl-rust-gen" }

@@ -119,6 +119,8 @@ the drain retries them.
 ## Internal
 
 Refused by the structural checks ([API overview](api-overview.md#exclusive-access-to-an-object-objmut)).
+Structural edits can also fail when they would delete, own or move an object
+whose class is managed by the embedding host.
 
 | Returned by | Condition |
 | --- | --- |

@@ -67,6 +67,11 @@ extern "C"
      *  `lv_image_cache_drop`, which LVGL declares in a private header). */
     void lvgl_sys_image_cache_drop(const void * src);
 
+#if LV_USE_ROLLER
+    /** Built-in descriptor for the roller's internal label. */
+    extern const lv_obj_class_t lv_roller_label_class;
+#endif
+
 #if LV_USE_MENU
     /** Parts of a menu that LVGL caches in the widget. */
     typedef enum {
