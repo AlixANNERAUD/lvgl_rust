@@ -46,6 +46,13 @@ fn main() {
             DEFAULT_POST
         }
     };
+    // The `views-only` feature is `LVGL_RUST_HANDLE_SLOTS=0` for a dependent
+    // crate that cannot set the environment of its own build.
+    let slots = if env::var_os("CARGO_FEATURE_VIEWS_ONLY").is_some() {
+        0
+    } else {
+        slots
+    };
     if slots == 0 {
         println!("cargo::rustc-cfg=lvgl_rust_views_only");
     } else {
