@@ -695,9 +695,22 @@ mod model {
         let other = unsafe { ffi::obj_create_other(lv.screen_active().unwrap().as_ptr()) };
         let other = unsafe { Obj::from_raw(&lv, core::ptr::NonNull::new(other).unwrap()) };
         let typed = other.downcast::<Other>().unwrap().handle().unwrap();
+        let other = other.as_ptr();
         assert_eq!(typed.upcast::<Obj>().downcast::<Other>(&lv), Some(typed));
-        typed.get_mut(&mut lv).unwrap().delete().unwrap();
-        plain.get_mut(&mut lv).unwrap().delete().unwrap();
+        assert_eq!(
+            typed.get_mut(&mut lv).unwrap().delete(),
+            Err(Error::Internal)
+        );
+        let owner = plain.get(&lv).unwrap().as_ptr();
+        assert_eq!(
+            plain.get_mut(&mut lv).unwrap().delete(),
+            Err(Error::Internal)
+        );
+        // SAFETY: the fixture owns these live raw objects and holds the test lock.
+        unsafe {
+            ffi::obj_delete(other);
+            ffi::obj_delete(owner);
+        }
     }
 }
 
