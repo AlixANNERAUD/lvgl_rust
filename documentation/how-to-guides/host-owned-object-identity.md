@@ -34,6 +34,12 @@ object that LVGL already has when `LV_USE_OBJ_ID` is on.
 
 ## Pitfalls
 
+- `lv_obj_free_id` runs inside LVGL's destructor, from the code that
+  deletes the object. Shrinking the table there (`shrink_to_fit`, a
+  `realloc`) calls your allocator from that frame: it must not wait for a
+  lock that frame may hold. An allocator that shrinks in place never
+  moves the table, so it never needs more memory to free some.
+
 - Never dereference an `id` as a pointer, and never pass an `id` a guest
   supplied to `lv_obj_find_by_id`: with a null root it searches every
   object, whatever table it belongs to.
