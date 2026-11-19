@@ -167,7 +167,7 @@ description = "Build lvgl-rust firmware for Cortex-M4/M7 (thumbv7em) and Cortex-
 env.RUSTFLAGS = "-D warnings"
 run = [
   "DEP_LV_CONFIG_PATH={{config_root}}/lvgl-rust/conf CARGO_TARGET_DIR=target/cross-arm cargo build -q -p lvgl-rust-size-gate --profile size --target thumbv7em-none-eabihf",
-  "DEP_LV_CONFIG_PATH={{config_root}}/lvgl-rust/conf CARGO_TARGET_DIR=target/cross-arm cargo build -q -p lvgl-rust-size-gate --profile size --target thumbv7em-none-eabihf --features growable-registry,free-observer",
+  "DEP_LV_CONFIG_PATH={{config_root}}/lvgl-rust/conf CARGO_TARGET_DIR=target/cross-arm cargo build -q -p lvgl-rust-size-gate --profile size --target thumbv7em-none-eabihf --features growable-registry,free-observer,deferred-delete",
   # Generic TARGET_* variables: see ARM_NEWLIB_FLAGS.
   "TARGET_CC=arm-none-eabi-gcc TARGET_AR=arm-none-eabi-ar TARGET_CFLAGS=\"$ARM_NEWLIB_FLAGS\" BINDGEN_EXTRA_CLANG_ARGS=\"$ARM_NEWLIB_FLAGS\" DEP_LV_CONFIG_PATH={{config_root}}/lvgl-rust/conf CARGO_TARGET_DIR=target/cross-arm cargo build -q -p lvgl-rust-size-gate --profile size --target thumbv8m.main-none-eabihf",
   "DEP_LV_CONFIG_PATH={{config_root}}/lvgl-rust-sys/conf LVGL_RUST_HANDLE_SLOTS=0 CARGO_TARGET_DIR=target/cross-arm-views cargo build -q -p lvgl-rust-size-gate --profile size --target thumbv7em-none-eabihf",
@@ -189,6 +189,11 @@ run = [
   "lvgl-rust/size-gate/gate.sh riscv32imc-unknown-none-elf 16 6400 debug-counters",
   "lvgl-rust/size-gate/gate.sh thumbv6m-none-eabi 16 5760 growable-registry",
   "lvgl-rust/size-gate/gate.sh riscv32imc-unknown-none-elf 16 7680 growable-registry",
+  # Host deletion queues: no compare-and-swap on either target.
+  "lvgl-rust/size-gate/gate.sh thumbv6m-none-eabi 16 5376 deferred-delete",
+  "lvgl-rust/size-gate/gate.sh thumbv6m-none-eabi 0 3136 deferred-delete",
+  "lvgl-rust/size-gate/gate.sh riscv32imc-unknown-none-elf 16 6784 deferred-delete",
+  "lvgl-rust/size-gate/gate.sh riscv32imc-unknown-none-elf 0 3968 deferred-delete",
   # The firmware builds without `async` and `heap`: check they compile for
   # both targets too, with `growable-registry`.
   "DEP_LV_CONFIG_PATH={{config_root}}/lvgl-rust/conf CARGO_TARGET_DIR=target/size-gate/features cargo check -q -p lvgl-rust --features async,heap,growable-registry --target thumbv6m-none-eabi",
@@ -265,6 +270,24 @@ env.CARGO_TARGET_DIR = "target/host-object-ids"
 run = [
   "cargo clippy -p lvgl-rust --all-targets --features views-only",
   "cargo test -p lvgl-rust --features views-only --test host_object_ids",
+]
+
+[tasks.test-deferred-delete]
+description = "Test deferred deletion of host objects, against LVGL with the registry and in views-only mode"
+env.RUSTFLAGS = "-D warnings"
+env.DEP_LV_CONFIG_PATH = "{{config_root}}/lvgl-rust/conf"
+# The test's host class needs the class descriptor and instance layout.
+env.LVGL_CFLAGS = "LV_USE_PRIVATE_API=1"
+env.CARGO_TARGET_DIR = "target/deferred-delete"
+# The queues on stand-in objects (`--lib`), then a host class against
+# LVGL: with the registry and the free observer, and in views-only mode,
+# where the test defines the OBJ_ID hooks `lvgl-rust/conf` leaves to it.
+run = [
+  "cargo clippy -p lvgl-rust --all-targets --features deferred-delete,free-observer",
+  "cargo test -p lvgl-rust --features deferred-delete,free-observer --lib deferred_delete",
+  "cargo test -p lvgl-rust --features deferred-delete,free-observer --test deferred_delete",
+  "cargo clippy -p lvgl-rust --all-targets --features deferred-delete,views-only",
+  "cargo test -p lvgl-rust --features deferred-delete,views-only --test deferred_delete",
 ]
 
 [tasks.test-views-only]
@@ -354,11 +377,13 @@ env.MIRIFLAGS = "-Zmiri-permissive-provenance"
 # Miri provides its own `strlen` & co. The second run adds `heap`: the
 # deferred-free list and `LvBox` against the model's heap; the third the
 # registry chunks of `growable-registry`, against the global allocator, and
-# the free observer.
+# the free observer; the fourth the queues of `deferred-delete`, on
+# stand-in objects freed as LVGL would.
 run = [
   "cargo miri test -p lvgl-rust --lib --no-default-features",
   "cargo miri test -p lvgl-rust --lib --no-default-features --features heap",
   "cargo miri test -p lvgl-rust --lib --no-default-features --features growable-registry,free-observer",
+  "cargo miri test -p lvgl-rust --lib --no-default-features --features deferred-delete deferred_delete",
 ]
 
 [tasks.loom]
@@ -367,10 +392,13 @@ env.RUSTFLAGS = "--cfg loom"
 env.LVGL_RUST_HANDLE_SLOTS = "4"
 env.DEP_LV_CONFIG_PATH = "{{config_root}}/lvgl-rust/conf"
 env.CARGO_TARGET_DIR = "target/loom"
-# The second run adds chunk publication (`growable-registry`).
+# The second run adds chunk publication (`growable-registry`), the third
+# the queues of `deferred-delete` (requests on other threads against the
+# drain).
 run = [
   "cargo test -p lvgl-rust --lib --release protocol",
   "cargo test -p lvgl-rust --lib --release --features growable-registry protocol",
+  "cargo test -p lvgl-rust --lib --release --features deferred-delete deferred_delete::protocol",
 ]
 
 # The access audit: compiles LVGL to LLVM IR with a pinned clang and
