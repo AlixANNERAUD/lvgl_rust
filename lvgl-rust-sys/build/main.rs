@@ -180,6 +180,15 @@ impl NativeConfig {
             .collect();
         args.extend(self.all_defines().map(Define::to_compiler_arg));
         args.push("-fvisibility=default".into());
+        // Without a C library, clang's own headers are the only ones. In
+        // hosted mode its <stdint.h> defers with #include_next and a guard
+        // shared by every copy, so a second clang's headers on the path
+        // (bindgen adds those of whichever `clang` it finds) leave the
+        // integer types undefined. Freestanding, the first copy defines
+        // them. The C compiler keeps its defaults: this changes no type.
+        if config::is_freestanding(&self.target) {
+            args.push("-ffreestanding".into());
+        }
         // No `--target`: for a cross build, bindgen passes the clang spelling
         // of `TARGET` itself (Rust triples such as
         // `riscv32imc-unknown-none-elf` are not valid clang targets).

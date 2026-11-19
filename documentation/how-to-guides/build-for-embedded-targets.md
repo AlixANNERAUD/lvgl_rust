@@ -93,9 +93,10 @@ is built by the repository's CI: see step 5.
 
 **WebAssembly without WASI: `wasm32-unknown-unknown`.** There is no C
 library. lvgl-rust-sys puts its own `inttypes.h` (in
-`lvgl-rust-sys/shims/freestanding/`) on the include path, so only a clang
-that targets WebAssembly is needed, and no variable. Keep
-`use-string-functions` on (step 3).
+`lvgl-rust-sys/shims/freestanding/`) on the include path and generates
+the bindings with `-ffreestanding`, so only a clang that targets
+WebAssembly is needed, and no variable. Keep `use-string-functions` on
+(step 3).
 
 **WASI: `wasm32-wasip1`.** Use [wasi-sdk](https://github.com/WebAssembly/wasi-sdk);
 its clang finds the SDK's sysroot, but bindgen's libclang needs it
@@ -150,7 +151,7 @@ The repository's CI (`.github/workflows/ci.yml`) runs on Linux and checks:
 | Target | What CI does |
 | --- | --- |
 | `wasm32-wasip1` | Builds both crates with wasi-sdk and runs the `lvgl-rust-sys` library tests, the `lvgl-rust` tests and the desktop example under wasmtime (`mise run cross-wasip1`). |
-| `wasm32-unknown-unknown` | Builds `lvgl-rust-sys` and `lvgl-rust` (`mise run cross-wasm32`). |
+| `wasm32-unknown-unknown` | Builds `lvgl-rust-sys` and `lvgl-rust`, then the bindings with a second copy of clang's headers on the path (`mise run cross-wasm32`). |
 | `riscv32imc-unknown-none-elf` | Builds `lvgl-rust-sys` (`cross-riscv32`); links the size-gate firmware with 16 handle slots and in views-only mode and checks its sizes (`size-gate`); checks `lvgl-rust` with `async` and `heap`. |
 | `thumbv6m-none-eabi` | Links the size-gate firmware with 16 slots and views only and checks its sizes; checks `lvgl-rust` with `async` and `heap` (`size-gate`). |
 | `thumbv7em-none-eabihf` | Builds the size-gate firmware with handles and in views-only mode (`cross-arm`). |
@@ -172,6 +173,18 @@ CI at all.
 - **Same headers for both tools.** A `CFLAGS_<target>` without the
   matching `BINDGEN_EXTRA_CLANG_ARGS_<target>` gives bindings that fail
   on a missing `stdint.h` or, worse, disagree with the compiled library.
+- **Bindings without a C library, on a machine with several LLVM
+  installations.** If bindgen gets no C library headers for a bare-metal
+  target (your `lv_conf.h` brings its own `inttypes.h`, for example),
+  clang's built-in `<stdint.h>` is the only one. bindgen adds the
+  built-in headers of the `clang` it finds, which may not be the version
+  of the libclang it loads (GitHub's Ubuntu runners have several), and in
+  hosted mode the first copy defers to the second, whose include guard is
+  already set: the build fails with `unknown type name 'uintptr_t'` in
+  `lv_types.h`. Add `-ffreestanding` to
+  `BINDGEN_EXTRA_CLANG_ARGS_<target>`, or point `CLANG_PATH` at the clang
+  of the same version as `LIBCLANG_PATH`. lvgl-rust-sys passes the flag
+  itself only for `wasm32-unknown-unknown`, which never has a C library.
 - **Ticks on targets without compare-and-swap.** On `thumbv6m` and
   `riscv32imc`, call `tick_inc` from one context only.
 - **`DEP_LV_CONFIG_PATH` is needed for cross builds too**, and

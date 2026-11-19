@@ -714,7 +714,10 @@ review the `access.toml` and `events.toml` diffs.
   comes from `cc`, which honours `CC_<target>`/`CFLAGS_<target>`; give bindgen
   the same headers with `BINDGEN_EXTRA_CLANG_ARGS_<target>` (see the
   `cross-riscv32` task). Targets without a C library (`wasm*-unknown-unknown`)
-  get `shims/freestanding/` on every include path, for `inttypes.h`.
+  get `shims/freestanding/` on every include path, for `inttypes.h`, and
+  bindgen (only) gets `-ffreestanding`: with a second clang's built-in
+  headers on the path, hosted `<stdint.h>` defines nothing
+  (`cross-wasm32` checks it).
   `wasm32-wasip1` uses wasi-sdk (`CC_wasm32_wasip1=wasm32-wasip1-clang`,
   bindgen gets `--sysroot`); WASI has no threads and wasm aborts on panic,
   so tests that spawn threads or catch panics carry

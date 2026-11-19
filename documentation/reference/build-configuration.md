@@ -71,7 +71,12 @@ compiled in sorted order.
 bindgen: headers `shims/lvgl_sys.h` (which includes `lvgl.h`), the
 top-level headers of `LVGL_FONTS_DIR` and `lv_theme_shadcn.h` with
 `shadcn-theme`; no comments, `Default` derived, no layout tests,
-`core` types with `core::ffi` C types, `-fvisibility=default`.
+`core` types with `core::ffi` C types, `-fvisibility=default`, and
+`-ffreestanding` for the targets that get `shims/freestanding` (only
+clang's own headers are found there; hosted, its `<stdint.h>` defers to
+another copy with `#include_next`, and a second clang's headers on the
+path would leave the integer types undefined). The C compiler keeps its
+defaults: the flag changes no type.
 
 ## Exported metadata (`links = "lvgl_rust_sys"`)
 
