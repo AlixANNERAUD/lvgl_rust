@@ -12,15 +12,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - [**breaking**] views-only feature and host-owned object ids (#95)
-- delete host objects later without the registry (#104)
+- delete host objects later without the registry (#104). The `deferred-delete` feature: `DeferredClass` and `DeferredLink` queue objects of host classes for deletion from any thread, without a session or the registry, and the drain deletes them (`request_delete`, `forget` from the class destructor, `delete_now`). One pointer per object, four per class, 5 to 8 B of `.bss`; the binary provides a `critical-section` implementation.
 
 ### Fixed
 
 - protect externally owned LVGL objects (#96)
-
-### Added
-
-- `deferred-delete` feature: `DeferredClass` and `DeferredLink` queue objects of host classes for deletion from any thread, without a session or the registry, and the drain deletes them (`request_delete`, `forget` from the class destructor, `delete_now`). One pointer per object, four per class, 5 to 8 B of `.bss`; the binary provides a `critical-section` implementation.
 
 ## [0.2.0+lvgl.9.6.0](https://github.com/AlixANNERAUD/lvgl_rust/compare/lvgl-rust-v0.1.2+lvgl.9.6.0...lvgl-rust-v0.2.0+lvgl.9.6.0) - 2026-11-14
 
