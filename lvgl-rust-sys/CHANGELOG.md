@@ -5,6 +5,18 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0+lvgl.9.6.0](https://github.com/AlixANNERAUD/lvgl_rust/compare/lvgl-rust-sys-v0.2.0+lvgl.9.6.0...lvgl-rust-sys-v0.3.0+lvgl.9.6.0) - 2026-11-19
+
+### Fixed
+
+- protect externally owned LVGL objects (#96)
+- generate wasm32-unknown-unknown bindings freestanding (#106)
+- regenerate the bindings when bindgen's clang environment changes (#107)
+
+### Miscellaneous
+
+- [**breaking**] bump lvgl_theme_shadcn to v0.5.0 (#105)
+
 ## [0.1.2+lvgl.9.6.0](https://github.com/AlixANNERAUD/lvgl_rust/compare/lvgl-rust-sys-v0.1.1...lvgl-rust-sys-v0.1.2+lvgl.9.6.0) - 2026-11-04
 
 ### Miscellaneous
