@@ -302,6 +302,19 @@ pub(crate) fn check_delete(o: *mut lv_obj_t) -> Result<(), Error> {
     Ok(())
 }
 
+/// A deletion the host asked for (`DeferredClass`): the host vouches for
+/// its own object, so only what LVGL itself holds is checked.
+#[cfg(feature = "deferred-delete")]
+pub(crate) fn check_host_delete(o: *mut lv_obj_t) -> Result<(), Error> {
+    if is_layer(o) {
+        return Err(Error::Internal);
+    }
+    if is_loading(o) {
+        return Err(Error::Busy);
+    }
+    Ok(())
+}
+
 pub(crate) fn check_clean(o: *mut lv_obj_t) -> Result<(), Error> {
     // Its own parts would go; so would a part of a widget above it, the
     // children of an indexed part, or an unknown widget's internals. A

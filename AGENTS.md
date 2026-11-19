@@ -46,7 +46,7 @@ start at the repository root (`mise.toml`, `.github/`, `.cargo/`).
 | `lvgl-rust-sys/tests/` | Unit tests for `build/config.rs` and integration tests driving nested `cargo` builds. |
 | `lvgl-rust-sys/tests/common/mod.rs` | Shared helpers for the integration tests. |
 | `lvgl-rust-sys/tests/fixtures/font_incremental/` | Package used by the incremental rebuild test. |
-| `lvgl-rust/src/base/` | Safe core: session and token (`session.rs`), handle registry (`registry.rs`), OBJ_ID hooks (`hook.rs`), deferred requests (`drain.rs`), the deferred-free list of the `heap` feature (`deferred.rs`), structural checks (`structural.rs`), views and handles. |
+| `lvgl-rust/src/base/` | Safe core: session and token (`session.rs`), handle registry (`registry.rs`), OBJ_ID hooks (`hook.rs`), deferred requests (`drain.rs`), the deferred-free list of the `heap` feature (`deferred.rs`), the host deletion queues of `deferred-delete` (`deferred_delete.rs`), structural checks (`structural.rs`), views and handles. |
 | `lvgl-rust/src/base/ffi.rs` | Every LVGL call the core makes; `ffi_stub.rs` is its Rust model for Miri and loom. |
 | `lvgl-rust/conf/lv_conf.h` | Second vendored configuration, with the OBJ_ID hooks the registry needs. |
 | `lvgl-rust/build.rs` | Checks the `-sys` build (linked, OBJ_ID config) and writes `config.rs` (`LVGL_RUST_HANDLE_SLOTS`, `LVGL_RUST_MAX_CALLBACK_DEPTH`). |
@@ -224,6 +224,13 @@ What the suites cover:
 - `lvgl-rust/tests/clients.rs`: the per-client handle table of
   `documentation/how-to-guides/host-several-clients.md` (its `host`
   module is the guide's code: keep the two in step).
+- `lvgl-rust/src/tests.rs` `deferred_delete` module (`deferred-delete`):
+  the queues on stand-in objects freed as LVGL would (also under Miri),
+  and its `protocol` module under loom (requests on other threads
+  against the drain). `lvgl-rust/tests/deferred_delete.rs` is a host
+  class against LVGL, with the registry and in views-only mode (it then
+  defines the OBJ_ID hooks); it needs `LV_USE_PRIVATE_API=1` (`mise run
+  test-deferred-delete`).
 - `lvgl-rust/tests/lifecycle.rs`: `init`, ticks, `deinit` (terminal, so in
   its own process).
 - `lvgl-rust/tests/compile_fail.rs`: trybuild cases
@@ -643,6 +650,12 @@ review the `access.toml` and `events.toml` diffs.
   leaked safely): a thread-local would carry it into restricted handlers,
   which is why `LvglAccess` forbids `'static` guards. Change the tiers
   through `audit.toml` and `mise run audit`, never by hand.
+- **Deferred deletion queues.** `deferred_delete.rs` touches its queues
+  and links only inside `locked` (`critical_section::with`, a loom mutex
+  under loom): no atomics there. The drain deletes outside the section;
+  a destructor's `forget` re-enters it. Keep every object in a queue live
+  (the destructor's `forget` or the drain's pop takes it out first), and
+  rerun `mise run loom` and `mise run miri` after a change.
 - **Registry atomics.** No read-modify-write anywhere (thumbv6m and
   riscv32imc have no compare-and-swap): code without a token only stores
   `req`, `any_req` and `ticks`. `Registry::request_drop` and `drain` pair

@@ -164,6 +164,11 @@ impl Lvgl {
     /// [`init`] and [`Lvgl::enter`] fail afterwards.
     pub fn deinit(session: Session<'_>) -> Result<(), Error> {
         super::drain::drain();
+        // Objects requested after this drain die in `lv_deinit` with the
+        // rest; owners dropped later hold freed pointers, which the queues
+        // must no longer touch.
+        #[cfg(feature = "deferred-delete")]
+        super::deferred_delete::begin_deinit();
         // Blocks retired by the deletions of `lv_deinit` are freed at once.
         #[cfg(feature = "heap")]
         super::deferred::begin_deinit();

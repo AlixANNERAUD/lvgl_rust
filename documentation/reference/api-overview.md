@@ -328,6 +328,20 @@ after `lv_timer_handler` in `Lvgl::timer_handler`.
 | `Drop for Owned` | Records a deletion (no session needed). | none | — |
 | `TimerCtx::delete_later(&self)` | Deletes the timer at the next drain. | shared | — |
 
+### Host objects (`deferred-delete`)
+
+Objects of the host's own classes, deleted at the next drain without the
+registry ([Delete host objects later](../how-to-guides/delete-host-objects-later.md)).
+The drain deletes them first, before the requests above.
+
+| Item | What it is | Access | Cost |
+| --- | --- | --- | --- |
+| `DeferredLink` | The link a class's instance struct embeds; zero (as LVGL creates instances) means "not queued". `DeferredLink::new()`. | — | one pointer per object |
+| `DeferredClass` | The queue of one class: `unsafe const fn new(offset)`, the offset of the link in the instance. One per class, in a `static`. | — | 4 pointers (16 B on 32-bit targets); 5 to 8 B of crate `.bss` for the chain head |
+| `unsafe fn DeferredClass::request_delete(&'static self, NonNull<lv_obj_t>)` | Queues the object (idempotent). No session, no allocation, no LVGL call, any thread; ignored once `deinit` started. The object must not be freed before the call returns. | none | — |
+| `unsafe fn DeferredClass::forget(&self, NonNull<lv_obj_t>)` | From the class destructor: removes the object from its queue if it is there. | inside LVGL's destructor | — |
+| `unsafe fn DeferredClass::delete_now(&self, &mut Lvgl, NonNull<lv_obj_t>) -> Result<(), Error>` | Deletes at once, after the drain's checks: `Internal` for a display layer, `Busy` for a screen being loaded. | exclusive | — |
+
 ## Timers (handles)
 
 | Item | What it is | Access | Cost |

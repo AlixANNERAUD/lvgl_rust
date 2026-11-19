@@ -1,10 +1,12 @@
-//! Deferred requests: dropped `Owned` handles, `delete_later`,
-//! `clean_later` and `load_screen_later`, carried out at depth 0 by
-//! [`Lvgl::enter`](crate::Lvgl::enter) and after
+//! Deferred requests: host deletions (`deferred-delete`), dropped `Owned`
+//! handles, `delete_later`, `clean_later` and `load_screen_later`, carried
+//! out at depth 0 by [`Lvgl::enter`](crate::Lvgl::enter) and around
 //! [`Lvgl::timer_handler`](crate::Lvgl::timer_handler).
 
 #[cfg(lvgl_rust_views_only)]
 pub(crate) fn drain() {
+    #[cfg(feature = "deferred-delete")]
+    super::deferred_delete::drain();
     super::post::run_posted();
     #[cfg(feature = "heap")]
     super::deferred::free_deferred();
@@ -26,6 +28,10 @@ mod slots {
 
     /// Carries out pending requests. Token held, depth 0.
     pub(crate) fn drain() {
+        // Host deletions first: their objects may hold tracked descendants,
+        // whose slots the free hook then updates before the scan below.
+        #[cfg(feature = "deferred-delete")]
+        crate::base::deferred_delete::drain();
         let reg = reg();
         if reg.hdr.any_req.load(Ordering::Relaxed) {
             reg.hdr.any_req.store(false, Ordering::Relaxed);
