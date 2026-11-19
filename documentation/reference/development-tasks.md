@@ -28,7 +28,7 @@ hooks and use their own target directory. Most tasks set
 | `package` | `cargo package` of the three crates, each built from its package (`lvgl-rust/conf`, mbx build-script cache off). | `ci.yml` Package; `release.yml` validate. |
 | `coverage` | `cargo llvm-cov` over `lvgl-rust-sys` (library and build-config tests), `lvgl-rust-gen`, and `lvgl-rust` with `async`, `heap`, `fmt` (`lvgl-rust/conf`), merged into `coverage.lcov`. Integration tests excluded. | `coverage.yml`. |
 | `social-banner` | Renders `assets/social-banner/social-banner.png` (`assets/social-banner/render.sh`, resvg 0.49.0; downloads its fonts). | — |
-| `cross-wasm32` | Builds `lvgl-rust-sys` and `lvgl-rust` for `wasm32-unknown-unknown`. | `ci.yml` Cross (wasm32-unknown-unknown). |
+| `cross-wasm32` | Builds `lvgl-rust-sys` and `lvgl-rust` for `wasm32-unknown-unknown`, then the bindings with a second copy of clang's headers on the path (as on a machine with several LLVM installations). | `ci.yml` Cross (wasm32-unknown-unknown). |
 | `cross-wasip1` | With wasi-sdk-33 and wasmtime 50.0.0: `lvgl-rust-sys` library tests, `lvgl-rust` tests (`async`, `heap`, `fmt`) and the desktop example for `wasm32-wasip1`, run under wasmtime. | `ci.yml` Cross (wasm32-wasip1). |
 | `cross-riscv32` | Builds `lvgl-rust-sys` for `riscv32imc-unknown-none-elf`. | `ci.yml` Cross (riscv32imc-unknown-none-elf). |
 | `cross-arm` | Builds the size-gate firmware for `thumbv7em-none-eabihf` (handles, also with `growable-registry`, `free-observer` and `deferred-delete`, and views only) and `thumbv8m.main-none-eabihf` (handles), size profile. | `ci.yml` Cross (thumbv7em and thumbv8m.main firmware). |

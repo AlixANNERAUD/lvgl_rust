@@ -128,9 +128,13 @@ run = "sh assets/social-banner/render.sh"
 
 [tasks.cross-wasm32]
 env = { RUSTFLAGS = "-D warnings" }
-description = "Build lvgl-rust-sys and lvgl-rust for wasm32-unknown-unknown (no C library; needs clang)"
+description = "Build lvgl-rust-sys and lvgl-rust for wasm32-unknown-unknown (no C library; needs clang), then the bindings with a second copy of clang's headers on the path"
+# The last step stands in for a machine with several LLVM installations,
+# where bindgen adds the headers of a clang other than its libclang's: the
+# bindings must not depend on it.
 run = [
   "cargo build -p lvgl-rust-sys --target wasm32-unknown-unknown",
+  "rm -rf target/two-clangs && mkdir -p target/two-clangs && cp -r \"$(clang -print-resource-dir)/include\" target/two-clangs/clang-include && BINDGEN_EXTRA_CLANG_ARGS_wasm32_unknown_unknown=\"-isystem {{config_root}}/target/two-clangs/clang-include\" CARGO_TARGET_DIR=target/two-clangs cargo build -p lvgl-rust-sys --target wasm32-unknown-unknown --no-default-features",
   "DEP_LV_CONFIG_PATH={{config_root}}/lvgl-rust/conf CARGO_TARGET_DIR=target/safe-wasm32 cargo build -p lvgl-rust --target wasm32-unknown-unknown",
   "DEP_LV_CONFIG_PATH={{config_root}}/lvgl-rust/conf CARGO_TARGET_DIR=target/safe-wasm32 cargo build -p lvgl-rust --target wasm32-unknown-unknown --features growable-registry",
 ]
