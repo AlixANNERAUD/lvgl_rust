@@ -15,7 +15,8 @@ object that LVGL already has when `LV_USE_OBJ_ID` is on.
    `LVGL_RUST_HANDLE_SLOTS=0`. The crate then defines no OBJ_ID hooks.
 2. In `lv_conf.h`, set `LV_USE_OBJ_ID 1`, `LV_OBJ_ID_AUTO_ASSIGN 1` and
    `LV_USE_OBJ_ID_BUILTIN 0`. The build script warns that the host must
-   define the five hooks.
+   define the five hooks, and fails without `LV_OBJ_ID_AUTO_ASSIGN 1`:
+   LVGL calls `lv_obj_free_id` from the destructor only with it.
 3. Define `lv_obj_assign_id` (a no-op), `lv_obj_free_id`, `lv_obj_set_id`,
    `lv_obj_id_compare` and `lv_obj_stringify_id` with `#[unsafe(no_mangle)]`.
    `lv_obj_free_id` runs at the end of the destructor of every object, on
