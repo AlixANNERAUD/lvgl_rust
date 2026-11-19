@@ -148,12 +148,18 @@ emitted.
 
 Enable `shadcn-theme` to compile the pinned
 [lvgl_theme_shadcn](https://github.com/AlixANNERAUD/lvgl_theme_shadcn) C theme
-with the same headers, color depth, allocator and `lv_conf.h` as LVGL. It does
-not build a second LVGL or add a Rust runtime dependency.
+(v0.5.0) with the same headers, color depth, allocator and `lv_conf.h` as
+LVGL. It does not build a second LVGL or add a Rust runtime dependency.
 
 Initialize it with `lv_theme_shadcn_init`, switch palettes with
-`lv_theme_shadcn_set_palette` and use its surface/variant helpers instead of
-local color overrides. Theme state is released when its display is deleted, or
+`lv_theme_shadcn_set_palette` and use its per-object helpers instead of
+local color overrides: `lv_theme_shadcn_set_variant` (checkable outline and
+ghost buttons act as toggles), `set_size`, `set_surface` (including
+`LV_THEME_SHADCN_SURFACE_TRANSPARENT` for layout rows and columns),
+`set_text_role` and `set_role` (badges, alerts, separators, skeletons, card
+parts, and `LV_THEME_SHADCN_ROLE_RADIO` for checkboxes in a radio group).
+The `medium` slot of `lv_theme_shadcn_fonts_t` gives button labels, the
+checked tab button and card titles a medium weight. Theme state is released when its display is deleted, or
 explicitly with `lv_theme_shadcn_deinit`. All calls follow LVGL's
 synchronization requirements.
 

@@ -85,6 +85,69 @@ mod tests {
         }
     }
 
+    /// The theme API added up to v0.5.0 reaches the bindings and works: the
+    /// medium font slot, the transparent surface and the component roles.
+    #[cfg(feature = "shadcn-theme")]
+    #[test]
+    fn shadcn_theme_medium_font_transparent_surface_and_roles() {
+        use std::boxed::Box;
+        let _lock = lvgl_lock();
+        unsafe {
+            lv_init();
+            let display = lv_display_create(320, 240);
+            // The theme compares font pointers: a copy of the body font at
+            // another address stands for a medium weight.
+            let medium: &'static lv_font_t =
+                Box::leak(Box::new(core::ptr::read(&raw const lv_font_montserrat_14)));
+            let fonts = lv_theme_shadcn_fonts_t {
+                medium,
+                ..Default::default()
+            };
+            lv_theme_shadcn_init(
+                display,
+                lv_theme_shadcn_palette_zinc_dark(),
+                &fonts,
+                lv_theme_shadcn_flags_t_LV_THEME_SHADCN_FLAG_NONE,
+            );
+            let screen = lv_display_get_screen_active(display);
+
+            // Button labels and card titles take the medium font.
+            let button = lv_button_create(screen);
+            assert!(core::ptr::eq(lv_obj_get_style_text_font(button, 0), medium));
+            let title = lv_label_create(screen);
+            lv_theme_shadcn_set_role(
+                title,
+                lv_theme_shadcn_role_t_LV_THEME_SHADCN_ROLE_CARD_TITLE,
+            );
+            assert!(core::ptr::eq(lv_obj_get_style_text_font(title, 0), medium));
+
+            // A transparent surface draws nothing around its children.
+            let row = lv_obj_create(screen);
+            lv_theme_shadcn_set_surface(
+                row,
+                lv_theme_shadcn_surface_t_LV_THEME_SHADCN_SURFACE_TRANSPARENT,
+            );
+            assert_eq!(
+                lv_obj_get_style_bg_opa(row, 0),
+                _lv_opacity_level_t_LV_OPA_TRANSP as lv_opa_t
+            );
+            assert_eq!(lv_obj_get_style_border_width(row, 0), 0);
+            assert_eq!(lv_obj_get_style_pad_left(row, 0), 0);
+
+            // The radio role turns a checkbox's indicator into a circle.
+            let radio = lv_checkbox_create(screen);
+            lv_theme_shadcn_set_role(radio, lv_theme_shadcn_role_t_LV_THEME_SHADCN_ROLE_RADIO);
+            assert_eq!(
+                lv_obj_get_style_radius(radio, lv_part_t_LV_PART_INDICATOR),
+                LV_RADIUS_CIRCLE as i32
+            );
+
+            lv_theme_shadcn_deinit(display);
+            lv_display_delete(display);
+            lv_deinit();
+        }
+    }
+
     #[test]
     fn color_shims_round_trip_channels() {
         unsafe {
