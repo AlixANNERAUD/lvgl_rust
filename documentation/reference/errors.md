@@ -16,7 +16,7 @@ the error, so it is dropped.
 | `RegistryFull` | No handle slot is left (`LVGL_RUST_HANDLE_SLOTS`, or 65,535 slots with `growable-registry`). | no registry slot is left |
 | `OutOfMemory` | LVGL could not allocate memory, or a growable registry could not allocate a chunk. | LVGL could not allocate memory (out of memory with `growable-registry`) |
 | `InvalidArg` | An argument is out of range or would make LVGL's state inconsistent. | invalid argument |
-| `Busy` | LVGL still uses the object, or a queue is full; retrying later can succeed. | LVGL still uses it; retried later |
+| `Busy` | LVGL still uses the object, a queue is full, or a free observer is installed already; retrying later can succeed. | LVGL still uses it; retried later |
 | `Internal` | LVGL keeps pointers to the object (a display layer, a part of a widget): the operation is refused. | LVGL keeps pointers to it: refused |
 | `Reentrant` | LVGL is already initialised, or a session or a callback is active. | LVGL is already initialized, or a session or callback is active |
 | `NotInitialized` | LVGL is not initialised, or was deinitialised. | LVGL is not initialized |
@@ -113,6 +113,7 @@ error in a `static`, a panic elsewhere.
 | `Lvgl::post` | The queue is full (`LVGL_RUST_POST_SLOTS`, default 4). | Raise `LVGL_RUST_POST_SLOTS`, or retry after the next drain. |
 | `Obj::on*`, `Obj::subscribe`, `subscribe_owned`, `observe_obj` | Called from a callback on an object LVGL is sending an event to. | Register outside the handler, or post the registration with `Lvgl::post`. |
 | `Display::try_delete` | A flush is pending. The `Display` is returned with the error. | Complete the flush (`FlushDone`), then retry. |
+| `Lvgl::set_free_observer` | An observer is installed already (`free-observer`). | Remove it with `take_free_observer` first, if replacing it is intended. |
 
 `delete_later`, `clean_later` and dropped `Owned`s never return `Busy`:
 the drain retries them.

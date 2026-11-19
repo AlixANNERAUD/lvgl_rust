@@ -182,9 +182,10 @@ pub fn forget_freed(clients: &mut [Client]) {
 }
 ```
 
-Install it once: `lv.set_free_observer(Some(record))`. Without `std`, a
-fixed ring of raw handles (`Handle::into_raw`) behind your own lock does
-the same. A host with many objects per client can keep a map from handle
+Install it once: `lv.set_free_observer(record)?`. It fails with
+`Error::Busy` if another observer is installed, and `take_free_observer`
+removes it. Without `std`, a fixed ring of raw handles
+(`Handle::into_raw`) behind your own lock does the same. A host with many objects per client can keep a map from handle
 to `(client, index)` instead of scanning every table.
 
 ## Costs

@@ -206,7 +206,7 @@ fn the_free_observer_clears_entries_of_objects_deleted_indirectly() {
     let mut guard = guard();
     let mut lv = session(&mut guard);
     host::FREED.lock().unwrap().clear();
-    lv.set_free_observer(Some(host::record));
+    lv.set_free_observer(host::record).unwrap();
     let mut clients = [Client::default(), Client::default()];
     let a_root = root(&mut lv, &mut clients[0]);
     let child = create_child(&mut lv, &mut clients[0], a_root).unwrap();
@@ -215,7 +215,7 @@ fn the_free_observer_clears_entries_of_objects_deleted_indirectly() {
     // client asking.
     let handle = clients[0].handle(a_root).unwrap();
     handle.get_mut(&mut lv).unwrap().delete().unwrap();
-    lv.set_free_observer(None);
+    lv.take_free_observer();
     drop(lv);
     host::forget_freed(&mut clients);
     assert_eq!(clients[0].handle(a_root).err(), Some(Error::Dead));

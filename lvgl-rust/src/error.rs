@@ -17,7 +17,8 @@ pub enum Error {
     /// An argument is out of range or would make LVGL's state inconsistent
     /// (a parent cycle, loading a screen that has a parent, ...).
     InvalidArg,
-    /// LVGL still uses the object (a screen being loaded); retried later.
+    /// LVGL still uses the object (a screen being loaded), a queue is full,
+    /// or a free observer is installed already.
     Busy,
     /// LVGL keeps pointers to the object: a display layer, or a child of a
     /// widget (see [`ObjMut`](crate::ObjMut)). The operation is refused.

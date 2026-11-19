@@ -148,7 +148,8 @@ views-only mode only the 8-byte header remains. Each LVGL object costs
 
 | Item | What it is | Access | Cost |
 | --- | --- | --- | --- |
-| `Lvgl::set_free_observer(&mut self, Option<fn(Freed)>)` | Called for every tracked object LVGL frees, on every deletion path, from the OBJ_ID free hook: no per-object event callback. Runs inside LVGL's destructor, without access to LVGL or the crate. | exclusive | 4 B of `.bss` (32-bit) |
+| `Lvgl::set_free_observer(&mut self, fn(Freed)) -> Result<(), Error>` | Called for every tracked object LVGL frees, on every deletion path, from the OBJ_ID free hook: no per-object event callback. Runs inside LVGL's destructor, without access to LVGL or the crate. `Error::Busy` if an observer is installed already. | exclusive | 4 B of `.bss` (32-bit) |
+| `Lvgl::take_free_observer(&mut self) -> Option<fn(Freed)>` | Removes the installed observer and returns it. | exclusive | — |
 | `Freed` | `handle(&self) -> Handle<Obj>` (dead once the observer returns), `object(&self) -> *mut lv_obj_t` (a key, never dereferenced). | — | — |
 
 ## Creation
