@@ -26,14 +26,17 @@ documentation):
 | --- | --- |
 | `CC_<target>`, `AR_<target>`, `CFLAGS_<target>` (and `TARGET_CC`, `TARGET_AR`, `TARGET_CFLAGS`) | C compiler, archiver and flags for LVGL. |
 | `BINDGEN_EXTRA_CLANG_ARGS_<target>` (and `BINDGEN_EXTRA_CLANG_ARGS`) | Extra clang arguments for bindgen, typically the C library headers given to the C compiler. |
+| `LIBCLANG_PATH`, `CLANG_PATH`, `LLVM_CONFIG_PATH` | Where clang-sys finds libclang, and the `clang` executable whose built-in headers bindgen adds to the include path. |
 
 The build script never passes `--target` to clang: for cross builds,
 bindgen derives the clang triple from Cargo's `TARGET`.
 
 ### Rebuild triggers
 
-Besides the variables above, the build script reruns when one of these
-changes: `<config dir>/lv_conf.h`, `lvgl/src`, `lvgl/include`,
+Besides the variables above, the build script reruns when one of
+bindgen's and clang-sys's variables changes (including the
+`BINDGEN_EXTRA_CLANG_ARGS_<target>` forms of a cross build), or one of
+these: `<config dir>/lv_conf.h`, `lvgl/src`, `lvgl/include`,
 `lvgl/lvgl.h`, `shims/`, the `LVGL_FONTS_DIR` directory, and, with
 `shadcn-theme`, `lvgl_theme_shadcn/src` and `lvgl_theme_shadcn/include`.
 

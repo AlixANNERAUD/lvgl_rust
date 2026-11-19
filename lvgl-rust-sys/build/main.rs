@@ -234,6 +234,10 @@ fn compile_lvgl(native: &NativeConfig) {
 }
 
 fn generate_bindings(native: &NativeConfig, output: &Path) {
+    // clang-sys reads it when bindgen looks for a `clang` executable, whose
+    // built-in headers bindgen adds. `LIBCLANG_PATH` and `LLVM_CONFIG_PATH`
+    // are tracked by bindgen's own build script.
+    println!("cargo:rerun-if-env-changed=CLANG_PATH");
     native
         .headers
         .iter()
@@ -246,6 +250,14 @@ fn generate_bindings(native: &NativeConfig, output: &Path) {
         .use_core()
         .ctypes_prefix("core::ffi")
         .clang_args(native.clang_args())
+        // Reruns when an environment variable bindgen reads changes.
+        // bindgen's build script tracks `BINDGEN_EXTRA_CLANG_ARGS_<TARGET>`
+        // for its own target, the host: the per-target forms of a cross
+        // build need these declarations. Headers are tracked by directory
+        // already.
+        .parse_callbacks(Box::new(
+            bindgen::CargoCallbacks::new().rerun_on_header_files(false),
+        ))
         .generate()
         .expect("Unable to generate bindings")
         .write_to_file(output)
