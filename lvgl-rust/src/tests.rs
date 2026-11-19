@@ -765,29 +765,125 @@ mod free_observer {
         FREED.lock().unwrap().push(freed.handle().into_raw());
     }
 
+    /// Replaces any observer a failed test left, then installs `record`.
+    fn install(lv: &mut Lvgl) {
+        lv.take_free_observer();
+        FREED.lock().unwrap().clear();
+        lv.set_free_observer(record).unwrap();
+    }
+
+    /// Removes the observer and returns what it saw, sorted.
+    fn finish(lv: &mut Lvgl) -> std::vec::Vec<u32> {
+        assert!(lv.take_free_observer().is_some());
+        let mut freed = core::mem::take(&mut *FREED.lock().unwrap());
+        freed.sort_unstable();
+        freed
+    }
+
+    fn sorted(mut raw: std::vec::Vec<u32>) -> std::vec::Vec<u32> {
+        raw.sort_unstable();
+        raw
+    }
+
+    fn tracked(lv: &mut Lvgl, parent: Option<Handle<Obj>>) -> Handle<Obj> {
+        let mut parent = match parent {
+            Some(parent) => parent.get_mut(lv).unwrap(),
+            None => lv.screen_active_mut().unwrap(),
+        };
+        Obj::create(&mut parent).unwrap().handle().unwrap()
+    }
+
+    #[test]
+    fn one_free_observer_is_installed_at_a_time() {
+        let mut guard = guard();
+        let mut lv = session(&mut guard);
+        install(&mut lv);
+        assert_eq!(lv.set_free_observer(record), Err(Error::Busy));
+        assert!(lv.take_free_observer().is_some());
+        assert!(lv.take_free_observer().is_none());
+        lv.set_free_observer(record).unwrap();
+        finish(&mut lv);
+    }
+
     #[test]
     fn the_free_observer_sees_every_tracked_object_once() {
         let mut guard = guard();
         let mut lv = session(&mut guard);
-        FREED.lock().unwrap().clear();
-        lv.set_free_observer(Some(record));
-        let parent = Obj::create(&mut lv.screen_active_mut().unwrap())
-            .unwrap()
-            .handle()
-            .unwrap();
-        let child = Obj::create(&mut parent.get_mut(&mut lv).unwrap())
-            .unwrap()
-            .handle()
-            .unwrap();
+        install(&mut lv);
+        let parent = tracked(&mut lv, None);
+        let child = tracked(&mut lv, Some(parent));
         // Untracked: not reported.
         Obj::create(&mut child.get_mut(&mut lv).unwrap()).unwrap();
         parent.get_mut(&mut lv).unwrap().delete().unwrap();
-        lv.set_free_observer(None);
-        let mut freed = core::mem::take(&mut *FREED.lock().unwrap());
-        freed.sort_unstable();
-        let mut expected = std::vec![parent.into_raw(), child.into_raw()];
-        expected.sort_unstable();
-        assert_eq!(freed, expected);
+        let expected = sorted(std::vec![parent.into_raw(), child.into_raw()]);
+        assert_eq!(finish(&mut lv), expected);
+    }
+
+    #[test]
+    fn the_free_observer_sees_cleaned_children() {
+        let mut guard = guard();
+        let mut lv = session(&mut guard);
+        install(&mut lv);
+        let parent = tracked(&mut lv, None);
+        let a = tracked(&mut lv, Some(parent));
+        let b = tracked(&mut lv, Some(a));
+        parent.get_mut(&mut lv).unwrap().clean().unwrap();
+        let expected = sorted(std::vec![a.into_raw(), b.into_raw()]);
+        assert_eq!(finish(&mut lv), expected);
+        // The parent survives the clean.
+        parent.get_mut(&mut lv).unwrap().delete().unwrap();
+    }
+
+    #[test]
+    fn the_free_observer_sees_deletions_carried_out_by_the_drain() {
+        let mut guard = guard();
+        let mut lv = session(&mut guard);
+        install(&mut lv);
+        let later = tracked(&mut lv, None);
+        let owned = Obj::create_owned(&mut lv.screen_active_mut().unwrap()).unwrap();
+        let owned_raw = owned.handle().into_raw();
+        let cleaned = tracked(&mut lv, None);
+        let inner = tracked(&mut lv, Some(cleaned));
+        later.get(&lv).unwrap().delete_later().unwrap();
+        cleaned.get(&lv).unwrap().clean_later().unwrap();
+        drop(owned);
+        // Nothing is freed before the drain.
+        assert!(FREED.lock().unwrap().is_empty());
+        drop(lv);
+        let mut lv = Lvgl::enter(&mut guard).unwrap();
+        let expected = sorted(std::vec![later.into_raw(), owned_raw, inner.into_raw()]);
+        assert_eq!(finish(&mut lv), expected);
+        cleaned.get_mut(&mut lv).unwrap().delete().unwrap();
+    }
+
+    /// A screen deleted by a load with `auto_delete` (LVGL only: the model
+    /// does not delete screens on load).
+    #[cfg(not(any(miri, loom)))]
+    #[test]
+    fn the_free_observer_sees_a_screen_deleted_by_a_load() {
+        let mut guard = guard();
+        let mut lv = session(&mut guard);
+        install(&mut lv);
+        let first = lv.screen_active().unwrap().as_ptr();
+        // SAFETY: exclusive access; a parentless object is a screen.
+        let screen = unsafe { sys::lv_obj_create(core::ptr::null_mut()) };
+        fn at(lv: &Lvgl, p: *mut sys::lv_obj_t) -> Option<&Obj> {
+            // SAFETY: the callers pass live objects of this session.
+            Some(unsafe { Obj::from_raw(lv, core::ptr::NonNull::new(p).unwrap()) })
+        }
+        let screen_handle = at(&lv, screen).unwrap().handle().unwrap();
+        let child = tracked(&mut lv, Some(screen_handle));
+        lv.edit(|lv| at(lv, screen))
+            .unwrap()
+            .load_screen(ScreenAnim::NONE)
+            .unwrap();
+        // Back to the first screen, deleting the one just left.
+        lv.edit(|lv| at(lv, first))
+            .unwrap()
+            .load_screen(ScreenAnim::new(ScreenLoadAnim::NONE, 0, 0, true))
+            .unwrap();
+        let expected = sorted(std::vec![screen_handle.into_raw(), child.into_raw()]);
+        assert_eq!(finish(&mut lv), expected);
     }
 }
 

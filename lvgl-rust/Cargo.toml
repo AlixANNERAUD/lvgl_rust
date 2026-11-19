@@ -38,6 +38,13 @@ growable-registry = []
 # LVGL frees, from the OBJ_ID free hook (4 B of `.bss` on 32-bit targets).
 # No effect in views-only mode.
 free-observer = []
+# No handle registry: borrowed views only, the same as
+# `LVGL_RUST_HANDLE_SLOTS=0` but chosen from `Cargo.toml`. The crate then
+# defines no OBJ_ID hooks, and `LV_USE_OBJ_ID 1` with
+# `LV_USE_OBJ_ID_BUILTIN 0` needs the host to define them (the host owns
+# the object `id` field). Not additive: one dependent enabling it removes
+# handles for the whole build.
+views-only = []
 # A host-provided, link-time class policy for raw LVGL extensions.
 external-class-policy = []
 
@@ -64,6 +71,10 @@ harness = false
 [[test]]
 name = "external_classes"
 required-features = ["external-class-policy"]
+
+[[test]]
+name = "host_object_ids"
+required-features = ["views-only"]
 
 [build-dependencies]
 lvgl-rust-gen = { version = "0.1.1", path = "../lvgl-rust-gen" }

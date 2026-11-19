@@ -45,6 +45,7 @@ hooks and use their own target directory. Most tasks set
 | `test-compile-fail` | With Rust 1.99.1: the trybuild cases of `lvgl-rust/tests/compile-fail` (features `async`, `heap`). | `ci.yml` lvgl-rust (test-compile-fail). |
 | `test-allocator` | On a copy of `lvgl-rust/conf` with `LV_STDLIB_CUSTOM`: clippy and the `allocator` test with `allocator` and `heap`. | `ci.yml` lvgl-rust (test-allocator). |
 | `miri` | With nightly Rust: the `lvgl-rust` library tests under Miri against the Rust model of LVGL, without features and with `heap`. | `ci.yml` lvgl-rust (miri). |
+| `test-host-object-ids` | `views-only` on `lvgl-rust/conf` (`LV_USE_OBJ_ID_BUILTIN 0`): clippy, then the `host_object_ids` test, a host that defines the OBJ_ID hooks and owns each object's `id` (the free hook runs for every deletion path). | `ci.yml` lvgl-rust (test-host-object-ids). |
 | `loom` | `--cfg loom`, `LVGL_RUST_HANDLE_SLOTS=4`: the `protocol` tests of `lvgl-rust` in release. | `ci.yml` lvgl-rust (loom). |
 | `audit` | With clang 22.1.8: `lvgl-rust-gen audit`, rewriting `access.toml` and `events.toml`. | — (`audit-check` checks it) |
 | `bump` | `lvgl-rust-gen bump`: rewrites `universe.txt`, reports hierarchy and stale table entries. | — (`audit-check` checks it) |

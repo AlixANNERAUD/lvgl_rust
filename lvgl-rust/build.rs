@@ -46,6 +46,13 @@ fn main() {
             DEFAULT_POST
         }
     };
+    // The `views-only` feature is `LVGL_RUST_HANDLE_SLOTS=0` for a dependent
+    // crate that cannot set the environment of its own build.
+    let slots = if env::var_os("CARGO_FEATURE_VIEWS_ONLY").is_some() {
+        0
+    } else {
+        slots
+    };
     if slots == 0 {
         println!("cargo::rustc-cfg=lvgl_rust_views_only");
     } else {
@@ -95,6 +102,7 @@ fn main() {
         } else if constant(&compact, "LV_USE_OBJ_ID") == Some(1)
             && constant(&compact, "LV_USE_OBJ_ID_BUILTIN") == Some(0)
         {
+            errors.extend(check_host_obj_id(&compact));
             println!(
                 "cargo::warning=views-only mode defines no OBJ_ID hooks: the application must \
                  define the five lv_obj_*_id functions, or lv_conf.h must set \
@@ -212,6 +220,23 @@ fn check_obj_id(bindings: &str) -> Option<String> {
          lv_obj_id_compare and lv_obj_stringify_id. To keep LVGL's own OBJ_ID \
          support instead, build with {SLOTS_VAR}=0 (views only, no handles)."
     ))
+}
+
+/// Views-only mode with OBJ_ID hooks the host defines: LVGL 9.6 calls
+/// `lv_obj_free_id` from the object destructor only under
+/// `LV_OBJ_ID_AUTO_ASSIGN` (`lv_obj.c:1561`). Without it a host table that
+/// names objects by their `id` keeps the pointers of freed objects.
+fn check_host_obj_id(bindings: &str) -> Option<String> {
+    if constant(bindings, "LV_OBJ_ID_AUTO_ASSIGN") == Some(1) {
+        return None;
+    }
+    Some(
+        "views-only mode with host-defined OBJ_ID hooks (LV_USE_OBJ_ID 1, \
+         LV_USE_OBJ_ID_BUILTIN 0) needs `#define LV_OBJ_ID_AUTO_ASSIGN 1` in lv_conf.h: \
+         without it LVGL never calls lv_obj_free_id, so the host cannot forget a \
+         deleted object"
+            .to_owned(),
+    )
 }
 
 /// Value of an integer constant in bindgen output stripped of whitespace

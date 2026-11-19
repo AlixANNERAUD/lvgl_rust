@@ -6,7 +6,7 @@
 //! LVGL would allocate.
 
 use super::{ffi, registry::OBSERVER};
-use crate::{Handle, Lvgl, Obj};
+use crate::{Error, Handle, Lvgl, Obj};
 
 /// A tracked object being freed, given to the observer installed with
 /// [`Lvgl::set_free_observer`].
@@ -38,17 +38,32 @@ impl Freed {
 }
 
 impl Lvgl {
-    /// Calls `observer` for every tracked object (one with a handle) LVGL
-    /// frees, whatever the path (an explicit deletion, its parent's, a
-    /// screen unloaded with auto-deletion, `deinit`): through LVGL's OBJ_ID
-    /// free hook, with no per-object event callback. `None` removes it. The
-    /// registry keeps one observer.
+    /// Installs `observer`, called for every tracked object (one with a
+    /// handle) LVGL frees, whatever the path (an explicit deletion, its
+    /// parent's, `clean`, a screen unloaded with auto-deletion, `deinit`):
+    /// through LVGL's OBJ_ID free hook, with no per-object event callback.
+    ///
+    /// The registry keeps one observer. Fails with [`Error::Busy`] if one
+    /// is installed already, so two components cannot replace each other's
+    /// silently: remove it first with [`take_free_observer`](Lvgl::take_free_observer).
     ///
     /// The observer runs inside LVGL's destructor: it must not call LVGL
     /// or this crate (it gets no access to either, and a session cannot be
     /// entered from it), only update its own state (drop the side data of
     /// the handle, queue a notification).
-    pub fn set_free_observer(&mut self, observer: Option<fn(Freed)>) {
-        OBSERVER.0.set(observer);
+    pub fn set_free_observer(&mut self, observer: fn(Freed)) -> Result<(), Error> {
+        // Exclusive access: no other writer, and the free hook runs only
+        // inside calls made with this access, so a test then a store is
+        // the compare-and-exchange of `None` with `observer`.
+        if OBSERVER.0.get().is_some() {
+            return Err(Error::Busy);
+        }
+        OBSERVER.0.set(Some(observer));
+        Ok(())
+    }
+
+    /// Removes the installed observer and returns it.
+    pub fn take_free_observer(&mut self) -> Option<fn(Freed)> {
+        OBSERVER.0.take()
     }
 }

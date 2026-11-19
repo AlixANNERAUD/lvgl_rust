@@ -59,7 +59,17 @@ fn init_enter_deinit() {
         unsafe { sys::lv_obj_add_event_cb(raw, Some(count_after), DELETE, core::ptr::null_mut()) };
     }
 
+    // Objects still tracked when LVGL shuts down reach the free observer.
+    #[cfg(lvgl_rust_free_observer)]
+    lv.set_free_observer(record).unwrap();
+
     Lvgl::deinit(lv).unwrap();
+    #[cfg(lvgl_rust_free_observer)]
+    {
+        let freed = FREED.lock().unwrap();
+        assert!(freed.contains(&handle.into_raw()));
+        assert!(freed.contains(&owned.handle().into_raw()));
+    }
     // The block was freed during the deletion, not queued (the builtin
     // heap only: LVGL does not monitor the C library's `malloc`).
     #[cfg(feature = "heap")]
@@ -79,6 +89,14 @@ fn init_enter_deinit() {
         drop(owned);
         let _ = handle;
     }
+}
+
+#[cfg(lvgl_rust_free_observer)]
+static FREED: std::sync::Mutex<Vec<u32>> = std::sync::Mutex::new(Vec::new());
+
+#[cfg(lvgl_rust_free_observer)]
+fn record(freed: lvgl_rust::Freed) {
+    FREED.lock().unwrap().push(freed.handle().into_raw());
 }
 
 #[cfg(feature = "heap")]
