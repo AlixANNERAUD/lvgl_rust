@@ -97,7 +97,11 @@ Inputs:
 Read every environment variable through `env_var()` in `build/main.rs`: it
 emits `cargo:rerun-if-env-changed`. Variables that Cargo always sets (`TARGET`,
 `OUT_DIR`, ...) go through `cargo_env()`. Any new input file or directory needs a
-`rerun-if-changed`, otherwise edits will not trigger a rebuild.
+`rerun-if-changed`, otherwise edits will not trigger a rebuild. Variables that
+bindgen or clang-sys read themselves are declared too: bindgen's
+`CargoCallbacks` reports its own (its build script tracks the per-target forms
+only for the host), and `CLANG_PATH` is declared by hand
+(`native_build_interface` checks both).
 
 Keep `build/config.rs` free of `cc`, `bindgen` and Cargo I/O so that
 `tests/build_config.rs` can include it with `#[path]`. Put new parsing or

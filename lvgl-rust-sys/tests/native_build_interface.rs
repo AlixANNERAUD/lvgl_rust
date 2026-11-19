@@ -84,6 +84,70 @@ fn bindgen_only_build_skips_native_archive() {
 }
 
 #[test]
+fn bindings_rerun_when_clang_environment_changes() {
+    let fixture = scratch_dir("bindgen-environment");
+    write(
+        fixture.join("Cargo.toml"),
+        &dependent_manifest("bindgen-environment-fixture", &[], false)
+            .replace("features = []", "default-features = false"),
+    );
+    write(
+        fixture.join("src/lib.rs"),
+        "pub use lvgl_rust_sys::lv_init;\n",
+    );
+    let build = |clang_path: Option<&str>, what: &str| {
+        let mut command = cargo(
+            "build",
+            &fixture.join("Cargo.toml"),
+            &fixture.join("target"),
+        );
+        command.arg("-v").env_remove("CLANG_PATH");
+        if let Some(path) = clang_path {
+            command.env("CLANG_PATH", path);
+        }
+        stdout_and_stderr(&run(&mut command, what))
+    };
+
+    build(None, "initial build");
+    // Read by clang-sys, not by the build script. A path that is not a file
+    // makes clang-sys fall back to `PATH`, so the build still succeeds.
+    let changed = build(Some("/nonexistent/clang"), "build with CLANG_PATH set");
+    assert!(
+        !changed.contains("Fresh lvgl-rust-sys"),
+        "CLANG_PATH changed but the bindings were not regenerated:\n{changed}"
+    );
+    let again = build(
+        Some("/nonexistent/clang"),
+        "build with CLANG_PATH unchanged",
+    );
+    assert!(
+        again.contains("Fresh lvgl-rust-sys"),
+        "CLANG_PATH unchanged but the build script ran again:\n{again}"
+    );
+
+    // bindgen's build script tracks `BINDGEN_EXTRA_CLANG_ARGS_<TARGET>` for
+    // its own target (the host), so a cross build's per-target forms must be
+    // declared by the build script itself.
+    let run_dir = lvgl_out_dir(&fixture.join("target"))
+        .parent()
+        .unwrap()
+        .to_path_buf();
+    // Cargo 1.100 and later: run/stdout; before: output.
+    let declarations = fs::read_to_string(run_dir.join("run/stdout"))
+        .or_else(|_| fs::read_to_string(run_dir.join("output")))
+        .expect("lvgl-rust-sys build script output");
+    let per_target = declarations
+        .lines()
+        .filter(|line| line.starts_with("cargo:rerun-if-env-changed=BINDGEN_EXTRA_CLANG_ARGS_"))
+        .count();
+    assert_eq!(
+        per_target, 2,
+        "expected both per-target forms of BINDGEN_EXTRA_CLANG_ARGS:\n{declarations}"
+    );
+    fs::remove_dir_all(fixture).unwrap();
+}
+
+#[test]
 fn missing_configuration_is_reported() {
     let fixture = scratch_dir("missing-config");
     write(
