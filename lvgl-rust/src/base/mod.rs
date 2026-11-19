@@ -8,6 +8,8 @@ pub(crate) mod ffi;
 
 #[cfg(feature = "heap")]
 pub(crate) mod deferred;
+#[cfg(feature = "deferred-delete")]
+pub(crate) mod deferred_delete;
 pub(crate) mod drain;
 #[cfg(lvgl_rust_free_observer)]
 mod free_observer;
@@ -23,6 +25,8 @@ pub(crate) mod structural;
 pub(crate) mod sync;
 mod view;
 
+#[cfg(feature = "deferred-delete")]
+pub use deferred_delete::{DeferredClass, DeferredLink};
 #[cfg(lvgl_rust_free_observer)]
 pub use free_observer::Freed;
 #[cfg(not(lvgl_rust_views_only))]

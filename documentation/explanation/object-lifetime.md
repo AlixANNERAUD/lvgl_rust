@@ -156,6 +156,22 @@ correct when raw `sys` code, a widget or LVGL's screen loading deletes
 its object. `lv_obj_set_id` is reserved to the crate, and taking a handle
 to an object finds its existing slot through `id` instead of scanning.
 
+### Host objects deleted later (`deferred-delete`)
+
+`Owned::drop` records a request in the registry, which a drop can do
+without the LVGL lock. Views-only mode has no registry, and objects of a
+host's own classes are not the crate's to own. For them a host embeds a
+`DeferredLink` in the class's instance struct: one pointer, zero as LVGL
+creates the instance. A `DeferredClass` per class holds the queue. A
+request links the object in, inside a critical section, without calling
+LVGL; the drain takes each object out, then deletes it outside the
+section, so destructors run as usual. The class's destructor removes an
+object that dies first (its parent was deleted), which keeps the queue
+free of dangling objects without a callback per object. A lock, not
+atomics, because removing an object from the middle of a list cannot be
+done with loads and stores alone, and the crate avoids read-modify-write
+so as to run on targets without compare-and-swap.
+
 ### The free observer (`free-observer`)
 
 The OBJ_ID free hook already sees every deletion of a tracked object,

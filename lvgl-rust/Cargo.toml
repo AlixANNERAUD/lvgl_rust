@@ -47,6 +47,12 @@ free-observer = []
 views-only = []
 # A host-provided, link-time class policy for raw LVGL extensions.
 external-class-policy = []
+# `DeferredClass`: objects of host classes queued for deletion without a
+# session, from any thread, and deleted at the next drain. Works with and
+# without the registry. One pointer per object of a participating class,
+# four per class, 5 to 8 B of `.bss`. The binary provides a
+# `critical-section` implementation.
+deferred-delete = ["dep:critical-section"]
 
 color_depth_1 = ["lvgl-rust-sys/color_depth_1"]
 color_depth_8 = ["lvgl-rust-sys/color_depth_8"]
@@ -58,10 +64,13 @@ color_depth_32 = ["lvgl-rust-sys/color_depth_32"]
 # The safe layer calls into the linked C library: `build-lvgl` is required.
 lvgl-rust-sys = { version = "0.2.0", path = "../lvgl-rust-sys", default-features = false, features = ["build-lvgl"] }
 defmt = { version = "1.0.1", optional = true }
+critical-section = { version = "1.2.0", optional = true }
 
 [dev-dependencies]
 # Compile-fail cases (`tests/compile_fail.rs`, `mise run test-compile-fail`).
 trybuild = "1.0.99"
+# A critical section for the tests of `deferred-delete` (a global mutex).
+critical-section = { version = "1.2.0", features = ["std"] }
 
 # Overhead of the safe API over raw calls (`mise run overhead`).
 [[bench]]
@@ -75,6 +84,10 @@ required-features = ["external-class-policy"]
 [[test]]
 name = "host_object_ids"
 required-features = ["views-only"]
+
+[[test]]
+name = "deferred_delete"
+required-features = ["deferred-delete"]
 
 [build-dependencies]
 lvgl-rust-gen = { version = "0.1.1", path = "../lvgl-rust-gen" }

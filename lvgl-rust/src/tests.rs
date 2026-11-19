@@ -1544,3 +1544,324 @@ fn version_metadata_names_lvgl() {
         "the version {version} does not name LVGL {lvgl}"
     );
 }
+
+/// The queues of `deferred-delete`, on stand-in objects: no LVGL, so the
+/// same tests run against LVGL's build, under Miri and (`protocol`) loom.
+/// Each stand-in is freed when "deleted", so a queue that kept one would
+/// be a use after free, which Miri reports.
+#[cfg(feature = "deferred-delete")]
+mod deferred_delete {
+    use super::*;
+    use crate::base::deferred_delete::{drain_with, queued};
+    use core::{cell::Cell, mem::offset_of, ptr::NonNull};
+    use std::boxed::Box;
+
+    /// A host object: a header standing in for `lv_obj_t`, the link, its
+    /// class, its parent and up to two children.
+    #[repr(C)]
+    struct Fake {
+        _obj: [usize; 3],
+        link: DeferredLink,
+        class: &'static DeferredClass,
+        parent: Cell<*mut Fake>,
+        children: [Cell<*mut Fake>; 2],
+    }
+
+    fn class() -> &'static DeferredClass {
+        // SAFETY: only `Fake`s are given to it, whose link is at this
+        // offset, and `destroy` forgets them through their own class.
+        Box::leak(Box::new(unsafe {
+            DeferredClass::new(offset_of!(Fake, link))
+        }))
+    }
+
+    fn fake(class: &'static DeferredClass) -> NonNull<sys::lv_obj_t> {
+        let fake = Box::new(Fake {
+            _obj: [0; 3],
+            link: DeferredLink::new(),
+            class,
+            parent: Cell::new(core::ptr::null_mut()),
+            children: [
+                Cell::new(core::ptr::null_mut()),
+                Cell::new(core::ptr::null_mut()),
+            ],
+        });
+        NonNull::new(Box::into_raw(fake)).unwrap().cast()
+    }
+
+    #[cfg_attr(loom, allow(dead_code))]
+    fn adopt(parent: NonNull<sys::lv_obj_t>, child: NonNull<sys::lv_obj_t>) {
+        // SAFETY: both are live stand-ins.
+        unsafe {
+            let children = &(*parent.as_ptr().cast::<Fake>()).children;
+            let free = children.iter().find(|c| c.get().is_null()).unwrap();
+            free.set(child.as_ptr().cast());
+            (*child.as_ptr().cast::<Fake>())
+                .parent
+                .set(parent.as_ptr().cast());
+        }
+    }
+
+    /// LVGL's deletion: out of its parent, the children first, then the
+    /// object's destructor, which forgets it, then its memory.
+    fn destroy(obj: *mut sys::lv_obj_t) {
+        // SAFETY: a live stand-in, freed once.
+        unsafe {
+            let fake = obj.cast::<Fake>();
+            let parent = (*fake).parent.get();
+            if !parent.is_null() {
+                for slot in &(*parent).children {
+                    if slot.get() == fake {
+                        slot.set(core::ptr::null_mut());
+                    }
+                }
+            }
+            for child in &(*fake).children {
+                let child = child.get();
+                if !child.is_null() {
+                    destroy(child.cast());
+                }
+            }
+            (*fake).class.forget(NonNull::new_unchecked(obj));
+            drop(Box::from_raw(fake));
+        }
+    }
+
+    /// Drains, deleting with `destroy`, and returns what was deleted.
+    fn drain() -> std::vec::Vec<*mut sys::lv_obj_t> {
+        let mut deleted = std::vec::Vec::new();
+        drain_with(|obj| {
+            deleted.push(obj);
+            destroy(obj);
+            Ok(())
+        });
+        deleted
+    }
+
+    fn request(obj: NonNull<sys::lv_obj_t>) {
+        // SAFETY: a live stand-in, of the class it carries.
+        unsafe {
+            let class = (*obj.as_ptr().cast::<Fake>()).class;
+            class.request_delete(obj);
+        }
+    }
+
+    #[cfg(not(loom))]
+    mod lists {
+        use super::*;
+        use crate::base::deferred_delete::{begin_deinit, end_deinit};
+
+        /// Leaves the queues empty and running even when a test fails, so
+        /// no stand-in reaches the real drain of another test.
+        struct Clean;
+
+        impl Drop for Clean {
+            fn drop(&mut self) {
+                end_deinit();
+                // Refused: dropped from the queues, left alive (leaked).
+                drain_with(|_| Err(Error::Internal));
+            }
+        }
+
+        fn ptrs(objects: &[NonNull<sys::lv_obj_t>]) -> std::vec::Vec<*mut sys::lv_obj_t> {
+            objects.iter().map(|o| o.as_ptr()).collect()
+        }
+
+        #[test]
+        fn requests_are_deleted_once_in_order_at_the_next_drain() {
+            let _guard = guard();
+            let _clean = Clean;
+            let class = class();
+            let (a, b, c) = (fake(class), fake(class), fake(class));
+            request(a);
+            request(b);
+            request(a); // already queued: nothing
+            request(c);
+            assert_eq!(queued(), 3);
+            assert_eq!(drain(), ptrs(&[a, b, c]));
+            assert_eq!(queued(), 0);
+            assert!(drain().is_empty());
+        }
+
+        #[test]
+        fn a_child_deleted_with_its_parent_leaves_the_queue() {
+            let _guard = guard();
+            let _clean = Clean;
+            let class = class();
+            for parent_first in [true, false] {
+                let (parent, child) = (fake(class), fake(class));
+                adopt(parent, child);
+                if parent_first {
+                    request(parent);
+                    request(child);
+                    // The child dies with its parent and leaves the queue.
+                    assert_eq!(drain(), ptrs(&[parent]));
+                } else {
+                    request(child);
+                    request(parent);
+                    assert_eq!(drain(), ptrs(&[child, parent]));
+                }
+                assert_eq!(queued(), 0);
+            }
+        }
+
+        #[test]
+        fn a_child_of_another_class_leaves_its_queue() {
+            let _guard = guard();
+            let _clean = Clean;
+            let (windows, logos) = (class(), class());
+            let (window, logo, other_logo) = (fake(windows), fake(logos), fake(logos));
+            adopt(window, logo);
+            request(logo);
+            request(other_logo);
+            request(window);
+            // `windows` was chained last, so it drains first: the logo
+            // dies with its window, out of the middle of the other queue.
+            assert_eq!(drain(), ptrs(&[window, other_logo]));
+            assert_eq!(queued(), 0);
+        }
+
+        #[test]
+        fn an_object_deleted_at_once_leaves_the_queue() {
+            let _guard = guard();
+            let _clean = Clean;
+            let class = class();
+            let (first, middle, last) = (fake(class), fake(class), fake(class));
+            request(first);
+            request(middle);
+            request(last);
+            // Deleted with exclusive access before the drain: from the
+            // middle of the queue, then its tail.
+            destroy(middle.as_ptr());
+            destroy(last.as_ptr());
+            assert_eq!(queued(), 1);
+            // The queue's end moved back: a new request follows `first`.
+            let next = fake(class);
+            request(next);
+            assert_eq!(drain(), ptrs(&[first, next]));
+        }
+
+        #[test]
+        fn a_request_during_the_deletion_is_ignored() {
+            let _guard = guard();
+            let _clean = Clean;
+            let obj = fake(class());
+            request(obj);
+            drain_with(|o| {
+                // The owner asks again while LVGL destroys the object.
+                request(NonNull::new(o).unwrap());
+                destroy(o);
+                Ok(())
+            });
+            assert_eq!(queued(), 0);
+        }
+
+        #[test]
+        fn busy_objects_wait_for_the_next_drain_and_refused_ones_are_dropped() {
+            let _guard = guard();
+            let _clean = Clean;
+            let class = class();
+            let (busy, refused, plain) = (fake(class), fake(class), fake(class));
+            request(busy);
+            request(refused);
+            request(plain);
+            let mut deleted = std::vec::Vec::new();
+            drain_with(|o| {
+                if o == busy.as_ptr() {
+                    Err(Error::Busy)
+                } else if o == refused.as_ptr() {
+                    Err(Error::Internal)
+                } else {
+                    deleted.push(o);
+                    destroy(o);
+                    Ok(())
+                }
+            });
+            assert_eq!(deleted, ptrs(&[plain]));
+            // The busy one waits; the refused one may be requested again.
+            assert_eq!(queued(), 1);
+            request(refused);
+            assert_eq!(drain(), ptrs(&[busy, refused]));
+        }
+
+        #[test]
+        fn classes_are_drained_together() {
+            let _guard = guard();
+            let _clean = Clean;
+            let (windows, logos) = (class(), class());
+            let (window, logo) = (fake(windows), fake(logos));
+            request(window);
+            request(logo);
+            // The class chained last drains first.
+            assert_eq!(drain(), ptrs(&[logo, window]));
+        }
+
+        #[test]
+        fn nothing_is_touched_once_deinit_started() {
+            let _guard = guard();
+            let _clean = Clean;
+            let class = class();
+            let (queued_before, requested_after) = (fake(class), fake(class));
+            request(queued_before);
+            begin_deinit();
+            request(requested_after); // ignored
+            assert!(drain().is_empty());
+            // LVGL destroys both; the destructors' `forget` does nothing.
+            destroy(queued_before.as_ptr());
+            destroy(requested_after.as_ptr());
+            end_deinit();
+            assert_eq!(queued(), 0);
+        }
+    }
+
+    /// Requests on other threads against the drain.
+    #[cfg(loom)]
+    mod protocol {
+        use super::*;
+
+        /// An object's address, sent to another thread.
+        #[derive(Clone, Copy)]
+        struct Sent(usize);
+
+        impl Sent {
+            fn of(obj: NonNull<sys::lv_obj_t>) -> Self {
+                Self(obj.as_ptr().expose_provenance())
+            }
+
+            fn get(self) -> NonNull<sys::lv_obj_t> {
+                NonNull::new(core::ptr::with_exposed_provenance_mut(self.0)).unwrap()
+            }
+        }
+
+        #[test]
+        fn concurrent_requests_are_all_queued() {
+            loom::model(|| {
+                let class = class();
+                let (a, b) = (Sent::of(fake(class)), Sent::of(fake(class)));
+                // Live stand-ins, deleted only after the join.
+                let thread = loom::thread::spawn(move || request(a.get()));
+                request(b.get());
+                thread.join().unwrap();
+                assert_eq!(queued(), 2);
+                assert_eq!(drain().len(), 2);
+            });
+        }
+
+        #[test]
+        fn a_request_racing_the_drain_is_deleted_once() {
+            loom::model(|| {
+                let class = class();
+                let (first, second) = (fake(class), Sent::of(fake(class)));
+                request(first);
+                // Live until a drain deletes it, which only happens once
+                // it is queued.
+                let thread = loom::thread::spawn(move || request(second.get()));
+                let mut deleted = drain();
+                thread.join().unwrap();
+                deleted.extend(drain());
+                assert_eq!(deleted, [first.as_ptr(), second.get().as_ptr()]);
+                assert_eq!(queued(), 0);
+            });
+        }
+    }
+}

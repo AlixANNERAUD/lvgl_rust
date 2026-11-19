@@ -183,6 +183,7 @@ the [build configuration reference](https://github.com/AlixANNERAUD/lvgl_rust/bl
 | `debug-counters` | | `DebugCounters::read()`: four 16-bit counters (8 bytes of `.bss`) of what the crate did or refused without returning an error |
 | `growable-registry` | | Handle slots beyond `LVGL_RUST_HANDLE_SLOTS`, in chunks from the global allocator (`alloc`) that double the capacity, up to 65,535 slots; chunks are never freed. 52 B more `.bss` on 32-bit targets with the default 32 slots |
 | `free-observer` | | `Lvgl::set_free_observer`: one function called for every tracked object LVGL frees (4 bytes of `.bss`), to drop what a host keeps per handle |
+| `deferred-delete` | | `DeferredClass`: objects of host classes queued for deletion from any thread without a session, deleted at the next drain, with or without the registry (one pointer per object, four per class, 5 to 8 bytes of `.bss`; needs a `critical-section` implementation) |
 | `shadcn-theme` | | The shadcn theme of `lvgl-rust-sys` |
 | `color_depth_1` ... `color_depth_32` | | LVGL's color depth (1, 8, 16, 24 or 32 bits), as in `lvgl-rust-sys` |
 

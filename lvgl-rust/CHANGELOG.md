@@ -5,6 +5,12 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `deferred-delete` feature: `DeferredClass` and `DeferredLink` queue objects of host classes for deletion from any thread, without a session or the registry, and the drain deletes them (`request_delete`, `forget` from the class destructor, `delete_now`). One pointer per object, four per class, 5 to 8 B of `.bss`; the binary provides a `critical-section` implementation.
+
 ## [0.2.0+lvgl.9.6.0](https://github.com/AlixANNERAUD/lvgl_rust/compare/lvgl-rust-v0.1.2+lvgl.9.6.0...lvgl-rust-v0.2.0+lvgl.9.6.0) - 2026-11-14
 
 ### Added

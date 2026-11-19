@@ -2,14 +2,16 @@
 # Size gate for lvgl-rust: builds the firmware in this directory for an
 # embedded target and checks the crate's footprint in the linked image.
 #
-#   gate.sh <target> <slots> <text budget in bytes> [firmware features: defmt, debug-counters, growable-registry]
+#   gate.sh <target> <slots> <text budget in bytes> [firmware features: defmt, debug-counters, growable-registry, deferred-delete]
 #
 # Checks: the registry static is 8·N + 24 bytes in .bss (8 bytes with N = 0;
 # 4·(16 − log2 N) + 8 more with growable-registry, whose firmware brings a
 # bump allocator),
 # and the `post` queue 8·P + 4 bytes (none with P = 0,
 # LVGL_RUST_POST_SLOTS, default 4), plus the 8 bytes of counters with
-# `debug-counters` (and nothing else from them without it);
+# `debug-counters` (and nothing else from them without it), plus the chain
+# head with `deferred-delete` (a pointer and a flag, 5 to 8 bytes, and none
+# without it);
 # the crate has no .data; no core::fmt or panic code is linked; the OBJ_ID
 # hooks are defined with N > 0 and absent with N = 0; the crate's code fits
 # the budget. The C toolchain comes from the `size-gate` mise task.
@@ -88,10 +90,23 @@ else
     expected_counters=0
     [ -z "$counters" ] || fail "debug counters linked without debug-counters"
 fi
-expected_bss=$((expected_reg + expected_post + expected_counters))
+# The chain head is a pointer and a flag: 8 B, or 5 B when LLVM splits it
+# into one global per field.
+chain=$(grep -E ' lvgl_rust::base::deferred_delete::CHAIN$' <<<"$symbols" || true)
+if [[ ",$features," == *,deferred-delete,* ]]; then
+    [ -n "$chain" ] || fail "deferred deletion chain not found"
+    expected_chain=0
+    while read -r _ size _ _; do expected_chain=$((expected_chain + 16#$size)); done <<<"$chain"
+    [ "$expected_chain" -ge 5 ] && [ "$expected_chain" -le 8 ] ||
+        fail "deferred deletion chain is $expected_chain B, expected 5 to 8 B"
+else
+    expected_chain=0
+    [ -z "$chain" ] || fail "deferred deletion chain linked without deferred-delete"
+fi
+expected_bss=$((expected_reg + expected_post + expected_counters + expected_chain))
 bss=0
 while read -r _ size _ _; do bss=$((bss + 16#$size)); done < <(awk '$3 ~ /^[bB]$/' <<<"$crate")
-[ "$bss" = "$expected_bss" ] || fail "crate .bss is $bss B, expected $expected_bss B (registry $expected_reg, post queue $expected_post, counters $expected_counters)"
+[ "$bss" = "$expected_bss" ] || fail "crate .bss is $bss B, expected $expected_bss B (registry $expected_reg, post queue $expected_post, counters $expected_counters, chain $expected_chain)"
 
 panics=$("$nm" -C "$elf" | grep -E 'core::fmt|core::panicking|unwrap_failed' || true)
 [ -z "$panics" ] || fail "formatting or panic code linked: $panics"

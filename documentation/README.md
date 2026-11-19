@@ -36,6 +36,7 @@ changes are in [`AGENTS.md`](../AGENTS.md).
 | [Migrate from raw bindings](how-to-guides/migrate-from-raw-bindings.md) | Move an application from `lvgl-rust-sys` to lvgl-rust one module at a time |
 | [Use external fonts](how-to-guides/use-external-fonts.md) | Compile `lv_font_conv` fonts in a crate of their own and use them from lvgl-rust |
 | [Host several clients](how-to-guides/host-several-clients.md) | Share LVGL between clients that must reach only their own objects, with a handle table per client |
+| [Delete host objects later](how-to-guides/delete-host-objects-later.md) | Queue objects of your own classes for deletion from an owner's `Drop`, on any thread, without the registry |
 | [Host-owned object identity](how-to-guides/host-owned-object-identity.md) | Name some objects with a host-issued identifier and no registry, for the smallest boards |
 
 ## Explanation

@@ -58,6 +58,38 @@ mod firmware {
         };
     }
 
+    /// The critical section of `deferred-delete`: this firmware has one
+    /// thread and no interrupt handlers, so there is nothing to exclude.
+    #[cfg(feature = "deferred-delete")]
+    mod critical {
+        struct Single;
+        critical_section::set_impl!(Single);
+
+        // SAFETY: single-threaded firmware without interrupt handlers.
+        unsafe impl critical_section::Impl for Single {
+            unsafe fn acquire() {}
+            unsafe fn release(_: ()) {}
+        }
+
+        /// A host class with a link, never instantiated: the firmware
+        /// links the request and forget paths an owner's `Drop` and a
+        /// class destructor use, without running them.
+        static HOST: lvgl_rust::DeferredClass =
+            // SAFETY: never given an object (see `link_paths`).
+            unsafe { lvgl_rust::DeferredClass::new(64) };
+
+        pub(super) fn link_paths() {
+            if core::hint::black_box(false) {
+                let obj = core::hint::black_box(core::ptr::NonNull::dangling());
+                // SAFETY: unreachable at run time (`black_box(false)`).
+                unsafe {
+                    HOST.request_delete(obj);
+                    HOST.forget(obj);
+                }
+            }
+        }
+    }
+
     #[panic_handler]
     fn panic(_: &core::panic::PanicInfo) -> ! {
         loop {}
@@ -67,6 +99,8 @@ mod firmware {
     pub extern "C" fn _start() -> ! {
         let mut guard = Guard;
         let _ = run(&mut guard);
+        #[cfg(feature = "deferred-delete")]
+        critical::link_paths();
         // What reading the counters costs (the static stays linked even
         // where nothing below counts).
         #[cfg(feature = "debug-counters")]
