@@ -22,6 +22,8 @@ fn main() {
         .expect("lvgl_rust_sys must export DEP_LVGL_RUST_SYS_DEFINES");
     let cflags = env::var("DEP_LVGL_RUST_SYS_CFLAGS")
         .expect("lvgl_rust_sys must export DEP_LVGL_RUST_SYS_CFLAGS");
+    let compiler_flags = env::var("DEP_LVGL_RUST_SYS_COMPILER_FLAGS")
+        .expect("lvgl_rust_sys must export DEP_LVGL_RUST_SYS_COMPILER_FLAGS");
     let target = env::var("DEP_LVGL_RUST_SYS_TARGET")
         .expect("lvgl_rust_sys must export DEP_LVGL_RUST_SYS_TARGET");
 
@@ -41,6 +43,9 @@ fn main() {
             .split_once('=')
             .map_or((define, None), |(name, value)| (name, Some(value)));
         build.define(name, value);
+    }
+    for flag in compiler_flags.split_whitespace() {
+        build.flag(flag);
     }
 
     let fonts = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap()).join("fonts");

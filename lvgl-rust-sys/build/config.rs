@@ -141,6 +141,51 @@ pub fn is_freestanding(target: &str) -> bool {
     target.starts_with("wasm") && target.ends_with("-unknown-unknown")
 }
 
+/// Selects the RISC-V architecture and calling convention for C compilation.
+/// Clang's normalized target triple loses the Rust architecture extensions,
+/// and GNU bare-metal defaults can select the soft-float calling convention.
+pub fn riscv_compiler_flags(target: &str, target_calling_convention: &str) -> Vec<String> {
+    let architecture = target.split('-').next().unwrap_or_default();
+    let (width, extensions) = if let Some(extensions) = architecture.strip_prefix("riscv32") {
+        (32, extensions)
+    } else if let Some(extensions) = architecture.strip_prefix("riscv64") {
+        (64, extensions)
+    } else {
+        return Vec::new();
+    };
+
+    if !extensions.starts_with(['i', 'e', 'g'])
+        || !extensions.bytes().all(|extension| {
+            matches!(
+                extension,
+                b'i' | b'e' | b'm' | b'a' | b'f' | b'd' | b'c' | b'g'
+            )
+        })
+    {
+        return Vec::new();
+    }
+
+    let calling_convention = match target_calling_convention {
+        "ilp32" | "ilp32e" | "ilp32f" | "ilp32d" | "lp64" | "lp64f" | "lp64d" => {
+            target_calling_convention
+        }
+        _ => match (width, extensions) {
+            (32, extensions) if extensions.starts_with('e') => "ilp32e",
+            (32, extensions) if extensions.contains(['g', 'd']) => "ilp32d",
+            (32, extensions) if extensions.contains('f') => "ilp32f",
+            (32, _) => "ilp32",
+            (_, extensions) if extensions.contains(['g', 'd']) => "lp64d",
+            (_, extensions) if extensions.contains('f') => "lp64f",
+            _ => "lp64",
+        },
+    };
+
+    vec![
+        format!("-march=rv{width}{extensions}"),
+        format!("-mabi={calling_convention}"),
+    ]
+}
+
 /// Picks the configuration directory: the explicit one if given, otherwise the
 /// vendored fallback when it is allowed.
 pub fn resolve_config_dir(

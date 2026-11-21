@@ -47,4 +47,5 @@ color_depth_32 = []
 
 [build-dependencies]
 bindgen = "0.72.1"
-cc = "1.1.18"
+# Environment flags must take precedence over the target defaults we supply.
+cc = "1.2.16"

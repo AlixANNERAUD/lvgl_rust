@@ -166,20 +166,22 @@ synchronization requirements.
 ## Using LVGL's configuration from another crate
 
 Thanks to `links = "lvgl_rust_sys"`, dependent build scripts can compile
-ABI-compatible C code (fonts, drivers, custom widgets) against the same headers
-and definitions. These names and separators are a public contract:
+ABI-compatible C code (fonts, drivers, custom widgets) with the same headers,
+definitions and target compiler flags. These names and separators are a
+public contract.
 
 | Variable | Content |
 | --- | --- |
 | `DEP_LVGL_RUST_SYS_INCLUDE_PATHS` | `;`-separated include directories |
 | `DEP_LVGL_RUST_SYS_DEFINES` | `;`-separated `NAME` / `NAME=VALUE` definitions (config, color depth) |
 | `DEP_LVGL_RUST_SYS_CFLAGS` | `LVGL_CFLAGS` entries, `,`-separated |
+| `DEP_LVGL_RUST_SYS_COMPILER_FLAGS` | Space-separated target defaults (`-march` and `-mabi` on supported RISC-V targets, empty elsewhere) |
 | `DEP_LVGL_RUST_SYS_TARGET` | Cargo target triple of the native build |
 | `DEP_LVGL_RUST_SYS_BINDINGS` | Absolute path to the generated `bindings.rs` |
 | `DEP_LVGL_RUST_SYS_LINKED` | `1` when the `build-lvgl` feature compiled the C library, `0` otherwise |
 
-Use the target-aware compiler from `cc` in the dependent build script. Do not
-substitute the host target or guess ABI-affecting defines yourself.
+Use the target-aware compiler from `cc` in the dependent build script. Pass
+each compiler flag to `cc::Build::flag`; `cc` applies `CFLAGS_<target>` afterward.
 [`examples/external-fonts/build.rs`](https://github.com/AlixANNERAUD/lvgl_rust/blob/main/lvgl-rust-sys/examples/external-fonts/build.rs)
 shows a complete consumer.
 

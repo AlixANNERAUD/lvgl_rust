@@ -171,3 +171,71 @@ fn only_targets_without_c_library_are_freestanding() {
         assert!(!is_freestanding(target), "{target}");
     }
 }
+
+#[test]
+fn riscv_compiler_flags_follow_the_target_architecture() {
+    for (target, architecture_flag, calling_convention_flag) in [
+        (
+            "riscv32imac-unknown-none-elf",
+            "-march=rv32imac",
+            "-mabi=ilp32",
+        ),
+        (
+            "riscv32imc-unknown-none-elf",
+            "-march=rv32imc",
+            "-mabi=ilp32",
+        ),
+        (
+            "riscv32imafc-unknown-none-elf",
+            "-march=rv32imafc",
+            "-mabi=ilp32f",
+        ),
+        (
+            "riscv32gc-unknown-linux-gnu",
+            "-march=rv32gc",
+            "-mabi=ilp32d",
+        ),
+        ("riscv64gc-unknown-none-elf", "-march=rv64gc", "-mabi=lp64d"),
+        (
+            "riscv64imac-unknown-none-elf",
+            "-march=rv64imac",
+            "-mabi=lp64",
+        ),
+        (
+            "riscv32emc-unknown-none-elf",
+            "-march=rv32emc",
+            "-mabi=ilp32e",
+        ),
+        (
+            "riscv64imafc-unknown-none-elf",
+            "-march=rv64imafc",
+            "-mabi=lp64f",
+        ),
+    ] {
+        assert_eq!(
+            riscv_compiler_flags(target, ""),
+            [architecture_flag, calling_convention_flag],
+            "{target}"
+        );
+    }
+}
+
+#[test]
+fn riscv_compiler_flags_prefer_an_explicit_calling_convention() {
+    assert_eq!(
+        riscv_compiler_flags("riscv32imafc-unknown-none-elf", "ilp32"),
+        ["-march=rv32imafc", "-mabi=ilp32"]
+    );
+}
+
+#[test]
+fn riscv_compiler_flags_leave_other_architectures_unchanged() {
+    for target in [
+        "x86_64-unknown-linux-gnu",
+        "thumbv7em-none-eabihf",
+        "riscv32-wrs-vxworks",
+        "riscv64a23-unknown-linux-gnu",
+    ] {
+        assert!(riscv_compiler_flags(target, "").is_empty(), "{target}");
+    }
+}

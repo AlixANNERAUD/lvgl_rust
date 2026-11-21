@@ -33,7 +33,7 @@ lvgl-rust-sys = { git = "https://github.com/AlixANNERAUD/lvgl_rust", default-fea
 lvgl-rust = { git = "https://github.com/AlixANNERAUD/lvgl_rust", default-features = false }
 
 [build-dependencies]
-cc = "1.1.18"
+cc = "1.2.16"
 ```
 
 `default-features = false` keeps the crate from turning features of
@@ -50,10 +50,11 @@ what it needs itself.
 | `DEP_LVGL_RUST_SYS_INCLUDE_PATHS` | `;`-separated include directories (LVGL, your `lv_conf.h`, shims) |
 | `DEP_LVGL_RUST_SYS_DEFINES` | `;`-separated `NAME` or `NAME=VALUE` definitions (configuration, color depth) |
 | `DEP_LVGL_RUST_SYS_CFLAGS` | `,`-separated `LVGL_CFLAGS` entries |
+| `DEP_LVGL_RUST_SYS_COMPILER_FLAGS` | Space-separated target compiler flags (empty when none apply) |
 | `DEP_LVGL_RUST_SYS_TARGET` | the Cargo target of the native build |
 
-A build script that uses all four, adapted from
-[`lvgl-rust-sys/examples/external-fonts/build.rs`](../../lvgl-rust-sys/examples/external-fonts/build.rs):
+This build script uses the exported metadata. It follows the
+[external fonts example](../../lvgl-rust-sys/examples/external-fonts/build.rs).
 
 ```rust
 // fonts/build.rs
@@ -78,6 +79,9 @@ fn main() {
     }
     for entry in var("DEP_LVGL_RUST_SYS_CFLAGS").split(',').filter(|d| !d.is_empty()) {
         define(&mut build, entry);
+    }
+    for flag in var("DEP_LVGL_RUST_SYS_COMPILER_FLAGS").split_whitespace() {
+        build.flag(flag);
     }
     let fonts = PathBuf::from(var("CARGO_MANIFEST_DIR")).join("sources");
     println!("cargo:rerun-if-changed={}", fonts.display());
