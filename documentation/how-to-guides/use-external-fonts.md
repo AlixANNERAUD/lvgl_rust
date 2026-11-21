@@ -33,7 +33,7 @@ lvgl-rust-sys = { git = "https://github.com/AlixANNERAUD/lvgl_rust", default-fea
 lvgl-rust = { git = "https://github.com/AlixANNERAUD/lvgl_rust", default-features = false }
 
 [build-dependencies]
-cc = "1.1.18"
+cc = "1.2.16"
 ```
 
 `default-features = false` keeps the crate from turning features of

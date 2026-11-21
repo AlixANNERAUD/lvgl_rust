@@ -86,7 +86,8 @@ impl NativeConfig {
         let fonts_dir = env_var(FONTS_DIR_VAR).map(|dir| canonicalize(Path::new(&dir)));
         let custom_defines = config::parse_cflags(&env_var(CFLAGS_VAR).unwrap_or_default());
         let target = cargo_env("TARGET");
-        let target_calling_convention = env_var("CARGO_CFG_TARGET_ABI").unwrap_or_default();
+        // Cargo always sets this, to an empty string when the target names no ABI.
+        let target_calling_convention = env::var("CARGO_CFG_TARGET_ABI").unwrap_or_default();
 
         let mut config = Self {
             compiler_flags: config::riscv_compiler_flags(&target, &target_calling_convention),

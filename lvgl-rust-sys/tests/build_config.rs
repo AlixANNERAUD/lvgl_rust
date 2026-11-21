@@ -201,6 +201,16 @@ fn riscv_compiler_flags_follow_the_target_architecture() {
             "-march=rv64imac",
             "-mabi=lp64",
         ),
+        (
+            "riscv32emc-unknown-none-elf",
+            "-march=rv32emc",
+            "-mabi=ilp32e",
+        ),
+        (
+            "riscv64imafc-unknown-none-elf",
+            "-march=rv64imafc",
+            "-mabi=lp64f",
+        ),
     ] {
         assert_eq!(
             riscv_compiler_flags(target, ""),
