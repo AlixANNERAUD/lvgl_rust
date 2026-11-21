@@ -64,13 +64,14 @@ start at the repository root (`mise.toml`, `.github/`, `.cargo/`).
 ## Build model
 
 `NativeConfig` in `build/main.rs` is the single source of truth. The same
-include paths and definitions feed:
+include paths, definitions and target compiler flags feed:
 
 1. `cc` (the `liblvgl.a` archive, only with the `build-lvgl` feature);
-2. bindgen (as `-I`/`-D` clang arguments);
+2. bindgen (as `-I`, `-D` and target-specific clang arguments);
 3. the metadata exported through `links = "lvgl_rust_sys"`:
    `DEP_LVGL_RUST_SYS_INCLUDE_PATHS` (`;`-separated), `DEP_LVGL_RUST_SYS_DEFINES`
-   (`;`-separated), `DEP_LVGL_RUST_SYS_CFLAGS` (`,`-separated `LVGL_CFLAGS`) and
+   (`;`-separated), `DEP_LVGL_RUST_SYS_CFLAGS` (`,`-separated `LVGL_CFLAGS`),
+   `DEP_LVGL_RUST_SYS_COMPILER_FLAGS` (space-separated target defaults), and
    `DEP_LVGL_RUST_SYS_TARGET`. Two keys describe the build itself:
    `DEP_LVGL_RUST_SYS_BINDINGS` (absolute path to `bindings.rs`, read by the
    safe crate's generator) and `DEP_LVGL_RUST_SYS_LINKED` (`1` with

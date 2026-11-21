@@ -1,9 +1,9 @@
 //! Compiles LVGL, generates its Rust bindings and exports the native build
 //! configuration to dependent build scripts (see the README).
 //!
-//! The same include paths and definitions feed `cc`, `bindgen` and the
-//! exported metadata so that the native library, the bindings and downstream
-//! C code (e.g. external fonts) always agree on the ABI.
+//! The same include paths, definitions and target flags feed `cc`, `bindgen`
+//! and the exported metadata so the library, bindings and downstream C code
+//! use the same calling convention.
 
 mod config;
 
@@ -68,6 +68,7 @@ fn shadcn_theme_dir(manifest: &Path) -> PathBuf {
 /// Everything needed to compile LVGL-compatible C code.
 struct NativeConfig {
     target: String,
+    compiler_flags: Vec<String>,
     /// Directories whose `.c` files are compiled into the LVGL archive.
     source_dirs: Vec<PathBuf>,
     /// Headers handed to bindgen.
@@ -84,9 +85,12 @@ impl NativeConfig {
         let config_dir = config_dir(paths);
         let fonts_dir = env_var(FONTS_DIR_VAR).map(|dir| canonicalize(Path::new(&dir)));
         let custom_defines = config::parse_cflags(&env_var(CFLAGS_VAR).unwrap_or_default());
+        let target = cargo_env("TARGET");
+        let target_calling_convention = env_var("CARGO_CFG_TARGET_ABI").unwrap_or_default();
 
         let mut config = Self {
-            target: cargo_env("TARGET"),
+            compiler_flags: config::riscv_compiler_flags(&target, &target_calling_convention),
+            target,
             source_dirs: vec![
                 paths.lvgl_src.clone(),
                 config_dir.clone(),
@@ -166,6 +170,7 @@ impl NativeConfig {
             "cargo:CFLAGS={}",
             config::join_defines(&self.custom_defines, ",")
         );
+        println!("cargo:COMPILER_FLAGS={}", self.compiler_flags.join(" "));
         println!("cargo:TARGET={}", self.target);
         println!("cargo:BINDINGS={}", bindings.display());
         println!("cargo:LINKED={}", u8::from(linked));
@@ -179,6 +184,7 @@ impl NativeConfig {
             .map(|path| format!("-I{}", path.display()))
             .collect();
         args.extend(self.all_defines().map(Define::to_compiler_arg));
+        args.extend(self.compiler_flags.iter().cloned());
         args.push("-fvisibility=default".into());
         // Without a C library, clang's own headers are the only ones. In
         // hosted mode its <stdint.h> defers with #include_next and a guard
@@ -229,6 +235,9 @@ fn compile_lvgl(native: &NativeConfig) {
     build.includes(&native.include_paths);
     for define in native.all_defines() {
         build.define(&define.name, define.value.as_deref());
+    }
+    for flag in &native.compiler_flags {
+        build.flag(flag);
     }
     build.compile("lvgl");
 }

@@ -22,7 +22,11 @@ fn dependent_build_script_receives_lvgl_native_configuration() {
     assert!(defines.contains("LV_COLOR_FORMAT_DEFAULT=LV_COLOR_FORMAT_RGB565"));
     assert!(!defines.contains("LVGL_TEST_ABI=7"));
     let flags = std::env::var("DEP_LVGL_RUST_SYS_CFLAGS").expect("C flags metadata");
-    assert!(flags.contains("LVGL_TEST_ABI=7"));
+    assert_eq!(flags, "LVGL_TEST_ABI=7");
+    let compiler_flags = std::env::var("DEP_LVGL_RUST_SYS_COMPILER_FLAGS").unwrap();
+    if !matches!(std::env::var("CARGO_CFG_TARGET_ARCH").as_deref(), Ok("riscv32" | "riscv64")) {
+        assert!(compiler_flags.is_empty());
+    }
     assert_eq!(std::env::var("DEP_LVGL_RUST_SYS_TARGET").unwrap(), std::env::var("TARGET").unwrap());
     let bindings = std::env::var("DEP_LVGL_RUST_SYS_BINDINGS").expect("bindings metadata");
     let bindings = std::path::Path::new(&bindings);

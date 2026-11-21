@@ -42,8 +42,16 @@ these: `<config dir>/lv_conf.h`, `lvgl/src`, `lvgl/include`,
 
 ### Native configuration
 
-The same include paths and definitions feed the C compiler (`liblvgl.a`,
-with `build-lvgl`), bindgen and the exported metadata.
+The same include paths, definitions and target compiler flags feed the C
+compiler (`liblvgl.a`, with `build-lvgl`), bindgen and the exported metadata.
+
+For RISC-V targets that encode standard extensions in the Rust target triple,
+the build script derives `-march` from `TARGET` and uses `CARGO_CFG_TARGET_ABI`
+when it names a RISC-V calling convention. Otherwise it infers `-mabi` from the
+extensions. For instance, `riscv32imafc-unknown-none-elf` gets
+`-march=rv32imafc -mabi=ilp32f`. `cc` applies `CFLAGS_<target>` after these
+defaults. If you override the architecture or calling convention for C, pass
+the same override to bindgen through `BINDGEN_EXTRA_CLANG_ARGS_<target>`.
 
 Include paths, in order:
 
@@ -91,13 +99,15 @@ are a public contract: changing one is a breaking change.
 | `DEP_LVGL_RUST_SYS_INCLUDE_PATHS` | The include paths above, absolute. | `;` |
 | `DEP_LVGL_RUST_SYS_DEFINES` | The crate's definitions: `LV_CONF_INCLUDE_SIMPLE=1` and the color depth definitions, as `NAME` or `NAME=VALUE`. | `;` |
 | `DEP_LVGL_RUST_SYS_CFLAGS` | The `LVGL_CFLAGS` entries. | `,` |
+| `DEP_LVGL_RUST_SYS_COMPILER_FLAGS` | Derived target compiler flags (`-march` and `-mabi` for supported RISC-V triples, empty elsewhere). | space |
 | `DEP_LVGL_RUST_SYS_TARGET` | Cargo target triple of the build. | — |
 | `DEP_LVGL_RUST_SYS_BINDINGS` | Absolute path to the generated `bindings.rs`. | — |
 | `DEP_LVGL_RUST_SYS_LINKED` | `1` when `build-lvgl` compiled the C library, `0` otherwise. | — |
 
 C code compiled against LVGL (fonts, drivers, custom widgets) must use
-the include paths and both the `DEFINES` and `CFLAGS` lists, with the
-target-aware compiler from `cc`.
+the include paths, definitions and compiler flags. Pass the
+`COMPILER_FLAGS` entries to `cc::Build::flag`. With `cc` 1.2.16 or newer,
+the same environment overrides apply when compiling that code.
 
 `lvgl-rust` exports, through `links = "lvgl_rust"`:
 

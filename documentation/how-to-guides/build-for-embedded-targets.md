@@ -80,8 +80,10 @@ CFLAGS_riscv32imc_unknown_none_elf = "-isystem /usr/lib/picolibc/riscv64-unknown
 BINDGEN_EXTRA_CLANG_ARGS_riscv32imc_unknown_none_elf = "-isystem /usr/lib/picolibc/riscv64-unknown-elf/include"
 ```
 
-The 64-bit GCC builds 32-bit code from `TARGET`'s architecture flags,
-which `cc` passes.
+The build script passes the architecture and calling convention to the C
+compiler and bindgen. For ESP32-P4 (`riscv32imafc-unknown-none-elf`), it adds
+`-march=rv32imafc -mabi=ilp32f`; configure the compiler and C library headers
+for your toolchain.
 
 **ESP32, ESP32-S2, ESP32-S3 (Xtensa): `xtensa-*-none-elf` or
 `xtensa-*-espidf`.** These need Espressif's Rust and LLVM toolchains
