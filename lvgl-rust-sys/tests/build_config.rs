@@ -239,3 +239,35 @@ fn riscv_compiler_flags_leave_other_architectures_unchanged() {
         assert!(riscv_compiler_flags(target, "").is_empty(), "{target}");
     }
 }
+
+#[test]
+fn xtensa_compiler_flags_pass_longcalls_for_xtensa_targets() {
+    for (target, arch) in [
+        ("xtensa-esp32s3-none-elf", "xtensa"),
+        ("xtensa-esp32-none-elf", "xtensa"),
+        ("xtensa-esp32s2-none-elf", "xtensa"),
+        ("xtensa-esp32s3-espidf", "xtensa"),
+        ("xtensa-esp32s3-none-elf", ""),
+        ("custom-esp32s3-none-elf", "xtensa"),
+    ] {
+        assert_eq!(
+            xtensa_compiler_flags(target, arch),
+            ["-mlongcalls"],
+            "{target} ({arch})"
+        );
+    }
+}
+
+#[test]
+fn xtensa_compiler_flags_leave_other_architectures_unchanged() {
+    for (target, arch) in [
+        ("x86_64-unknown-linux-gnu", "x86_64"),
+        ("thumbv7em-none-eabihf", "arm"),
+        ("riscv32imafc-unknown-none-elf", "riscv32"),
+    ] {
+        assert!(
+            xtensa_compiler_flags(target, arch).is_empty(),
+            "{target} ({arch})"
+        );
+    }
+}

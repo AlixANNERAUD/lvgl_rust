@@ -24,8 +24,10 @@ fn dependent_build_script_receives_lvgl_native_configuration() {
     let flags = std::env::var("DEP_LVGL_RUST_SYS_CFLAGS").expect("C flags metadata");
     assert_eq!(flags, "LVGL_TEST_ABI=7");
     let compiler_flags = std::env::var("DEP_LVGL_RUST_SYS_COMPILER_FLAGS").unwrap();
-    if !matches!(std::env::var("CARGO_CFG_TARGET_ARCH").as_deref(), Ok("riscv32" | "riscv64")) {
-        assert!(compiler_flags.is_empty());
+    match std::env::var("CARGO_CFG_TARGET_ARCH").as_deref() {
+        Ok("riscv32" | "riscv64") => assert!(!compiler_flags.is_empty()),
+        Ok("xtensa") => assert_eq!(compiler_flags, "-mlongcalls"),
+        _ => assert!(compiler_flags.is_empty()),
     }
     assert_eq!(std::env::var("DEP_LVGL_RUST_SYS_TARGET").unwrap(), std::env::var("TARGET").unwrap());
     let bindings = std::env::var("DEP_LVGL_RUST_SYS_BINDINGS").expect("bindings metadata");

@@ -186,6 +186,16 @@ pub fn riscv_compiler_flags(target: &str, target_calling_convention: &str) -> Ve
     ]
 }
 
+/// Selects `-mlongcalls` for Xtensa C compilation so calls from flash reach
+/// ROM functions beyond the 18-bit `call8` range.
+pub fn xtensa_compiler_flags(target: &str, target_arch: &str) -> Vec<String> {
+    if target_arch == "xtensa" || target.split('-').next() == Some("xtensa") {
+        vec!["-mlongcalls".into()]
+    } else {
+        Vec::new()
+    }
+}
+
 /// Picks the configuration directory: the explicit one if given, otherwise the
 /// vendored fallback when it is allowed.
 pub fn resolve_config_dir(
