@@ -88,8 +88,10 @@ for your toolchain.
 **ESP32, ESP32-S2, ESP32-S3 (Xtensa): `xtensa-*-none-elf` or
 `xtensa-*-espidf`.** These need Espressif's Rust and LLVM toolchains
 (installed with `espup`), whose `libclang` knows Xtensa, and the matching
-GCC (`xtensa-esp32s3-elf-gcc`, ...) as `CC_<target>`. Give bindgen that
-toolchain's C library headers with `BINDGEN_EXTRA_CLANG_ARGS_<target>`.
+GCC (`xtensa-esp32s3-elf-gcc`, ...) as `CC_<target>`. The build script passes
+`-mlongcalls` to the C compiler and exports it in
+`DEP_LVGL_RUST_SYS_COMPILER_FLAGS` so calls from flash reach ROM functions. Give
+bindgen that toolchain's C library headers with `BINDGEN_EXTRA_CLANG_ARGS_<target>`.
 For `espidf` targets, bindgen turns the triple into an `elf` one. Neither
 is built by the repository's CI: see step 5.
 

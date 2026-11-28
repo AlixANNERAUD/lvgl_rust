@@ -69,6 +69,7 @@ fn shadcn_theme_dir(manifest: &Path) -> PathBuf {
 struct NativeConfig {
     target: String,
     compiler_flags: Vec<String>,
+    bindgen_compiler_flags: Vec<String>,
     /// Directories whose `.c` files are compiled into the LVGL archive.
     source_dirs: Vec<PathBuf>,
     /// Headers handed to bindgen.
@@ -86,11 +87,19 @@ impl NativeConfig {
         let fonts_dir = env_var(FONTS_DIR_VAR).map(|dir| canonicalize(Path::new(&dir)));
         let custom_defines = config::parse_cflags(&env_var(CFLAGS_VAR).unwrap_or_default());
         let target = cargo_env("TARGET");
+        let target_arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
         // Cargo always sets this, to an empty string when the target names no ABI.
         let target_calling_convention = env::var("CARGO_CFG_TARGET_ABI").unwrap_or_default();
+        let bindgen_compiler_flags =
+            config::riscv_compiler_flags(&target, &target_calling_convention);
+        let mut compiler_flags = bindgen_compiler_flags.clone();
+        // `-mlongcalls` changes GCC call code generation only; clang warns on or
+        // rejects it, and headers do not depend on it.
+        compiler_flags.extend(config::xtensa_compiler_flags(&target, &target_arch));
 
         let mut config = Self {
-            compiler_flags: config::riscv_compiler_flags(&target, &target_calling_convention),
+            compiler_flags,
+            bindgen_compiler_flags,
             target,
             source_dirs: vec![
                 paths.lvgl_src.clone(),
@@ -185,7 +194,7 @@ impl NativeConfig {
             .map(|path| format!("-I{}", path.display()))
             .collect();
         args.extend(self.all_defines().map(Define::to_compiler_arg));
-        args.extend(self.compiler_flags.iter().cloned());
+        args.extend(self.bindgen_compiler_flags.iter().cloned());
         args.push("-fvisibility=default".into());
         // Without a C library, clang's own headers are the only ones. In
         // hosted mode its <stdint.h> defers with #include_next and a guard

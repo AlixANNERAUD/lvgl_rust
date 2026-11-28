@@ -175,7 +175,7 @@ public contract.
 | `DEP_LVGL_RUST_SYS_INCLUDE_PATHS` | `;`-separated include directories |
 | `DEP_LVGL_RUST_SYS_DEFINES` | `;`-separated `NAME` / `NAME=VALUE` definitions (config, color depth) |
 | `DEP_LVGL_RUST_SYS_CFLAGS` | `LVGL_CFLAGS` entries, `,`-separated |
-| `DEP_LVGL_RUST_SYS_COMPILER_FLAGS` | Space-separated target defaults (`-march` and `-mabi` on supported RISC-V targets, empty elsewhere) |
+| `DEP_LVGL_RUST_SYS_COMPILER_FLAGS` | Space-separated target defaults (`-march` and `-mabi` on supported RISC-V targets, `-mlongcalls` on Xtensa targets, empty elsewhere) |
 | `DEP_LVGL_RUST_SYS_TARGET` | Cargo target triple of the native build |
 | `DEP_LVGL_RUST_SYS_BINDINGS` | Absolute path to the generated `bindings.rs` |
 | `DEP_LVGL_RUST_SYS_LINKED` | `1` when the `build-lvgl` feature compiled the C library, `0` otherwise |
